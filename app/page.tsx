@@ -245,7 +245,10 @@ export default function Home() {
           selfPeerIdRef.current = id;
           const hostId = requestedHost || id;
           hostPeerIdRef.current = hostId;
-          setInviteUrl(`${window.location.origin}${window.location.pathname}?host=${encodeURIComponent(hostId)}`);
+          const inviteParams = new URLSearchParams(window.location.search);
+          inviteParams.delete("v");
+          inviteParams.set("host", hostId);
+          setInviteUrl(`${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`);
           setRoomStatus("ready");
           if (requestedHost && requestedHost !== id) connectToPeer(requestedHost);
         });
