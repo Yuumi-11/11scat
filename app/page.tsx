@@ -600,12 +600,8 @@ export default function Home() {
             <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void addTask()} placeholder={connected ? "添加到滴答清单" : "添加本次自习任务"} />
             <button onClick={() => void addTask()}>添加</button>
           </div>
-          {connected && projects.length > 0 && (
-            <label className="project-picker">添加至
-              <select value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}>
-                {projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}
-              </select>
-            </label>
+          {connected && selectedProject && (
+            <div className="project-picker recent-picker"><span>添加到</span><strong>最近7天 · 今天到期</strong></div>
           )}
           </>}
         </aside>

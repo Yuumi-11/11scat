@@ -65,6 +65,22 @@ export async function POST(request: Request) {
   if (!token) return new NextResponse("Not connected", { status: 401 });
   const body = await request.json().catch(() => ({}));
   if (typeof body.title !== "string" || typeof body.projectId !== "string") return new NextResponse("Invalid task", { status: 400 });
-  const response = await tickFetch("/task", token, { method: "POST", body: JSON.stringify({ title: body.title.trim(), projectId: body.projectId }) });
+  const todayInShanghai = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const dueDate = `${todayInShanghai}T23:59:00+0800`;
+  const response = await tickFetch("/task", token, {
+    method: "POST",
+    body: JSON.stringify({
+      title: body.title.trim(),
+      projectId: body.projectId,
+      dueDate,
+      isAllDay: true,
+      timeZone: "Asia/Shanghai",
+    }),
+  });
   return new NextResponse(await response.text(), { status: response.status, headers: { "Content-Type": "application/json" } });
 }
