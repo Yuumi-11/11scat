@@ -152,7 +152,10 @@ export default function Home() {
       const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
       setConnected(true);
       setProjects(data.projects);
-      setSelectedProject((current) => current || data.projects[0]?.id || "");
+      const preferredProject = data.projects.find((project: Project) => /工作/.test(project.name))
+        || data.projects.find((project: Project) => !/欢迎/.test(project.name))
+        || data.projects[0];
+      setSelectedProject(preferredProject?.id || "");
       setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : "同步失败");
