@@ -216,10 +216,9 @@ export default function Home() {
     <main className="app-shell" id="top">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="11scat 首页">
-          <span className="brand-mark">11</span><span>11scat</span><small>BETA</small>
+          <span className="brand-mark">11</span><span>11scat</span>
         </a>
         <div className="session-status"><span className="pulse" />私人自习室 · 正在专注</div>
-        <div className="chat-jump" aria-label="聊天栏状态"><span className="pulse" />聊天常驻右侧</div>
       </header>
 
       <section className="workspace">
@@ -280,7 +279,7 @@ export default function Home() {
         </aside>
 
         <section className="focus-stage panel">
-          <div className="stage-topline"><div className="stage-search">1 人在寻找 1 对 1 学习搭子 · 点击加入他们</div><div className="focus-clock">当前专注时长：{pad(Math.floor((50 * 60 - seconds) / 60))}:{pad((50 * 60 - seconds) % 60)}</div></div>
+          <div className="stage-topline"><div className="focus-clock">当前专注时长：{pad(Math.floor((50 * 60 - seconds) / 60))}:{pad((50 * 60 - seconds) % 60)}</div></div>
           <div className="participant-strip">
             <div className="participant-tile active"><span className="tile-badge">你</span><div className="tile-preview">{stream ? "屏幕共享中" : "未共享屏幕"}</div><small>你的学习窗口</small></div>
             <div className="participant-tile"><span className="tile-badge invite">＋</span><div className="tile-preview invite-preview">邀请成员</div><small>等待加入</small></div>
@@ -325,7 +324,18 @@ export default function Home() {
               ))}
             </div>
             <form className="chat-form" onSubmit={sendMessage}>
-              <textarea value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="输入房间消息…" rows={3} />
+              <textarea
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                placeholder="输入房间消息…（Enter 发送，Shift + Enter 换行）"
+                rows={3}
+              />
               <button className="primary-button" type="submit">发送</button>
             </form>
           </> : <div className="member-task-view">
