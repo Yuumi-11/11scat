@@ -445,18 +445,20 @@ export default function Home() {
 
   const toggleTask = async (task: Task) => {
     if (task.done) return;
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: true } : item));
     if (task.source === "ticktick" && task.projectId) {
-      const response = await fetch("/api/ticktick/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: task.projectId, taskId: task.id }),
-      });
-      if (!response.ok) {
+      try {
+        const response = await fetch("/api/ticktick/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: task.projectId, taskId: task.id }),
+        });
+        if (!response.ok) throw new Error("complete failed");
+      } catch {
+        setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: false } : item));
         setSyncError("完成状态没有同步成功");
-        return;
       }
     }
-    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: true } : item));
   };
 
   const connectTickTick = async (event: FormEvent) => {
