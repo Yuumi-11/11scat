@@ -25,6 +25,10 @@ type MediaItem = {
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
+const localDateInputValue = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
 
 const formatDueDate = (dueDate?: string) => {
   if (!dueDate) return "";
@@ -54,6 +58,7 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState(localDateInputValue);
   const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState(50 * 60);
   const [running, setRunning] = useState(false);
@@ -258,24 +263,9 @@ export default function Home() {
         if (disposed) return;
 
         const requestedHost = new URL(window.location.href).searchParams.get("host") || "";
-        localPeer = new Peer({ debug: 1 });
-        peerRef.current = localPeer;
+        const defaultRoomPeerId = "11scat-global-room";
 
-        localPeer.on("open", (id) => {
-          if (disposed) return;
-          selfPeerIdRef.current = id;
-          const hostId = requestedHost || id;
-          hostPeerIdRef.current = hostId;
-          const inviteParams = new URLSearchParams(window.location.search);
-          inviteParams.delete("v");
-          inviteParams.set("host", hostId);
-          setInviteUrl(`${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`);
-          setRoomStatus("ready");
-          if (requestedHost && requestedHost !== id) connectToPeer(requestedHost);
-        });
-
-        localPeer.on("connection", bindConnection);
-        localPeer.on("call", (call) => {
+        const handleCall = (call: MediaConnection) => {
           const peerId = call.peer;
           const source: MediaSource = call.metadata?.source === "screen" ? "screen" : "camera";
           const key = `${source}:${peerId}`;
@@ -298,16 +288,44 @@ export default function Home() {
             incomingCalls.delete(key);
             removeRemoteMedia(peerId, source);
           });
-        });
+        };
 
-        localPeer.on("error", (error) => {
-          if (error.type === "peer-unavailable") {
-            setRoomError("邀请链接对应的房主暂时不在线，请让房主重新复制链接。");
-            return;
-          }
-          setRoomStatus("error");
-          setRoomError("实时房间连接失败，请检查代理网络后刷新页面。");
-        });
+        const attachPeer = (peer: PeerClient, allowDefaultFallback: boolean) => {
+          localPeer = peer;
+          peerRef.current = peer;
+          peer.on("open", (id) => {
+            if (disposed) return;
+            selfPeerIdRef.current = id;
+            const hostId = requestedHost || defaultRoomPeerId;
+            hostPeerIdRef.current = hostId;
+            const inviteParams = new URLSearchParams(window.location.search);
+            inviteParams.delete("v");
+            inviteParams.set("host", hostId);
+            setInviteUrl(`${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`);
+            setRoomStatus("ready");
+            if (hostId !== id) connectToPeer(hostId);
+          });
+          peer.on("connection", bindConnection);
+          peer.on("call", handleCall);
+          peer.on("error", (error) => {
+            if (error.type === "unavailable-id" && allowDefaultFallback && !disposed) {
+              peer.destroy();
+              attachPeer(new Peer({ debug: 1 }), false);
+              return;
+            }
+            if (error.type === "peer-unavailable") {
+              setRoomError("房主暂时不在线，请让房主打开网站后重新复制房间链接。");
+              return;
+            }
+            setRoomStatus("error");
+            setRoomError("实时房间连接失败，请检查代理网络后刷新页面。");
+          });
+        };
+
+        attachPeer(
+          requestedHost ? new Peer({ debug: 1 }) : new Peer(defaultRoomPeerId, { debug: 1 }),
+          !requestedHost,
+        );
       } catch {
         setRoomStatus("error");
         setRoomError("实时房间组件加载失败，请刷新页面重试。");
@@ -362,7 +380,7 @@ export default function Home() {
       const response = await fetch("/api/ticktick/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, projectId: selectedProject }),
+        body: JSON.stringify({ title, projectId: selectedProject, dueDate: taskDueDate }),
       });
       if (response.ok) {
         setDraft("");
@@ -601,7 +619,7 @@ export default function Home() {
             <button onClick={() => void addTask()}>添加</button>
           </div>
           {connected && selectedProject && (
-            <div className="project-picker recent-picker"><span>添加到</span><strong>最近7天 · 今天到期</strong></div>
+            <label className="project-picker recent-picker"><span>最近7天</span><input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} aria-label="任务截止日期" /></label>
           )}
           </>}
         </aside>
