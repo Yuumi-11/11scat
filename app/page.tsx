@@ -41,6 +41,8 @@ export default function Home() {
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareError, setShareError] = useState("");
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState("");
   const [syncOpen, setSyncOpen] = useState(false);
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(true);
@@ -51,6 +53,7 @@ export default function Home() {
   const [sideView, setSideView] = useState<"chat" | "members">("chat");
   const [leftView, setLeftView] = useState<"tasks" | "members">("tasks");
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
 
   const loadTasks = async () => {
     setSyncing(true);
@@ -97,7 +100,9 @@ export default function Home() {
 
   useEffect(() => { if (seconds === 0) setRunning(false); }, [seconds]);
   useEffect(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, [stream]);
+  useEffect(() => { if (cameraVideoRef.current) cameraVideoRef.current.srcObject = cameraStream; }, [cameraStream]);
   useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
+  useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   const addTask = async () => {
     const title = draft.trim();
@@ -198,6 +203,44 @@ export default function Home() {
     setStream(null);
   };
 
+  const stopCamera = () => {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+  };
+
+  const toggleCamera = async () => {
+    if (cameraStream) {
+      stopCamera();
+      return;
+    }
+
+    setCameraError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("当前浏览器不支持摄像头访问，请使用最新版 Chrome、Edge 或 Safari。");
+      return;
+    }
+
+    try {
+      const nextCameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 24, max: 30 },
+          facingMode: "user",
+        },
+        audio: false,
+      });
+      const track = nextCameraStream.getVideoTracks()[0];
+      track?.addEventListener("ended", () => setCameraStream(null));
+      setCameraStream(nextCameraStream);
+    } catch (error) {
+      const name = (error as DOMException).name;
+      setCameraError(name === "NotAllowedError"
+        ? "摄像头权限未开启，请在浏览器地址栏允许 11scat 使用摄像头。"
+        : "摄像头暂时无法开启，请确认没有被其他程序占用。");
+    }
+  };
+
   const sendMessage = (event: FormEvent) => {
     event.preventDefault();
     const body = chatDraft.trim();
@@ -280,7 +323,13 @@ export default function Home() {
 
         <section className="focus-stage panel">
           <div className="participant-strip">
-            <div className="participant-tile active"><span className="tile-badge">你</span><div className="tile-preview">{stream ? "屏幕共享中" : "未共享屏幕"}</div><small>你的学习窗口</small></div>
+            <div className="participant-tile active">
+              <span className="tile-badge">你</span>
+              {cameraStream
+                ? <video className="camera-preview" ref={cameraVideoRef} autoPlay muted playsInline aria-label="你的摄像头预览" />
+                : <div className="tile-preview">{stream ? "屏幕共享中 · 摄像头关闭" : "摄像头关闭"}</div>}
+              <small>{cameraStream ? "摄像头已开启" : "你的学习窗口"}</small>
+            </div>
             <div className="participant-tile"><span className="tile-badge invite">＋</span><div className="tile-preview invite-preview">邀请成员</div><small>等待加入</small></div>
             <div className="participant-tile"><span className="tile-badge ghost">?</span><div className="tile-preview invite-preview">成员预留位</div><small>尚未连接</small></div>
           </div>
@@ -295,7 +344,7 @@ export default function Home() {
               </div>
             )}
           </div>
-          {shareError && <p className="error-message" role="alert">{shareError}</p>}
+          {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
           <div className="quality-bar">
             <div className="quality-copy"><span className="quality-icon">HD</span><div><strong>{shareMode === "detail" ? "文字 / 代码优先" : "动态画面优先"}</strong><small>{shareMode === "detail" ? "最高 1440p · 15 FPS · 细节增强" : "最高 1080p · 30 FPS · 动态流畅"}</small></div></div>
             <div className="segmented"><button className={shareMode === "detail" ? "active" : ""} onClick={() => setShareMode("detail")}>文字 / 代码</button><button className={shareMode === "motion" ? "active" : ""} onClick={() => setShareMode("motion")}>动态画面</button></div>
@@ -306,7 +355,7 @@ export default function Home() {
             <button className="timer-toggle" onClick={() => setRunning((value) => !value)}>{running ? "暂停" : seconds === 50 * 60 ? "开始专注" : "继续"}</button>
             <button className="reset-button" onClick={() => { setSeconds(50 * 60); setRunning(false); }}>重置</button>
           </div>
-          <div className="room-controls"><button aria-label="关闭摄像头">⌁</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={stopShare}>退出房间</button></div>
+          <div className="room-controls"><button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"}>{cameraStream ? "●" : "◉"}</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={() => { stopShare(); stopCamera(); }}>退出房间</button></div>
         </section>
 
         <aside className="chat-panel panel">
