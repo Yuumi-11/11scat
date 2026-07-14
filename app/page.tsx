@@ -279,7 +279,6 @@ export default function Home() {
         </aside>
 
         <section className="focus-stage panel">
-          <div className="stage-topline"><div className="focus-clock">当前专注时长：{pad(Math.floor((50 * 60 - seconds) / 60))}:{pad((50 * 60 - seconds) % 60)}</div></div>
           <div className="participant-strip">
             <div className="participant-tile active"><span className="tile-badge">你</span><div className="tile-preview">{stream ? "屏幕共享中" : "未共享屏幕"}</div><small>你的学习窗口</small></div>
             <div className="participant-tile"><span className="tile-badge invite">＋</span><div className="tile-preview invite-preview">邀请成员</div><small>等待加入</small></div>
@@ -333,7 +332,7 @@ export default function Home() {
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder="输入房间消息…（Enter 发送，Shift + Enter 换行）"
+                aria-label="输入房间消息"
                 rows={3}
               />
               <button className="primary-button" type="submit">发送</button>
