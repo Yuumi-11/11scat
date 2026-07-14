@@ -1,5 +1,5 @@
 type AccessPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 };
 
 export const metadata = {
@@ -8,7 +8,7 @@ export const metadata = {
 };
 
 export default async function AccessPage({ searchParams }: AccessPageProps) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
 
   return (
     <main className="access-shell">
@@ -21,6 +21,7 @@ export default async function AccessPage({ searchParams }: AccessPageProps) {
         <h1>输入访问密码</h1>
         <p>这个自习空间仅向受邀访客开放。</p>
         <form action="/api/access" method="post">
+          <input type="hidden" name="next" value={next || "/"} />
           <label htmlFor="password">访问密码</label>
           <input
             id="password"

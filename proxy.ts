@@ -14,7 +14,9 @@ export async function proxy(request: NextRequest) {
 
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
   if (token !== (await accessToken(password))) {
-    return NextResponse.redirect(new URL("/access", request.url));
+    const accessUrl = new URL("/access", request.url);
+    accessUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(accessUrl);
   }
 
   const response = NextResponse.next();

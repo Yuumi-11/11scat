@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import type { DataConnection, MediaConnection, Peer as PeerClient } from "peerjs";
 
 type Task = {
   id: string;
@@ -31,6 +32,16 @@ const formatDueDate = (dueDate?: string) => {
   return `${due.getMonth() + 1}月${due.getDate()}日`;
 };
 
+function RemoteCamera({ stream, label }: { stream: MediaStream; label: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.srcObject = stream;
+  }, [stream]);
+
+  return <video className="camera-preview remote" ref={ref} autoPlay playsInline aria-label={label} />;
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -43,6 +54,12 @@ export default function Home() {
   const [shareError, setShareError] = useState("");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
+  const [roomMembers, setRoomMembers] = useState<string[]>([]);
+  const [remoteCameras, setRemoteCameras] = useState<Record<string, MediaStream>>({});
+  const [roomStatus, setRoomStatus] = useState<"connecting" | "ready" | "error">("connecting");
+  const [roomError, setRoomError] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(true);
@@ -54,6 +71,14 @@ export default function Home() {
   const [leftView, setLeftView] = useState<"tasks" | "members">("tasks");
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const peerRef = useRef<PeerClient | null>(null);
+  const selfPeerIdRef = useRef("");
+  const hostPeerIdRef = useRef("");
+  const dataConnectionsRef = useRef(new Map<string, DataConnection>());
+  const outgoingCallsRef = useRef(new Map<string, MediaConnection>());
+  const incomingCallsRef = useRef(new Map<string, MediaConnection>());
+  const callPeerRef = useRef<(peerId: string, media: MediaStream) => void>(() => undefined);
 
   const loadTasks = async () => {
     setSyncing(true);
@@ -103,6 +128,191 @@ export default function Home() {
   useEffect(() => { if (cameraVideoRef.current) cameraVideoRef.current.srcObject = cameraStream; }, [cameraStream]);
   useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
+
+  useEffect(() => {
+    let disposed = false;
+    let localPeer: PeerClient | null = null;
+    const connections = dataConnectionsRef.current;
+    const outgoingCalls = outgoingCallsRef.current;
+    const incomingCalls = incomingCallsRef.current;
+
+    const refreshMembers = () => {
+      setRoomMembers(Array.from(connections.keys()));
+    };
+
+    const removeRemoteCamera = (peerId: string) => {
+      setRemoteCameras((current) => {
+        if (!current[peerId]) return current;
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
+    };
+
+    const removePeer = (peerId: string) => {
+      connections.delete(peerId);
+      outgoingCalls.get(peerId)?.close();
+      incomingCalls.get(peerId)?.close();
+      outgoingCalls.delete(peerId);
+      incomingCalls.delete(peerId);
+      removeRemoteCamera(peerId);
+      refreshMembers();
+    };
+
+    const callPeer = (peerId: string, media: MediaStream) => {
+      if (!localPeer?.open || !connections.get(peerId)?.open) return;
+      const existing = outgoingCalls.get(peerId);
+      if (existing?.open) return;
+      existing?.close();
+
+      const call = localPeer.call(peerId, media, { metadata: { source: "camera" } });
+      outgoingCalls.set(peerId, call);
+      call.on("close", () => {
+        if (outgoingCalls.get(peerId) === call) outgoingCalls.delete(peerId);
+      });
+      call.on("error", () => {
+        if (outgoingCalls.get(peerId) === call) outgoingCalls.delete(peerId);
+      });
+    };
+
+    callPeerRef.current = callPeer;
+
+    const broadcastPeerList = () => {
+      const selfId = selfPeerIdRef.current;
+      if (!selfId || hostPeerIdRef.current !== selfId) return;
+      const ids = [selfId, ...connections.keys()];
+      connections.forEach((connection) => {
+        if (connection.open) connection.send({ type: "peer-list", ids });
+      });
+    };
+
+    function connectToPeer(peerId: string) {
+      const selfId = selfPeerIdRef.current;
+      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId)) return;
+      bindConnection(localPeer.connect(peerId, { reliable: true, metadata: { room: hostPeerIdRef.current } }));
+    }
+
+    function bindConnection(connection: DataConnection) {
+      const peerId = connection.peer;
+
+      const handleOpen = () => {
+        if (disposed) return;
+        const existing = connections.get(peerId);
+        if (existing && existing !== connection && existing.open) {
+          connection.close();
+          return;
+        }
+
+        connections.set(peerId, connection);
+        setRoomError("");
+        refreshMembers();
+        if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
+        if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current);
+      };
+
+      connection.on("open", handleOpen);
+      connection.on("data", (payload) => {
+        if (!payload || typeof payload !== "object" || !("type" in payload)) return;
+        const message = payload as { type: string; ids?: unknown };
+        if (message.type !== "peer-list" || !Array.isArray(message.ids)) return;
+
+        const selfId = selfPeerIdRef.current;
+        message.ids.forEach((candidate) => {
+          if (typeof candidate !== "string" || candidate === selfId || connections.has(candidate)) return;
+          if (candidate === hostPeerIdRef.current || selfId.localeCompare(candidate) < 0) connectToPeer(candidate);
+        });
+      });
+      connection.on("close", () => {
+        if (connections.get(peerId) !== connection) return;
+        removePeer(peerId);
+        if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
+      });
+      connection.on("error", () => removePeer(peerId));
+      if (connection.open) handleOpen();
+    }
+
+    const initializeRoom = async () => {
+      try {
+        const { Peer } = await import("peerjs");
+        if (disposed) return;
+
+        const requestedHost = new URL(window.location.href).searchParams.get("host") || "";
+        localPeer = new Peer({ debug: 1 });
+        peerRef.current = localPeer;
+
+        localPeer.on("open", (id) => {
+          if (disposed) return;
+          selfPeerIdRef.current = id;
+          const hostId = requestedHost || id;
+          hostPeerIdRef.current = hostId;
+          setInviteUrl(`${window.location.origin}${window.location.pathname}?host=${encodeURIComponent(hostId)}`);
+          setRoomStatus("ready");
+          if (requestedHost && requestedHost !== id) connectToPeer(requestedHost);
+        });
+
+        localPeer.on("connection", bindConnection);
+        localPeer.on("call", (call) => {
+          const peerId = call.peer;
+          incomingCalls.get(peerId)?.close();
+          incomingCalls.set(peerId, call);
+          call.answer();
+          call.on("stream", (remoteStream) => {
+            if (disposed) return;
+            setRemoteCameras((current) => ({ ...current, [peerId]: remoteStream }));
+            remoteStream.getVideoTracks()[0]?.addEventListener("ended", () => removeRemoteCamera(peerId));
+          });
+          call.on("close", () => {
+            if (incomingCalls.get(peerId) !== call) return;
+            incomingCalls.delete(peerId);
+            removeRemoteCamera(peerId);
+          });
+          call.on("error", () => {
+            if (incomingCalls.get(peerId) !== call) return;
+            incomingCalls.delete(peerId);
+            removeRemoteCamera(peerId);
+          });
+        });
+
+        localPeer.on("error", (error) => {
+          if (error.type === "peer-unavailable") {
+            setRoomError("邀请链接对应的房主暂时不在线，请让房主重新复制链接。");
+            return;
+          }
+          setRoomStatus("error");
+          setRoomError("实时房间连接失败，请检查代理网络后刷新页面。");
+        });
+      } catch {
+        setRoomStatus("error");
+        setRoomError("实时房间组件加载失败，请刷新页面重试。");
+      }
+    };
+
+    void initializeRoom();
+
+    return () => {
+      disposed = true;
+      callPeerRef.current = () => undefined;
+      connections.forEach((connection) => connection.close());
+      outgoingCalls.forEach((call) => call.close());
+      incomingCalls.forEach((call) => call.close());
+      connections.clear();
+      outgoingCalls.clear();
+      incomingCalls.clear();
+      localPeer?.destroy();
+      peerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    cameraStreamRef.current = cameraStream;
+    if (cameraStream) {
+      roomMembers.forEach((peerId) => callPeerRef.current(peerId, cameraStream));
+      return;
+    }
+
+    outgoingCallsRef.current.forEach((call) => call.close());
+    outgoingCallsRef.current.clear();
+  }, [cameraStream, roomMembers]);
 
   const addTask = async () => {
     const title = draft.trim();
@@ -241,6 +451,17 @@ export default function Home() {
     }
   };
 
+  const copyInviteLink = async () => {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2200);
+    } catch {
+      window.prompt("复制这个邀请链接发给成员", inviteUrl);
+    }
+  };
+
   const sendMessage = (event: FormEvent) => {
     event.preventDefault();
     const body = chatDraft.trim();
@@ -254,6 +475,8 @@ export default function Home() {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   const completed = tasks.filter((task) => task.done).length;
+  const visibleRemoteMembers = roomMembers.slice(0, 2);
+  const emptyMemberSlots = Math.max(0, 2 - visibleRemoteMembers.length);
 
   return (
     <main className="app-shell" id="top">
@@ -330,9 +553,24 @@ export default function Home() {
                 : <div className="tile-preview">{stream ? "屏幕共享中 · 摄像头关闭" : "摄像头关闭"}</div>}
               <small>{cameraStream ? "摄像头已开启" : "你的学习窗口"}</small>
             </div>
-            <div className="participant-tile"><span className="tile-badge invite">＋</span><div className="tile-preview invite-preview">邀请成员</div><small>等待加入</small></div>
-            <div className="participant-tile"><span className="tile-badge ghost">?</span><div className="tile-preview invite-preview">成员预留位</div><small>尚未连接</small></div>
+            {visibleRemoteMembers.map((peerId, index) => (
+              <div className="participant-tile connected" key={peerId}>
+                <span className="tile-badge">{index + 1}</span>
+                {remoteCameras[peerId]
+                  ? <RemoteCamera stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
+                  : <div className="tile-preview invite-preview">摄像头关闭</div>}
+                <small>成员 {index + 1} · 已连接</small>
+              </div>
+            ))}
+            {Array.from({ length: emptyMemberSlots }, (_, index) => (
+              <button className="participant-tile participant-invite" type="button" onClick={() => void copyInviteLink()} key={`empty-${index}`}>
+                <span className={index === 0 ? "tile-badge invite" : "tile-badge ghost"}>{index === 0 ? "＋" : "?"}</span>
+                <span className="tile-preview invite-preview">{roomStatus === "connecting" ? "房间连接中" : inviteCopied ? "邀请链接已复制" : "邀请成员"}</span>
+                <small>{roomStatus === "error" ? "连接异常" : "点击复制房间链接"}</small>
+              </button>
+            ))}
           </div>
+          {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas">
             {stream ? <video ref={videoRef} autoPlay muted playsInline aria-label="屏幕共享预览" /> : (
               <div className="empty-share">

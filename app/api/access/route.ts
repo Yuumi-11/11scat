@@ -18,11 +18,18 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const submitted = form.get("password");
+  const requestedNext = form.get("next");
+  const next = typeof requestedNext === "string" && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+    ? requestedNext
+    : "/";
   if (typeof submitted !== "string" || !passwordsMatch(submitted, expected)) {
-    return NextResponse.redirect(new URL("/access?error=1", request.url), 303);
+    const accessUrl = new URL("/access", request.url);
+    accessUrl.searchParams.set("error", "1");
+    accessUrl.searchParams.set("next", next);
+    return NextResponse.redirect(accessUrl, 303);
   }
 
-  const response = NextResponse.redirect(new URL("/", request.url), 303);
+  const response = NextResponse.redirect(new URL(next, request.url), 303);
   response.cookies.set(ACCESS_COOKIE, accessToken(expected), {
     httpOnly: true,
     secure: true,
