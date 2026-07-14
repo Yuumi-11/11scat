@@ -6,18 +6,18 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "11scat｜任务同步与高清共享",
-  description: "连接你的任务清单，用更清晰的屏幕共享和学习伙伴一起专注。",
+  title: "11scat｜最近7天、高清投屏与房间聊天",
+  description: "左侧同步滴答清单最近7天任务，中间高清投屏，右侧常驻自习室聊天。",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
   openGraph: {
     title: "11scat",
-    description: "任务同步 · 高清共享 · 一起专注",
+    description: "最近7天滴答任务 · 高清投屏 · 右侧常驻聊天",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "11scat",
-    description: "任务同步 · 高清共享 · 一起专注",
+    description: "最近7天滴答任务 · 高清投屏 · 右侧常驻聊天",
   },
 };
 

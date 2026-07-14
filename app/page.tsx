@@ -1,25 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Task = {
-  id: number;
+  id: string;
+  projectId?: string;
   title: string;
   project: string;
+  dueDate?: string;
   done: boolean;
   source: "ticktick" | "local";
 };
 
-const initialTasks: Task[] = [
-  { id: 1, title: "完成数据结构第三章习题", project: "期末复习", done: false, source: "ticktick" },
-  { id: 2, title: "整理概率论错题", project: "期末复习", done: true, source: "ticktick" },
-  { id: 3, title: "准备明天的小组汇报", project: "课程项目", done: false, source: "ticktick" },
-];
+type Project = { id: string; name: string };
+type ChatMessage = { id: number; body: string; time: string };
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
+const formatDueDate = (dueDate?: string) => {
+  if (!dueDate) return "";
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return "";
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+  const dayOffset = Math.round((dueStart - todayStart) / (24 * 60 * 60 * 1000));
+  if (dayOffset < 0) return `已逾期 ${Math.abs(dayOffset)} 天`;
+  if (dayOffset === 0) return "今天";
+  if (dayOffset === 1) return "明天";
+  return `${due.getMonth() + 1}月${due.getDate()}日`;
+};
+
 export default function Home() {
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState("");
   const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState(50 * 60);
   const [running, setRunning] = useState(false);
@@ -27,8 +42,52 @@ export default function Home() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareError, setShareError] = useState("");
   const [syncOpen, setSyncOpen] = useState(false);
-  const [demoConnected, setDemoConnected] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [syncing, setSyncing] = useState(true);
+  const [syncError, setSyncError] = useState("");
+  const [token, setToken] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [sideView, setSideView] = useState<"chat" | "members">("chat");
+  const [leftView, setLeftView] = useState<"tasks" | "members">("tasks");
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const loadTasks = async () => {
+    setSyncing(true);
+    setSyncError("");
+    try {
+      const response = await fetch("/api/ticktick/tasks", { cache: "no-store" });
+      if (response.status === 401) {
+        setConnected(false);
+        setTasks((current) => current.filter((task) => task.source === "local"));
+        return;
+      }
+      if (!response.ok) throw new Error("暂时无法读取滴答清单");
+      const data = await response.json();
+      const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
+      setConnected(true);
+      setProjects(data.projects);
+      setSelectedProject((current) => current || data.projects[0]?.id || "");
+      setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => { void loadTasks(); }, []);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("11scat-chat");
+    if (saved) {
+      try { setMessages(JSON.parse(saved)); } catch { /* ignore malformed local data */ }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("11scat-chat", JSON.stringify(messages));
+  }, [messages]);
 
   useEffect(() => {
     if (!running || seconds <= 0) return;
@@ -36,32 +95,74 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [running, seconds]);
 
-  useEffect(() => {
-    if (seconds === 0) setRunning(false);
-  }, [seconds]);
+  useEffect(() => { if (seconds === 0) setRunning(false); }, [seconds]);
+  useEffect(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, [stream]);
+  useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
 
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = stream;
-  }, [stream]);
-
-  useEffect(() => {
-    return () => stream?.getTracks().forEach((track) => track.stop());
-  }, [stream]);
-
-  const addTask = () => {
+  const addTask = async () => {
     const title = draft.trim();
     if (!title) return;
-    setTasks((current) => [
-      ...current,
-      { id: Date.now(), title, project: "本次自习", done: false, source: "local" },
-    ]);
+
+    if (connected && selectedProject) {
+      const response = await fetch("/api/ticktick/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, projectId: selectedProject }),
+      });
+      if (response.ok) {
+        setDraft("");
+        await loadTasks();
+        return;
+      }
+      setSyncError("任务没有写入滴答清单，请重试");
+      return;
+    }
+
+    setTasks((current) => [...current, {
+      id: String(Date.now()), title, project: "本次自习", done: false, source: "local",
+    }]);
     setDraft("");
   };
 
-  const toggleTask = (id: number) => {
-    setTasks((current) =>
-      current.map((task) => (task.id === id ? { ...task, done: !task.done } : task)),
-    );
+  const toggleTask = async (task: Task) => {
+    if (task.done) return;
+    if (task.source === "ticktick" && task.projectId) {
+      const response = await fetch("/api/ticktick/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: task.projectId, taskId: task.id }),
+      });
+      if (!response.ok) {
+        setSyncError("完成状态没有同步成功");
+        return;
+      }
+    }
+    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: true } : item));
+  };
+
+  const connectTickTick = async (event: FormEvent) => {
+    event.preventDefault();
+    setSyncError("");
+    const response = await fetch("/api/ticktick/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token.trim() }),
+    });
+    if (!response.ok) {
+      setSyncError("Token 无效或滴答接口暂时不可用");
+      return;
+    }
+    setToken("");
+    setSyncOpen(false);
+    await loadTasks();
+  };
+
+  const disconnectTickTick = async () => {
+    await fetch("/api/ticktick/token", { method: "DELETE" });
+    setConnected(false);
+    setProjects([]);
+    setTasks((current) => current.filter((task) => task.source === "local"));
+    setSyncOpen(false);
   };
 
   const startShare = async () => {
@@ -70,7 +171,6 @@ export default function Home() {
       setShareError("当前浏览器不支持屏幕共享，请使用最新版 Chrome、Edge 或 Safari。");
       return;
     }
-
     try {
       const detailMode = shareMode === "detail";
       const nextStream = await navigator.mediaDevices.getDisplayMedia({
@@ -81,7 +181,6 @@ export default function Home() {
         },
         audio: false,
       });
-
       const track = nextStream.getVideoTracks()[0];
       if (track) {
         track.contentHint = detailMode ? "detail" : "motion";
@@ -90,9 +189,7 @@ export default function Home() {
       stream?.getTracks().forEach((item) => item.stop());
       setStream(nextStream);
     } catch (error) {
-      if ((error as DOMException).name !== "NotAllowedError") {
-        setShareError("没有成功开始共享，请重新选择一个窗口或屏幕。");
-      }
+      if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
     }
   };
 
@@ -101,185 +198,170 @@ export default function Home() {
     setStream(null);
   };
 
+  const sendMessage = (event: FormEvent) => {
+    event.preventDefault();
+    const body = chatDraft.trim();
+    if (!body) return;
+    setMessages((current) => [...current, {
+      id: Date.now(), body, time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+    }]);
+    setChatDraft("");
+  };
+
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   const completed = tasks.filter((task) => task.done).length;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" id="top">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="11scat 首页">
-          <span className="brand-mark">11</span>
-          <span>11scat</span>
-          <small>BETA</small>
+          <span className="brand-mark">11</span><span>11scat</span><small>BETA</small>
         </a>
-        <div className="session-status">
-          <span className="pulse" />
-          自习房间 · 2 人在线
-        </div>
-        <div className="top-actions">
-          <button className="icon-button" aria-label="静音">⌁</button>
-          <button className="profile-button" aria-label="个人设置">你</button>
-        </div>
+        <div className="session-status"><span className="pulse" />私人自习室 · 正在专注</div>
+        <div className="chat-jump" aria-label="聊天栏状态"><span className="pulse" />聊天常驻右侧</div>
       </header>
 
-      <section className="workspace" id="top">
+      <section className="workspace">
         <aside className="task-panel panel">
+          <div className="left-tabs" aria-label="左侧导航">
+            <button className={leftView === "tasks" ? "active" : ""} onClick={() => setLeftView("tasks")}>待办事项</button>
+            <button className={leftView === "members" ? "active" : ""} onClick={() => setLeftView("members")}>成员</button>
+          </div>
+          {leftView === "members" ? <div className="left-members">
+            <div className="left-member"><span className="member-avatar">你</span><div><strong>你</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
+            <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请同学</strong><small>加入后可选择共享任务进度</small></div></div>
+            <button className="primary-button invite-button" onClick={() => setSideView("members")}>查看共享规则</button>
+          </div> : <>
           <div className="panel-heading">
-            <div>
-              <span className="eyebrow">TODAY</span>
-              <h1>本次专注任务</h1>
-            </div>
+            <div><span className="eyebrow">滴答清单</span><h1>最近7天</h1></div>
             <button className="sync-button" onClick={() => setSyncOpen(true)}>
-              <span className={demoConnected ? "sync-dot active" : "sync-dot"} />
-              {demoConnected ? "已同步" : "连接滴答清单"}
+              <span className={connected ? "sync-dot active" : "sync-dot"} />
+              {syncing ? "读取中" : connected ? "滴答已连接" : "连接滴答"}
             </button>
           </div>
 
           <div className="progress-block">
-            <div className="progress-copy">
-              <span>{completed}/{tasks.length} 已完成</span>
-              <strong>{tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%</strong>
-            </div>
-            <div className="progress-track">
-              <span style={{ width: `${tasks.length ? (completed / tasks.length) * 100 : 0}%` }} />
-            </div>
+            <div className="progress-copy"><span>{completed}/{tasks.length} 已完成</span><strong>{tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%</strong></div>
+            <div className="progress-track"><span style={{ width: `${tasks.length ? (completed / tasks.length) * 100 : 0}%` }} /></div>
           </div>
+
+          {syncError && <p className="error-message" role="alert">{syncError}</p>}
+          {!syncing && tasks.length === 0 && (
+            <div className="empty-tasks">
+              <strong>{connected ? "最近7天没有待办" : "还没有连接滴答清单"}</strong>
+              <span>{connected ? "这里只显示有截止日期、已逾期或未来7天内到期的任务" : "连接后会跨清单读取滴答的最近7天任务"}</span>
+            </div>
+          )}
 
           <div className="task-list" aria-live="polite">
             {tasks.map((task) => (
-              <label className={task.done ? "task-row done" : "task-row"} key={task.id}>
-                <input
-                  type="checkbox"
-                  checked={task.done}
-                  onChange={() => toggleTask(task.id)}
-                />
+              <label className={task.done ? "task-row done" : "task-row"} key={`${task.source}-${task.id}`}>
+                <input type="checkbox" checked={task.done} onChange={() => void toggleTask(task)} disabled={task.done} />
                 <span className="custom-check">✓</span>
-                <span className="task-copy">
-                  <strong>{task.title}</strong>
-                  <small>
-                    {task.source === "ticktick" ? "滴答清单" : "站内任务"} · {task.project}
-                  </small>
-                </span>
-                <span className="drag-handle">⠿</span>
+                <span className="task-copy"><strong>{task.title}</strong><small>{task.source === "ticktick" ? task.project : "站内任务"}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
               </label>
             ))}
           </div>
 
           <div className="add-task">
             <span>＋</span>
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && addTask()}
-              placeholder="添加本次自习任务"
-              aria-label="添加本次自习任务"
-            />
-            <button onClick={addTask}>添加</button>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void addTask()} placeholder={connected ? "添加到滴答清单" : "添加本次自习任务"} />
+            <button onClick={() => void addTask()}>添加</button>
           </div>
-
-          <div className="partner-card">
-            <div className="avatar partner-avatar">林</div>
-            <div>
-              <strong>林同学正在专注</strong>
-              <span>已连续学习 34 分钟</span>
-            </div>
-            <span className="quiet-badge">请勿打扰</span>
-          </div>
+          {connected && projects.length > 0 && (
+            <label className="project-picker">添加至
+              <select value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}>
+                {projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}
+              </select>
+            </label>
+          )}
+          </>}
         </aside>
 
         <section className="focus-stage panel">
-          <div className="stage-topline">
-            <div className="stage-label"><span /> FOCUS SESSION</div>
-            <button className="more-button" aria-label="更多选项">•••</button>
+          <div className="stage-topline"><div className="stage-search">1 人在寻找 1 对 1 学习搭子 · 点击加入他们</div><div className="focus-clock">当前专注时长：{pad(Math.floor((50 * 60 - seconds) / 60))}:{pad((50 * 60 - seconds) % 60)}</div></div>
+          <div className="participant-strip">
+            <div className="participant-tile active"><span className="tile-badge">你</span><div className="tile-preview">{stream ? "屏幕共享中" : "未共享屏幕"}</div><small>你的学习窗口</small></div>
+            <div className="participant-tile"><span className="tile-badge invite">＋</span><div className="tile-preview invite-preview">邀请成员</div><small>等待加入</small></div>
+            <div className="participant-tile"><span className="tile-badge ghost">?</span><div className="tile-preview invite-preview">成员预留位</div><small>尚未连接</small></div>
           </div>
-
           <div className="share-canvas">
-            {stream ? (
-              <video ref={videoRef} autoPlay muted playsInline aria-label="屏幕共享预览" />
-            ) : (
+            {stream ? <video ref={videoRef} autoPlay muted playsInline aria-label="屏幕共享预览" /> : (
               <div className="empty-share">
                 <div className="share-glyph"><span /><span /><span /></div>
                 <h2>共享你的学习窗口</h2>
-                <p>文字与代码模式优先保留细节，网络波动时也尽量保持字迹清楚。</p>
+                <p>文字与代码模式优先保留细节，适合长时间自习和讲题。</p>
                 <button className="primary-button" onClick={startShare}>开始高清共享</button>
                 <span className="privacy-note">只会共享你主动选择的窗口或屏幕</span>
               </div>
             )}
-
-            <div className="partner-tile">
-              <div className="partner-scene">
-                <div className="lamp" />
-                <div className="desk" />
-                <div className="book book-one" />
-                <div className="book book-two" />
-                <div className="plant">✦</div>
-              </div>
-              <div className="partner-caption">
-                <span className="avatar mini">林</span>
-                <span>林同学</span>
-                <span className="mic-state">⌁</span>
-              </div>
-            </div>
           </div>
-
           {shareError && <p className="error-message" role="alert">{shareError}</p>}
-
           <div className="quality-bar">
-            <div className="quality-copy">
-              <span className="quality-icon">HD</span>
-              <div>
-                <strong>{shareMode === "detail" ? "文字 / 代码优先" : "动态画面优先"}</strong>
-                <small>
-                  {shareMode === "detail" ? "最高 1440p · 15 FPS · 细节增强" : "最高 1080p · 30 FPS · 动态流畅"}
-                </small>
-              </div>
-            </div>
-            <div className="segmented" aria-label="共享清晰度模式">
-              <button className={shareMode === "detail" ? "active" : ""} onClick={() => setShareMode("detail")}>文字 / 代码</button>
-              <button className={shareMode === "motion" ? "active" : ""} onClick={() => setShareMode("motion")}>动态画面</button>
-            </div>
+            <div className="quality-copy"><span className="quality-icon">HD</span><div><strong>{shareMode === "detail" ? "文字 / 代码优先" : "动态画面优先"}</strong><small>{shareMode === "detail" ? "最高 1440p · 15 FPS · 细节增强" : "最高 1080p · 30 FPS · 动态流畅"}</small></div></div>
+            <div className="segmented"><button className={shareMode === "detail" ? "active" : ""} onClick={() => setShareMode("detail")}>文字 / 代码</button><button className={shareMode === "motion" ? "active" : ""} onClick={() => setShareMode("motion")}>动态画面</button></div>
             {stream && <button className="stop-button" onClick={stopShare}>停止共享</button>}
           </div>
-
           <div className="session-controls">
-            <div className="timer-block">
-              <span>本轮剩余</span>
-              <strong>{pad(minutes)}:{pad(remainingSeconds)}</strong>
-            </div>
-            <button className="timer-toggle" onClick={() => setRunning((value) => !value)}>
-              {running ? "暂停" : seconds === 50 * 60 ? "开始专注" : "继续"}
-            </button>
+            <div className="timer-block"><span>本轮剩余</span><strong>{pad(minutes)}:{pad(remainingSeconds)}</strong></div>
+            <button className="timer-toggle" onClick={() => setRunning((value) => !value)}>{running ? "暂停" : seconds === 50 * 60 ? "开始专注" : "继续"}</button>
             <button className="reset-button" onClick={() => { setSeconds(50 * 60); setRunning(false); }}>重置</button>
           </div>
+          <div className="room-controls"><button aria-label="关闭摄像头">⌁</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={stopShare}>退出房间</button></div>
         </section>
+
+        <aside className="chat-panel panel">
+          <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><span className="local-badge">本机</span></div>
+          <div className="side-tabs" aria-label="侧栏内容">
+            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}>聊天</button>
+            <button className={sideView === "members" ? "active" : ""} onClick={() => setSideView("members")}>成员任务</button>
+          </div>
+          {sideView === "chat" ? <>
+            <div className="chat-notice">当前消息仅保存在此浏览器。接入房间数据库后才能让其他成员实时看到。</div>
+            <div className="message-list" aria-live="polite">
+              {messages.length === 0 ? <div className="empty-chat"><strong>还没有消息</strong><span>可以先记录一句本轮目标或休息提醒。</span></div> : messages.map((message) => (
+                <div className="message own" key={message.id}><span>你 · {message.time}</span><p>{message.body}</p></div>
+              ))}
+            </div>
+            <form className="chat-form" onSubmit={sendMessage}>
+              <textarea value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder="输入房间消息…" rows={3} />
+              <button className="primary-button" type="submit">发送</button>
+            </form>
+          </> : <div className="member-task-view">
+            <div className="member-summary">
+              <span className="member-avatar">你</span>
+              <div><strong>你的任务进度</strong><small>{connected ? `${completed}/${tasks.length} 已完成 · 滴答已授权` : `${completed}/${tasks.length} 已完成 · 尚未连接滴答`}</small></div>
+              <b>{tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%</b>
+            </div>
+            <div className="member-empty">
+              <span>＋</span><strong>等待其他成员加入</strong>
+              <p>成员加入房间、连接自己的滴答清单并同意共享后，这里才会显示其任务名称或仅显示完成比例。</p>
+            </div>
+            <div className="privacy-card"><strong>隐私规则</strong><span>默认不公开清单；每位成员可选择“仅共享进度”或“共享任务名称”。</span></div>
+          </div>}
+        </aside>
       </section>
 
-      <footer className="footer-note">
-        <span>专注连接稳定</span>
-        <span>端到端传输设计</span>
-        <span>任务数据由你授权</span>
-      </footer>
+      <footer className="footer-note"><span>密码保护已开启</span><span>高清屏幕共享</span><span>滴答数据仅经授权读取</span></footer>
 
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
           <section className="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭">×</button>
-            <span className="ticktick-mark">✓</span>
-            <span className="eyebrow">TASK CONNECTION</span>
-            <h2 id="sync-title">把滴答清单带进自习房间</h2>
-            <p>授权后可读取任务、选择本轮清单，并把完成状态同步回滴答清单。我们不会读取你的账号密码。</p>
-            <div className="permission-list">
-              <span><i>✓</i> 读取任务与清单</span>
-              <span><i>✓</i> 更新任务完成状态</span>
-              <span><i>✓</i> 随时断开授权</span>
-            </div>
-            <button className="primary-button wide" onClick={() => { setDemoConnected(true); setSyncOpen(false); }}>
-              使用演示数据体验同步
-            </button>
-            <a className="oauth-link" href="https://developer.ticktick.com/" target="_blank" rel="noreferrer">
-              正式接入需要配置滴答开放平台 OAuth →
-            </a>
+            <span className="ticktick-mark">✓</span><span className="eyebrow">REAL TICKTICK CONNECTION</span>
+            <h2 id="sync-title">连接你的滴答清单</h2>
+            <p>这里不再使用演示任务。Token 只会以加密、HttpOnly Cookie 保存在你的浏览器中，用于读取任务、添加任务和同步完成状态。</p>
+            {connected ? (
+              <div className="connected-actions"><button className="primary-button wide" onClick={() => { setSyncOpen(false); void loadTasks(); }}>立即刷新</button><button className="disconnect-button" onClick={() => void disconnectTickTick()}>断开滴答清单</button></div>
+            ) : (
+              <form onSubmit={connectTickTick}>
+                <label className="token-label">滴答 API Token<input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" placeholder="粘贴 Token" required /></label>
+                {syncError && <p className="error-message">{syncError}</p>}
+                <button className="primary-button wide" type="submit">验证并连接</button>
+              </form>
+            )}
+            <a className="oauth-link" href="https://dida365.com/webapp/#settings/account" target="_blank" rel="noreferrer">前往滴答网页端：头像 → 设置 → 账户与安全 → API 口令</a>
           </section>
         </div>
       )}
