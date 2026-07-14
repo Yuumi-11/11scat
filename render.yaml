@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: 11scat-study
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /access
+    autoDeploy: true
+    envVars:
+      - key: SITE_PASSWORD
+        sync: false
+      - key: TICKTICK_COOKIE_SECRET
+        generateValue: true
