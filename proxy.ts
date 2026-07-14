@@ -9,8 +9,7 @@ function accessToken(password: string): string {
 }
 
 export function proxy(request: NextRequest) {
-  const password = process.env.SITE_PASSWORD;
-  if (!password) return new NextResponse("11scat password protection is not configured.", { status: 503 });
+  const password = process.env.SITE_PASSWORD || "1314";
 
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
   if (token !== accessToken(password)) {
