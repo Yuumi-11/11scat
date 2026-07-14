@@ -642,8 +642,6 @@ export default function Home() {
         </aside>
       </section>
 
-      <footer className="footer-note"><span>密码保护已开启</span><span>高清屏幕共享</span><span>滴答数据仅经授权读取</span></footer>
-
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
           <section className="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title" onMouseDown={(event) => event.stopPropagation()}>
