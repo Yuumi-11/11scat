@@ -54,6 +54,49 @@ function MediaVideo({ stream, label, className, muted = true }: { stream: MediaS
   return <video className={className} ref={ref} autoPlay muted={muted} playsInline aria-label={label} />;
 }
 
+function DatePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => value ? new Date(`${value}T12:00:00`) : new Date());
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selectedDate = value ? new Date(`${value}T12:00:00`) : null;
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const leading = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const day = index - leading + 1;
+    return new Date(year, month, day);
+  });
+  const sameDay = (left: Date | null, right: Date) => Boolean(left && left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate());
+  const today = new Date();
+  const displayValue = selectedDate ? `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日` : "选择截止日期";
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return <div className="date-picker" ref={pickerRef}>
+    <button className="date-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-haspopup="dialog">
+      <span>截止日期</span><strong>{displayValue}</strong><span className="date-chevron">⌄</span>
+    </button>
+    {open && <div className="date-popover" role="dialog" aria-label="选择截止日期">
+      <div className="date-popover-head"><button type="button" onClick={() => setViewDate(new Date(year, month - 1, 1))} aria-label="上个月">‹</button><strong>{year}年{month + 1}月</strong><button type="button" onClick={() => setViewDate(new Date(year, month + 1, 1))} aria-label="下个月">›</button></div>
+      <div className="date-weekdays">{["一", "二", "三", "四", "五", "六", "日"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="date-grid">{cells.map((date, index) => {
+        const inMonth = index >= leading && index < leading + daysInMonth;
+        const dateValue = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+        return <button className={`${inMonth ? "" : "muted"}${sameDay(selectedDate, date) ? " selected" : ""}${sameDay(today, date) ? " today" : ""}`} type="button" key={dateValue} onClick={() => { if (inMonth) { onChange(dateValue); setOpen(false); } }} disabled={!inMonth}>{date.getDate()}</button>;
+      })}</div>
+      <div className="date-popover-foot"><button type="button" onClick={() => { onChange(""); setOpen(false); }}>清除</button><button type="button" onClick={() => { const current = new Date(); onChange(`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`); setViewDate(current); setOpen(false); }}>今天</button></div>
+    </div>}
+  </div>;
+}
+
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -608,7 +651,7 @@ export default function Home() {
               <label className={task.done ? "task-row done" : "task-row"} key={`${task.source}-${task.id}`}>
                 <input type="checkbox" checked={task.done} onChange={() => void toggleTask(task)} disabled={task.done} />
                 <span className="custom-check">✓</span>
-                <span className="task-copy"><strong>{task.title}</strong><small>{task.source === "ticktick" ? task.project : "站内任务"}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
+                <span className="task-copy"><strong>{task.title}</strong><small>{task.source === "ticktick" ? "最近7天" : "站内任务"}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
               </label>
             ))}
           </div>
@@ -619,7 +662,7 @@ export default function Home() {
             <button onClick={() => void addTask()}>添加</button>
           </div>
           {connected && selectedProject && (
-            <label className="project-picker recent-picker"><span>最近7天</span><input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} aria-label="任务截止日期" /></label>
+            <div className="project-picker recent-picker"><span>最近7天</span><DatePicker value={taskDueDate} onChange={setTaskDueDate} /></div>
           )}
           </>}
         </aside>
