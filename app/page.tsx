@@ -112,6 +112,9 @@ export default function Home() {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
   const [roomMembers, setRoomMembers] = useState<string[]>([]);
+  const [memberNames, setMemberNames] = useState<Record<string, string>>({});
+  const [displayName, setDisplayName] = useState("");
+  const [joined, setJoined] = useState(false);
   const [remoteCameras, setRemoteCameras] = useState<Record<string, MediaStream>>({});
   const [remoteScreens, setRemoteScreens] = useState<Record<string, MediaStream>>({});
   const [activeMediaId, setActiveMediaId] = useState("");
@@ -182,10 +185,15 @@ export default function Home() {
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   useEffect(() => {
+    if (!joined) return;
     let disposed = false;
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
-    const refreshMembers = () => setRoomMembers(Array.from(room.remoteParticipants.values()).map((participant) => participant.identity));
+    const refreshMembers = () => {
+      const participants = Array.from(room.remoteParticipants.values());
+      setRoomMembers(participants.map((participant) => participant.identity));
+      setMemberNames(Object.fromEntries(participants.map((participant) => [participant.identity, participant.name || "同学"])));
+    };
     const removeRemote = (identity: string, source: MediaSource) => {
       const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
       setter((current) => { const next = { ...current }; delete next[identity]; return next; });
@@ -194,6 +202,11 @@ export default function Home() {
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       removeRemote(participant.identity, "camera");
       removeRemote(participant.identity, "screen");
+      setMemberNames((current) => {
+        const next = { ...current };
+        delete next[participant.identity];
+        return next;
+      });
       refreshMembers();
     });
     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -201,16 +214,17 @@ export default function Home() {
       const source: MediaSource = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
       const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
       setter((current) => ({ ...current, [participant.identity]: new MediaStream([track.mediaStreamTrack]) }));
+      refreshMembers();
     });
     room.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
       if (publication.kind !== Track.Kind.Video) return;
       removeRemote(participant.identity, publication.source === Track.Source.ScreenShare ? "screen" : "camera");
     });
-    room.on(RoomEvent.DataReceived, (payload) => {
+    room.on(RoomEvent.DataReceived, (payload, participant) => {
       try {
         const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string };
         if (message.type !== "chat" || !message.id || !message.body || !message.time) return;
-        setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, own: false }]);
+        setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, sender: participant?.name || message.sender || "同学", own: false }]);
       } catch { /* ignore invalid room messages */ }
     });
     room.on(RoomEvent.Disconnected, () => {
@@ -218,7 +232,7 @@ export default function Home() {
     });
     const connect = async () => {
       try {
-        const response = await fetch("/api/livekit-token", { cache: "no-store" });
+        const response = await fetch(`/api/livekit-token?name=${encodeURIComponent(displayName)}`, { cache: "no-store" });
         if (!response.ok) throw new Error("LiveKit token unavailable");
         const { token, url } = await response.json() as { token: string; url: string };
         await room.connect(url, token);
@@ -233,7 +247,7 @@ export default function Home() {
     };
     void connect();
     return () => { disposed = true; room.disconnect(); roomRef.current = null; };
-  }, []);
+  }, [displayName, joined]);
 
   useEffect(() => {
     if (true) return;
@@ -647,12 +661,12 @@ export default function Home() {
       id: crypto.randomUUID(),
       body,
       time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
-      sender: "你",
+      sender: displayName || "同学",
       own: true,
     };
     setMessages((current) => [...current, message]);
     void roomRef.current?.localParticipant.publishData(
-      new TextEncoder().encode(JSON.stringify({ ...message, type: "chat", sender: "member" })),
+      new TextEncoder().encode(JSON.stringify({ ...message, type: "chat" })),
       { reliable: true },
     );
     dataConnectionsRef.current.forEach((connection) => {
@@ -673,6 +687,7 @@ export default function Home() {
     if (remoteScreens[peerId]) mediaItems.push({ id: `${peerId}-screen`, label: `成员 ${index + 1} 的屏幕`, stream: remoteScreens[peerId], kind: "screen", remote: true });
     if (remoteCameras[peerId]) mediaItems.push({ id: `${peerId}-camera`, label: `成员 ${index + 1} 的摄像头`, stream: remoteCameras[peerId], kind: "camera", remote: true });
   });
+  mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const mediaIds = mediaItems.map((item) => item.id).join("|");
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
 
@@ -708,6 +723,13 @@ export default function Home() {
           </div>
           {leftView === "members" ? <div className="left-members">
             <div className="left-member"><span className="member-avatar">你</span><div><strong>你</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
+            {roomMembers.map((memberId) => (
+              <div className="left-member" key={memberId}>
+                <span className="member-avatar">{(memberNames[memberId] || "同学").slice(0, 1)}</span>
+                <div><strong>{memberNames[memberId] || "同学"}</strong><small>已加入房间</small></div>
+                <span className="online-dot" />
+              </div>
+            ))}
             <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请同学</strong><small>加入后可选择共享任务进度</small></div></div>
             <button className="primary-button invite-button" onClick={() => setSideView("members")}>查看共享规则</button>
           </div> : <>
@@ -858,6 +880,28 @@ export default function Home() {
           </div>}
         </aside>
       </section>
+
+      {!joined && (
+        <div className="modal-backdrop join-backdrop" role="presentation">
+          <section className="join-modal" role="dialog" aria-modal="true" aria-labelledby="join-title">
+            <span className="ticktick-mark">11</span>
+            <span className="eyebrow">11SCAT STUDY ROOM</span>
+            <h2 id="join-title">进入自习室</h2>
+            <p>先设置一个房间内显示的称号。其他成员会用这个名称看到你。</p>
+            <form onSubmit={(event) => {
+              event.preventDefault();
+              const name = displayName.trim() || "同学";
+              setDisplayName(name.slice(0, 24));
+              setJoined(true);
+            }}>
+              <label className="token-label">你的称号
+                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} autoFocus placeholder="例如：小林" />
+              </label>
+              <button className="primary-button wide" type="submit">进入房间</button>
+            </form>
+          </section>
+        </div>
+      )}
 
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
