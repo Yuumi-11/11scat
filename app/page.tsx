@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient } from "peerjs";
 
 type Task = {
@@ -127,6 +128,7 @@ export default function Home() {
   const [chatDraft, setChatDraft] = useState("");
   const [sideView, setSideView] = useState<"chat" | "members">("chat");
   const [leftView, setLeftView] = useState<"tasks" | "members">("tasks");
+  const roomRef = useRef<Room | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<PeerClient | null>(null);
@@ -180,6 +182,61 @@ export default function Home() {
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   useEffect(() => {
+    let disposed = false;
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    roomRef.current = room;
+    const refreshMembers = () => setRoomMembers(Array.from(room.remoteParticipants.values()).map((participant) => participant.identity));
+    const removeRemote = (identity: string, source: MediaSource) => {
+      const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
+      setter((current) => { const next = { ...current }; delete next[identity]; return next; });
+    };
+    room.on(RoomEvent.ParticipantConnected, refreshMembers);
+    room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      removeRemote(participant.identity, "camera");
+      removeRemote(participant.identity, "screen");
+      refreshMembers();
+    });
+    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      if (track.kind !== Track.Kind.Video) return;
+      const source: MediaSource = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
+      const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
+      setter((current) => ({ ...current, [participant.identity]: new MediaStream([track.mediaStreamTrack]) }));
+    });
+    room.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
+      if (publication.kind !== Track.Kind.Video) return;
+      removeRemote(participant.identity, publication.source === Track.Source.ScreenShare ? "screen" : "camera");
+    });
+    room.on(RoomEvent.DataReceived, (payload) => {
+      try {
+        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string };
+        if (message.type !== "chat" || !message.id || !message.body || !message.time) return;
+        setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, own: false }]);
+      } catch { /* ignore invalid room messages */ }
+    });
+    room.on(RoomEvent.Disconnected, () => {
+      if (!disposed) { setRoomStatus("error"); setRoomError("实时房间连接已断开，请刷新后重试。"); }
+    });
+    const connect = async () => {
+      try {
+        const response = await fetch("/api/livekit-token", { cache: "no-store" });
+        if (!response.ok) throw new Error("LiveKit token unavailable");
+        const { token, url } = await response.json() as { token: string; url: string };
+        await room.connect(url, token);
+        if (disposed) return;
+        setInviteUrl(window.location.href);
+        setRoomStatus("ready");
+        setRoomError("");
+        refreshMembers();
+      } catch {
+        if (!disposed) { setRoomStatus("error"); setRoomError("实时服务尚未完成配置，请稍后刷新重试。"); }
+      }
+    };
+    void connect();
+    return () => { disposed = true; room.disconnect(); roomRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    if (true) return;
     let disposed = false;
     let localPeer: PeerClient | null = null;
     const connections = dataConnectionsRef.current;
@@ -515,7 +572,8 @@ export default function Home() {
       const track = nextStream.getVideoTracks()[0];
       if (track) {
         track.contentHint = detailMode ? "detail" : "motion";
-        track.addEventListener("ended", () => setStream(null));
+        track.addEventListener("ended", () => { void roomRef.current?.localParticipant.unpublishTrack(track); setStream(null); });
+        await roomRef.current?.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
       }
       stream?.getTracks().forEach((item) => item.stop());
       setStream(nextStream);
@@ -526,12 +584,12 @@ export default function Home() {
   };
 
   const stopShare = () => {
-    stream?.getTracks().forEach((track) => track.stop());
+    stream?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
     setStream(null);
   };
 
   const stopCamera = () => {
-    cameraStream?.getTracks().forEach((track) => track.stop());
+    cameraStream?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
     setCameraStream(null);
   };
 
@@ -558,7 +616,8 @@ export default function Home() {
         audio: false,
       });
       const track = nextCameraStream.getVideoTracks()[0];
-      track?.addEventListener("ended", () => setCameraStream(null));
+      track?.addEventListener("ended", () => { if (track) void roomRef.current?.localParticipant.unpublishTrack(track); setCameraStream(null); });
+      if (track) await roomRef.current?.localParticipant.publishTrack(track, { source: Track.Source.Camera });
       setCameraStream(nextCameraStream);
       setActiveMediaId("self-camera");
     } catch (error) {
@@ -592,6 +651,10 @@ export default function Home() {
       own: true,
     };
     setMessages((current) => [...current, message]);
+    void roomRef.current?.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify({ ...message, type: "chat", sender: "member" })),
+      { reliable: true },
+    );
     dataConnectionsRef.current.forEach((connection) => {
       if (connection.open) connection.send({ ...message, type: "chat", sender: "成员" });
     });
