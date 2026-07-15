@@ -190,7 +190,7 @@ export default function Home() {
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
     const refreshMembers = () => {
-      const participants = Array.from(room.remoteParticipants.values());
+      const participants = Array.from(room.remoteParticipants.values()).filter((participant) => participant.name !== "11scat member");
       setRoomMembers(participants.map((participant) => participant.identity));
       setMemberNames(Object.fromEntries(participants.map((participant) => [participant.identity, participant.name || "同学"])));
     };
@@ -232,7 +232,13 @@ export default function Home() {
     });
     const connect = async () => {
       try {
-        const response = await fetch(`/api/livekit-token?name=${encodeURIComponent(displayName)}`, { cache: "no-store" });
+        const identityKey = "11scat-livekit-device-identity";
+        let deviceIdentity = window.localStorage.getItem(identityKey);
+        if (!deviceIdentity) {
+          deviceIdentity = crypto.randomUUID();
+          window.localStorage.setItem(identityKey, deviceIdentity);
+        }
+        const response = await fetch(`/api/livekit-token?name=${encodeURIComponent(displayName)}&identity=${encodeURIComponent(deviceIdentity)}`, { cache: "no-store" });
         if (!response.ok) throw new Error("LiveKit token unavailable");
         const { token, url } = await response.json() as { token: string; url: string };
         await room.connect(url, token);
@@ -731,7 +737,6 @@ export default function Home() {
               </div>
             ))}
             <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请同学</strong><small>加入后可选择共享任务进度</small></div></div>
-            <button className="primary-button invite-button" onClick={() => setSideView("members")}>查看共享规则</button>
           </div> : <>
           <div className="panel-heading">
             <div><span className="eyebrow">滴答清单</span><h1>最近7天</h1></div>
@@ -782,15 +787,15 @@ export default function Home() {
               {cameraStream
                 ? <MediaVideo className="camera-preview" stream={cameraStream} label="你的摄像头预览" />
                 : <div className="tile-preview">{stream ? "屏幕共享中 · 摄像头关闭" : "摄像头关闭"}</div>}
-              <small>{cameraStream ? "摄像头已开启" : "你的学习窗口"}</small>
+              <small>{displayName || "你"}</small>
             </div>
             {visibleRemoteMembers.map((peerId, index) => (
               <div className="participant-tile connected" key={peerId}>
-                <span className="tile-badge">{index + 1}</span>
+                <span className="tile-badge">{(memberNames[peerId] || "同学").slice(0, 1)}</span>
                 {remoteCameras[peerId]
                   ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
                   : <div className="tile-preview invite-preview">摄像头关闭</div>}
-                <small>成员 {index + 1} · 已连接</small>
+                <small>{memberNames[peerId] || "同学"} · 已连接</small>
               </div>
             ))}
             {Array.from({ length: emptyMemberSlots }, (_, index) => (

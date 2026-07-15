@@ -12,9 +12,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "LiveKit is not configured" }, { status: 503 });
   }
 
-  const requestedName = new URL(request.url).searchParams.get("name")?.trim() || "同学";
+  const requestUrl = new URL(request.url);
+  const requestedName = requestUrl.searchParams.get("name")?.trim() || "同学";
   const name = requestedName.slice(0, 24);
-  const identity = `member-${crypto.randomUUID()}`;
+  const requestedIdentity = requestUrl.searchParams.get("identity")?.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
+  const identity = requestedIdentity ? `member-${requestedIdentity}` : `member-${crypto.randomUUID()}`;
   const token = new AccessToken(apiKey, apiSecret, { identity, name });
   token.addGrant({ roomJoin: true, room: "11scat-private-room", canPublish: true, canSubscribe: true, canPublishData: true });
 
