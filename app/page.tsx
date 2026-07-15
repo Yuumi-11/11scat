@@ -14,7 +14,7 @@ type Task = {
 };
 
 type Project = { id: string; name: string };
-type ChatMessage = { id: number; body: string; time: string };
+type ChatMessage = { id: string; body: string; time: string; sender: string; own?: boolean };
 type MediaSource = "camera" | "screen";
 type MediaItem = {
   id: string;
@@ -133,6 +133,7 @@ export default function Home() {
   const selfPeerIdRef = useRef("");
   const hostPeerIdRef = useRef("");
   const dataConnectionsRef = useRef(new Map<string, DataConnection>());
+  const messagesRef = useRef<ChatMessage[]>([]);
   const outgoingCallsRef = useRef(new Map<string, MediaConnection>());
   const incomingCallsRef = useRef(new Map<string, MediaConnection>());
   const callPeerRef = useRef<(peerId: string, media: MediaStream, source: MediaSource) => void>(() => undefined);
@@ -166,16 +167,7 @@ export default function Home() {
 
   useEffect(() => { void loadTasks(); }, []);
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem("11scat-chat");
-    if (saved) {
-      try { setMessages(JSON.parse(saved)); } catch { /* ignore malformed local data */ }
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("11scat-chat", JSON.stringify(messages));
-  }, [messages]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     if (!running || seconds <= 0) return;
@@ -277,6 +269,9 @@ export default function Home() {
         connections.set(peerId, connection);
         setRoomError("");
         refreshMembers();
+        if (hostPeerIdRef.current === selfPeerIdRef.current && messagesRef.current.length) {
+          connection.send({ type: "chat-history", messages: messagesRef.current.map(({ own: _own, ...message }) => message) });
+        }
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
         if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
         if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
@@ -285,7 +280,20 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown };
+        const message = payload as { type: string; ids?: unknown; messages?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown };
+        if (message.type === "chat" && typeof message.id === "string" && typeof message.body === "string" && typeof message.time === "string") {
+          const incomingMessage: ChatMessage = { id: message.id, body: message.body, time: message.time, sender: typeof message.sender === "string" ? message.sender : "成员" };
+          setMessages((current) => current.some((item) => item.id === incomingMessage.id) ? current : [...current, incomingMessage]);
+          return;
+        }
+        if (message.type === "chat-history" && Array.isArray(message.messages)) {
+          const history = message.messages.filter((item): item is ChatMessage => Boolean(item && typeof item === "object" && typeof (item as ChatMessage).id === "string" && typeof (item as ChatMessage).body === "string" && typeof (item as ChatMessage).time === "string"));
+          setMessages((current) => {
+            const known = new Set(current.map((item) => item.id));
+            return [...current, ...history.filter((item) => !known.has(item.id))];
+          });
+          return;
+        }
         if (message.type !== "peer-list" || !Array.isArray(message.ids)) return;
 
         const selfId = selfPeerIdRef.current;
@@ -347,7 +355,9 @@ export default function Home() {
             const inviteParams = new URLSearchParams(window.location.search);
             inviteParams.delete("v");
             inviteParams.set("host", hostId);
-            setInviteUrl(`${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`);
+            const stableInviteUrl = `${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`;
+            setInviteUrl(stableInviteUrl);
+            if (!requestedHost && hostId === id) window.history.replaceState(null, "", `${window.location.pathname}?${inviteParams.toString()}`);
             setRoomStatus("ready");
             if (hostId !== id) connectToPeer(hostId);
           });
@@ -574,9 +584,17 @@ export default function Home() {
     event.preventDefault();
     const body = chatDraft.trim();
     if (!body) return;
-    setMessages((current) => [...current, {
-      id: Date.now(), body, time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
-    }]);
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      body,
+      time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+      sender: "你",
+      own: true,
+    };
+    setMessages((current) => [...current, message]);
+    dataConnectionsRef.current.forEach((connection) => {
+      if (connection.open) connection.send({ ...message, type: "chat", sender: "成员" });
+    });
     setChatDraft("");
   };
 
@@ -742,10 +760,10 @@ export default function Home() {
             <button className={sideView === "members" ? "active" : ""} onClick={() => setSideView("members")}>成员任务</button>
           </div>
           {sideView === "chat" ? <>
-            <div className="chat-notice">当前消息仅保存在此浏览器。接入房间数据库后才能让其他成员实时看到。</div>
+            <div className="chat-notice">成员加入后，消息会在当前房间实时同步；重新加入房间时会收到房主保留的聊天记录。</div>
             <div className="message-list" aria-live="polite">
               {messages.length === 0 ? <div className="empty-chat"><strong>还没有消息</strong><span>可以先记录一句本轮目标或休息提醒。</span></div> : messages.map((message) => (
-                <div className="message own" key={message.id}><span>你 · {message.time}</span><p>{message.body}</p></div>
+                <div className={message.own ? "message own" : "message"} key={message.id}><span>{message.sender} · {message.time}</span><p>{message.body}</p></div>
               ))}
             </div>
             <form className="chat-form" onSubmit={sendMessage}>
