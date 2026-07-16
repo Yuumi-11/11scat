@@ -728,7 +728,7 @@ export default function Home() {
             <button className={leftView === "members" ? "active" : ""} onClick={() => setLeftView("members")}>成员</button>
           </div>
           {leftView === "members" ? <div className="left-members">
-            <div className="left-member"><span className="member-avatar">你</span><div><strong>你</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
+            <div className="left-member"><span className="member-avatar">{(displayName || "你").slice(0, 1)}</span><div><strong>{displayName || "你"}</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
             {roomMembers.map((memberId) => (
               <div className="left-member" key={memberId}>
                 <span className="member-avatar">{(memberNames[memberId] || "同学").slice(0, 1)}</span>
@@ -900,7 +900,7 @@ export default function Home() {
               setJoined(true);
             }}>
               <label className="token-label">你的称号
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} autoFocus placeholder="例如：小林" />
+                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} autoFocus />
               </label>
               <button className="primary-button wide" type="submit">进入房间</button>
             </form>
