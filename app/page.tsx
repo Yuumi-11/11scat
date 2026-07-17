@@ -692,9 +692,10 @@ export default function Home() {
   const mediaItems: MediaItem[] = [];
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
-  visibleRemoteMembers.forEach((peerId, index) => {
-    if (remoteScreens[peerId]) mediaItems.push({ id: `${peerId}-screen`, label: `成员 ${index + 1} 的屏幕`, stream: remoteScreens[peerId], kind: "screen", remote: true });
-    if (remoteCameras[peerId]) mediaItems.push({ id: `${peerId}-camera`, label: `成员 ${index + 1} 的摄像头`, stream: remoteCameras[peerId], kind: "camera", remote: true });
+  visibleRemoteMembers.forEach((peerId) => {
+    const memberName = memberNames[peerId] || "同学";
+    if (remoteScreens[peerId]) mediaItems.push({ id: `${peerId}-screen`, label: `${memberName} 的屏幕`, stream: remoteScreens[peerId], kind: "screen", remote: true });
+    if (remoteCameras[peerId]) mediaItems.push({ id: `${peerId}-camera`, label: `${memberName} 的摄像头`, stream: remoteCameras[peerId], kind: "camera", remote: true });
   });
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const mediaIds = mediaItems.map((item) => item.id).join("|");
