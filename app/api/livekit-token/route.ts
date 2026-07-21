@@ -13,7 +13,10 @@ export async function GET(request: Request) {
   }
 
   const requestUrl = new URL(request.url);
-  const requestedName = requestUrl.searchParams.get("name")?.trim() || "同学";
+  const requestedName = requestUrl.searchParams.get("name")?.trim();
+  if (!requestedName) {
+    return NextResponse.json({ error: "A display name is required" }, { status: 400 });
+  }
   const name = requestedName.slice(0, 24);
   const requestedIdentity = requestUrl.searchParams.get("identity")?.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
   const identity = requestedIdentity ? `member-${requestedIdentity}` : `member-${crypto.randomUUID()}`;

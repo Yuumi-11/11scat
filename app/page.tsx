@@ -192,7 +192,7 @@ export default function Home() {
     const refreshMembers = () => {
       const participants = Array.from(room.remoteParticipants.values()).filter((participant) => participant.name !== "11scat member");
       setRoomMembers(participants.map((participant) => participant.identity));
-      setMemberNames(Object.fromEntries(participants.map((participant) => [participant.identity, participant.name || "同学"])));
+      setMemberNames(Object.fromEntries(participants.map((participant) => [participant.identity, participant.name?.trim() || participant.identity])));
     };
     const removeRemote = (identity: string, source: MediaSource) => {
       const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
@@ -224,7 +224,7 @@ export default function Home() {
       try {
         const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string };
         if (message.type !== "chat" || !message.id || !message.body || !message.time) return;
-        setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, sender: participant?.name || message.sender || "同学", own: false }]);
+        setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, sender: participant?.name?.trim() || message.sender || participant?.identity || "成员", own: false }]);
       } catch { /* ignore invalid room messages */ }
     });
     room.on(RoomEvent.Disconnected, () => {
@@ -670,7 +670,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       body,
       time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
-      sender: displayName || "同学",
+      sender: displayName,
       own: true,
     };
     setMessages((current) => [...current, message]);
@@ -693,7 +693,7 @@ export default function Home() {
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
   visibleRemoteMembers.forEach((peerId) => {
-    const memberName = memberNames[peerId] || "同学";
+    const memberName = memberNames[peerId] || peerId;
     if (remoteScreens[peerId]) mediaItems.push({ id: `${peerId}-screen`, label: `${memberName} 的屏幕`, stream: remoteScreens[peerId], kind: "screen", remote: true });
     if (remoteCameras[peerId]) mediaItems.push({ id: `${peerId}-camera`, label: `${memberName} 的摄像头`, stream: remoteCameras[peerId], kind: "camera", remote: true });
   });
@@ -735,12 +735,12 @@ export default function Home() {
             <div className="left-member"><span className="member-avatar">{(displayName || "你").slice(0, 1)}</span><div><strong>{displayName || "你"}</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
             {roomMembers.map((memberId) => (
               <div className="left-member" key={memberId}>
-                <span className="member-avatar">{(memberNames[memberId] || "同学").slice(0, 1)}</span>
-                <div><strong>{memberNames[memberId] || "同学"}</strong><small>已加入房间</small></div>
+                <span className="member-avatar">{(memberNames[memberId] || memberId).slice(0, 1)}</span>
+                <div><strong>{memberNames[memberId] || memberId}</strong><small>已加入房间</small></div>
                 <span className="online-dot" />
               </div>
             ))}
-            <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请同学</strong><small>加入后可选择共享任务进度</small></div></div>
+            <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请成员</strong><small>加入后可选择共享任务进度</small></div></div>
           </div> : <>
           <div className="panel-heading">
             <div><span className="eyebrow">滴答清单</span><h1>最近7天</h1></div>
@@ -795,11 +795,11 @@ export default function Home() {
             </div>
             {visibleRemoteMembers.map((peerId, index) => (
               <div className="participant-tile connected" key={peerId}>
-                <span className="tile-badge">{(memberNames[peerId] || "同学").slice(0, 1)}</span>
+                <span className="tile-badge">{(memberNames[peerId] || peerId).slice(0, 1)}</span>
                 {remoteCameras[peerId]
                   ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
                   : <div className="tile-preview invite-preview">摄像头关闭</div>}
-                <small>{memberNames[peerId] || "同学"} · 已连接</small>
+                <small>{memberNames[peerId] || peerId} · 已连接</small>
               </div>
             ))}
             {Array.from({ length: emptyMemberSlots }, (_, index) => (
@@ -899,12 +899,13 @@ export default function Home() {
             <p>先设置一个房间内显示的称号。其他成员会用这个名称看到你。</p>
             <form onSubmit={(event) => {
               event.preventDefault();
-              const name = displayName.trim() || "同学";
+              const name = displayName.trim();
+              if (!name) return;
               setDisplayName(name.slice(0, 24));
               setJoined(true);
             }}>
               <label className="token-label">你的称号
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} autoFocus />
+                <input name="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} pattern=".*\S.*" title="请输入你的称号" required autoFocus />
               </label>
               <button className="primary-button wide" type="submit">进入房间</button>
             </form>
