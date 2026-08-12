@@ -25,6 +25,8 @@ type MediaItem = {
   remote: boolean;
 };
 
+const USE_LIVEKIT = false;
+
 const pad = (value: number) => String(value).padStart(2, "0");
 const localDateInputValue = () => {
   const now = new Date();
@@ -185,7 +187,7 @@ export default function Home() {
   useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
   useEffect(() => {
-    if (!joined) return;
+    if (!joined || !USE_LIVEKIT) return;
     let disposed = false;
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
@@ -256,7 +258,7 @@ export default function Home() {
   }, [displayName, joined]);
 
   useEffect(() => {
-    if (true) return;
+    if (!joined || USE_LIVEKIT) return;
     let disposed = false;
     let localPeer: PeerClient | null = null;
     const connections = dataConnectionsRef.current;
@@ -479,7 +481,7 @@ export default function Home() {
       localPeer?.destroy();
       peerRef.current = null;
     };
-  }, []);
+  }, [joined]);
 
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
