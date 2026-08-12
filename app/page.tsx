@@ -243,10 +243,7 @@ export default function Home() {
         const { token, url } = await response.json() as { token: string; url: string };
         await room.connect(url, token);
         if (disposed) return;
-        const publicOrigin = window.location.hostname.endsWith(".vercel.app")
-          ? "https://11scat.vercel.app"
-          : window.location.origin;
-        setInviteUrl(`${publicOrigin}${window.location.pathname}`);
+        setInviteUrl(`${window.location.origin}${window.location.pathname}`);
         setRoomStatus("ready");
         setRoomError("");
         refreshMembers();
