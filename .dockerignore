@@ -1,0 +1,11 @@
+.git
+.openai
+.vercel
+.vinext
+.wrangler
+node_modules
+dist
+build
+outputs
+work
+npm-debug.log*

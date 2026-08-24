@@ -23,13 +23,17 @@ export async function POST(request: Request) {
     ? requestedNext
     : "/";
   if (typeof submitted !== "string" || !passwordsMatch(submitted, expected)) {
-    const accessUrl = new URL("/access", request.url);
-    accessUrl.searchParams.set("error", "1");
-    accessUrl.searchParams.set("next", next);
-    return NextResponse.redirect(accessUrl, 303);
+    const accessParams = new URLSearchParams({ error: "1", next });
+    return new NextResponse(null, {
+      status: 303,
+      headers: { Location: `/access?${accessParams.toString()}` },
+    });
   }
 
-  const response = NextResponse.redirect(new URL(next, request.url), 303);
+  const response = new NextResponse(null, {
+    status: 303,
+    headers: { Location: next },
+  });
   response.cookies.set(ACCESS_COOKIE, accessToken(expected), {
     httpOnly: true,
     secure: true,
