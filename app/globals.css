@@ -138,3 +138,48 @@ h1, h2, p { margin-top: 0; }
 
 /* Keep long chat history inside the chat column instead of stretching the room. */
 .chat-panel { height: calc(149.254vh - 112px); min-height: 0; overflow: hidden; }
+
+/* Flat, compact room styling inspired by the reference UI. No layout or palette changes. */
+body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+.topbar { backdrop-filter: none; }
+.brand { letter-spacing: -.01em; }
+.brand-mark { border-radius: 6px; box-shadow: none; }
+.session-status { border-radius: 5px; }
+.pulse, .sync-dot { box-shadow: none; }
+.panel { border-radius: 8px; box-shadow: none; }
+.left-tabs { padding: 0; border-bottom: 1px solid var(--line); }
+.left-tabs button { border-right: 1px solid var(--line); }
+.left-tabs button:last-child { border-right: 0; }
+.left-member, .task-row, .empty-tasks, .add-task, .recent-picker, .member-summary, .member-empty { border-radius: 6px; }
+.panel-heading h1, .chat-heading h2, .empty-share h2 { letter-spacing: -.015em; }
+.eyebrow { letter-spacing: .08em; }
+.sync-button { border-radius: 5px; }
+.task-row { transition: border-color .12s, background .12s; }
+.custom-check { border-radius: 3px; }
+.project-picker select, .date-trigger { border-radius: 4px; }
+.date-popover { border-radius: 6px; box-shadow: var(--shadow); }
+.date-grid button { border-radius: 4px; }
+.date-grid button.selected { box-shadow: none; }
+.participant-tile { border-radius: 6px; }
+.participant-tile.active { box-shadow: inset 3px 0 var(--indigo); }
+.participant-tile.selectable:hover, .participant-tile.selectable:focus-visible { box-shadow: inset 3px 0 var(--indigo); }
+.share-canvas { border-radius: 6px; }
+.share-canvas::before { opacity: .35; }
+.share-glyph { border-radius: 4px; box-shadow: none; }
+.primary-button { border-radius: 5px; box-shadow: none; }
+.quality-icon { border-radius: 3px; }
+.segmented { border-radius: 5px; }
+.segmented button { border-radius: 3px; }
+.segmented button.active { box-shadow: none; }
+.stop-button { border-radius: 4px; }
+.room-controls .camera-on { box-shadow: none; }
+.chat-notice { border: 1px solid var(--line); border-radius: 5px; }
+.message p { border: 1px solid var(--line); border-radius: 6px 6px 2px 6px; }
+.chat-form textarea { border-radius: 5px; }
+.chat-form textarea:focus { box-shadow: 0 0 0 2px var(--indigo-soft); }
+.side-tabs { border: 1px solid var(--line); border-radius: 5px; }
+.side-tabs button { border-radius: 3px; }
+.side-tabs button.active { box-shadow: none; }
+.privacy-card { border: 1px solid var(--line); border-radius: 5px; }
+.sync-modal, .join-modal, .access-card { border-radius: 8px; }
+.token-label input, .access-card input { border-radius: 5px; }
