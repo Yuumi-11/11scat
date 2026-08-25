@@ -297,6 +297,14 @@ export default function Home() {
       connections.delete(peerId);
       peerDeviceIds.delete(peerId);
       closePeerCalls(peerId);
+      setRoomStatus("ready");
+      setRoomError("");
+      window.setTimeout(() => {
+        if (!disposed && localPeer?.open && connections.size === 0) {
+          setRoomStatus("ready");
+          setRoomError("");
+        }
+      }, 300);
       setMemberNames((current) => {
         if (!current[peerId]) return current;
         const next = { ...current };
