@@ -431,9 +431,23 @@ export default function Home() {
         let peerOptions: PeerOptions = { debug: 1 };
         try {
           const response = await fetch("/api/realtime-config", { cache: "no-store" });
-          const data = await response.json() as { iceServers?: RTCIceServer[] };
+          const data = await response.json() as {
+            iceServers?: RTCIceServer[];
+            peerServer?: { path?: string; key?: string } | null;
+          };
           if (Array.isArray(data.iceServers) && data.iceServers.length) {
             peerOptions = { debug: 1, config: { iceServers: data.iceServers } };
+          }
+          if (data.peerServer?.path) {
+            const secure = window.location.protocol === "https:";
+            peerOptions = {
+              ...peerOptions,
+              host: window.location.hostname,
+              port: window.location.port ? Number(window.location.port) : secure ? 443 : 80,
+              path: data.peerServer.path,
+              key: data.peerServer.key || "peerjs",
+              secure,
+            };
           }
         } catch { /* STUN defaults remain available when TURN config cannot be loaded. */ }
 

@@ -16,7 +16,12 @@ export function GET() {
     iceServers.push({ urls: turnUrls, username, credential });
   }
 
-  return NextResponse.json({ iceServers }, {
+  const peerPath = process.env.PEER_SERVER_PATH?.trim();
+
+  return NextResponse.json({
+    iceServers,
+    peerServer: peerPath ? { path: peerPath, key: "peerjs" } : null,
+  }, {
     headers: { "Cache-Control": "private, no-store" },
   });
 }
