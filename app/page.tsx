@@ -259,6 +259,8 @@ export default function Home() {
     const outgoingCalls = outgoingCallsRef.current;
     const incomingCalls = incomingCallsRef.current;
     const mediaRetryCounts = new Map<string, number>();
+    const peerDeviceIds = new Map<string, string>();
+    let localDeviceId = "";
 
     const rememberPeerName = (peerId: string, value: unknown) => {
       const name = typeof value === "string" ? value.trim().slice(0, 24) : "";
@@ -293,6 +295,7 @@ export default function Home() {
 
     const removePeer = (peerId: string) => {
       connections.delete(peerId);
+      peerDeviceIds.delete(peerId);
       closePeerCalls(peerId);
       setMemberNames((current) => {
         if (!current[peerId]) return current;
@@ -345,14 +348,30 @@ export default function Home() {
     function connectToPeer(peerId: string) {
       const selfId = selfPeerIdRef.current;
       if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 1) return;
-      bindConnection(localPeer.connect(peerId, { reliable: true, metadata: { room: hostPeerIdRef.current, name: displayNameRef.current } }));
+      bindConnection(localPeer.connect(peerId, {
+        reliable: true,
+        metadata: { room: hostPeerIdRef.current, name: displayNameRef.current, deviceId: localDeviceId },
+      }));
     }
 
-    function bindConnection(connection: DataConnection) {
+    function bindConnection(connection: DataConnection, incoming = false) {
       const peerId = connection.peer;
 
       const handleOpen = () => {
         if (disposed) return;
+        const incomingDeviceId = incoming && typeof connection.metadata?.deviceId === "string"
+          ? connection.metadata.deviceId.trim().slice(0, 80)
+          : "";
+        if (incomingDeviceId) {
+          const replacedPeerId = Array.from(connections.keys()).find((candidate) => (
+            candidate !== peerId && peerDeviceIds.get(candidate) === incomingDeviceId
+          ));
+          if (replacedPeerId) {
+            const replacedConnection = connections.get(replacedPeerId);
+            removePeer(replacedPeerId);
+            replacedConnection?.close();
+          }
+        }
         const existing = connections.get(peerId);
         if (!existing && connections.size >= 1) {
           connection.close();
@@ -364,10 +383,11 @@ export default function Home() {
         }
 
         connections.set(peerId, connection);
+        if (incomingDeviceId) peerDeviceIds.set(peerId, incomingDeviceId);
         rememberPeerName(peerId, connection.metadata?.name);
         setRoomError("");
         refreshMembers();
-        connection.send({ type: "presence", name: displayNameRef.current });
+        connection.send({ type: "presence", name: displayNameRef.current, deviceId: localDeviceId });
         connection.send({ type: "media-request" });
         if (hostPeerIdRef.current === selfPeerIdRef.current && messagesRef.current.length) {
           connection.send({ type: "chat-history", messages: messagesRef.current.map(({ own: _own, ...message }) => message) });
@@ -380,9 +400,11 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown; messages?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown };
+        const message = payload as { type: string; ids?: unknown; messages?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown };
         if (message.type === "presence") {
           rememberPeerName(peerId, message.name);
+          const deviceId = typeof message.deviceId === "string" ? message.deviceId.trim().slice(0, 80) : "";
+          if (deviceId) peerDeviceIds.set(peerId, deviceId);
           return;
         }
         if (message.type === "media-request") {
@@ -427,6 +449,14 @@ export default function Home() {
       try {
         const { Peer } = await import("peerjs");
         if (disposed) return;
+
+        try {
+          const deviceKey = "11scat-peer-device-id";
+          localDeviceId = window.localStorage.getItem(deviceKey) || crypto.randomUUID();
+          window.localStorage.setItem(deviceKey, localDeviceId);
+        } catch {
+          localDeviceId = crypto.randomUUID();
+        }
 
         let peerOptions: PeerOptions = { debug: 1 };
         try {
@@ -500,7 +530,7 @@ export default function Home() {
             setRoomStatus("ready");
             if (hostId !== id) connectToPeer(hostId);
           });
-          peer.on("connection", bindConnection);
+          peer.on("connection", (connection) => bindConnection(connection, true));
           peer.on("call", handleCall);
           peer.on("error", (error) => {
             if (error.type === "unavailable-id" && allowDefaultFallback && !disposed) {
@@ -531,10 +561,13 @@ export default function Home() {
       }
     };
 
+    const leaveOnPageHide = () => localPeer?.destroy();
+    window.addEventListener("pagehide", leaveOnPageHide);
     void initializeRoom();
 
     return () => {
       disposed = true;
+      window.removeEventListener("pagehide", leaveOnPageHide);
       callPeerRef.current = () => undefined;
       connections.forEach((connection) => connection.close());
       outgoingCalls.forEach((call) => call.close());
@@ -911,7 +944,7 @@ export default function Home() {
             <div className="segmented"><button className={shareMode === "detail" ? "active" : ""} onClick={() => setShareMode("detail")}>文字 / 代码</button><button className={shareMode === "motion" ? "active" : ""} onClick={() => setShareMode("motion")}>动态画面</button></div>
             {stream && <button className="stop-button" onClick={stopShare}>停止共享</button>}
           </div>
-          <div className="room-controls"><button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"}>{cameraStream ? "●" : "◉"}</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={() => { stopShare(); stopCamera(); }}>退出房间</button></div>
+          <div className="room-controls"><button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"}>{cameraStream ? "●" : "◉"}</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button></div>
         </section>
 
         <aside className="chat-panel panel">
