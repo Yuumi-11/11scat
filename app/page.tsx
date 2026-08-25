@@ -887,9 +887,11 @@ export default function Home() {
               aria-label="查看你的共享画面"
             >
               <span className="tile-badge">你</span>
-              {cameraStream
-                ? <MediaVideo className="camera-preview" stream={cameraStream} label="你的摄像头预览" />
-                : <div className="tile-preview">{stream ? "屏幕共享中 · 摄像头关闭" : "摄像头关闭"}</div>}
+              {stream
+                ? <MediaVideo className="tile-preview-media" stream={stream} label="你的屏幕预览" />
+                : cameraStream
+                  ? <MediaVideo className="camera-preview" stream={cameraStream} label="你的摄像头预览" />
+                  : <div className="tile-preview">摄像头关闭</div>}
               <small>{displayName || "你"}</small>
             </button>
             {visibleRemoteMembers.map((peerId, index) => (
@@ -901,9 +903,11 @@ export default function Home() {
                 aria-label={`查看 ${memberNames[peerId] || `成员 ${index + 1}`} 的共享画面`}
               >
                 <span className="tile-badge">{(memberNames[peerId] || peerId).slice(0, 1)}</span>
-                {remoteCameras[peerId]
-                  ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
-                  : <div className="tile-preview invite-preview">摄像头关闭</div>}
+                {remoteScreens[peerId]
+                  ? <MediaVideo className="tile-preview-media" stream={remoteScreens[peerId]} label={`成员 ${index + 1} 的屏幕预览`} />
+                  : remoteCameras[peerId]
+                    ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
+                    : <div className="tile-preview invite-preview">摄像头关闭</div>}
                 <small>{memberNames[peerId] || peerId} · 已连接</small>
               </button>
             ))}

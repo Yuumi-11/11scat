@@ -139,32 +139,42 @@ h1, h2, p { margin-top: 0; }
 /* Keep long chat history inside the chat column instead of stretching the room. */
 .chat-panel { height: calc(149.254vh - 112px); min-height: 0; overflow: hidden; }
 
-/* Flat, compact room styling inspired by the reference UI. No layout or palette changes. */
+/* Crisp study-workbench UI inspired by the reference. Functional layout and palette stay intact. */
 body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 .topbar { backdrop-filter: none; }
 .brand { letter-spacing: -.01em; }
 .brand-mark { border-radius: 6px; box-shadow: none; }
-.session-status { border-radius: 5px; }
+.session-status { width: min(520px, 48vw); justify-content: center; border: 0; border-radius: 999px; background: var(--indigo-soft); }
 .pulse, .sync-dot { box-shadow: none; }
-.panel { border-radius: 8px; box-shadow: none; }
+.panel { border-radius: 7px; box-shadow: none; }
 .left-tabs { padding: 0; border-bottom: 1px solid var(--line); }
 .left-tabs button { border-right: 1px solid var(--line); }
 .left-tabs button:last-child { border-right: 0; }
-.left-member, .task-row, .empty-tasks, .add-task, .recent-picker, .member-summary, .member-empty { border-radius: 6px; }
+.left-members { gap: 0; margin: 0 -18px; border-top: 1px solid var(--line); }
+.left-member { padding: 14px 18px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
 .panel-heading h1, .chat-heading h2, .empty-share h2 { letter-spacing: -.015em; }
 .eyebrow { letter-spacing: .08em; }
 .sync-button { border-radius: 5px; }
-.task-row { transition: border-color .12s, background .12s; }
+.task-list { gap: 0; border: 1px solid var(--line); border-radius: 6px; }
+.task-row { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; transition: background .12s; }
+.task-row:last-child { border-bottom: 0; }
 .custom-check { border-radius: 3px; }
+.add-task, .recent-picker, .empty-tasks, .member-summary, .member-empty { border-radius: 5px; }
 .project-picker select, .date-trigger { border-radius: 4px; }
 .date-popover { border-radius: 6px; box-shadow: var(--shadow); }
 .date-grid button { border-radius: 4px; }
 .date-grid button.selected { box-shadow: none; }
-.participant-tile { border-radius: 6px; }
+.participant-strip { grid-template-columns: repeat(auto-fit, minmax(170px, 220px)); }
+.participant-tile { min-height: 92px; display: block; border-radius: 5px; }
 .participant-tile.active { box-shadow: inset 3px 0 var(--indigo); }
 .participant-tile.selectable:hover, .participant-tile.selectable:focus-visible { box-shadow: inset 3px 0 var(--indigo); }
-.share-canvas { border-radius: 6px; }
-.share-canvas::before { opacity: .35; }
+.participant-strip .camera-preview, .participant-strip .tile-preview { display: grid; }
+.participant-strip .camera-preview, .participant-strip .tile-preview, .tile-preview-media { width: 100%; height: 60px; border-radius: 3px; object-fit: cover; background: var(--soft); }
+.participant-strip .camera-preview { display: block; }
+.tile-preview-media { display: block; }
+.participant-tile small { margin-top: 5px; padding-left: 0; overflow: hidden; white-space: nowrap; }
+.share-canvas { border-radius: 5px; background: var(--panel); }
+.share-canvas::before { display: none; }
 .share-glyph { border-radius: 4px; box-shadow: none; }
 .primary-button { border-radius: 5px; box-shadow: none; }
 .quality-icon { border-radius: 3px; }
@@ -172,14 +182,20 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Micros
 .segmented button { border-radius: 3px; }
 .segmented button.active { box-shadow: none; }
 .stop-button { border-radius: 4px; }
+.room-controls { width: max-content; margin: 10px auto 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
 .room-controls .camera-on { box-shadow: none; }
-.chat-notice { border: 1px solid var(--line); border-radius: 5px; }
-.message p { border: 1px solid var(--line); border-radius: 6px 6px 2px 6px; }
-.chat-form textarea { border-radius: 5px; }
-.chat-form textarea:focus { box-shadow: 0 0 0 2px var(--indigo-soft); }
-.side-tabs { border: 1px solid var(--line); border-radius: 5px; }
+.chat-heading { order: 0; }
+.side-tabs { order: 1; margin-top: 12px; border: 1px solid var(--line); border-radius: 5px; }
 .side-tabs button { border-radius: 3px; }
 .side-tabs button.active { box-shadow: none; }
+.chat-form { order: 2; grid-template-columns: minmax(0,1fr) auto; align-items: stretch; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 5px; }
+.chat-form textarea { min-height: 48px; height: 48px; border: 0; border-radius: 5px 0 0 5px; }
+.chat-form textarea:focus { border: 0; box-shadow: inset 0 0 0 2px var(--indigo-soft); }
+.chat-form button { min-width: 62px; justify-self: stretch; border-radius: 0 4px 4px 0; }
+.chat-notice { order: 3; margin: 10px 0; border: 1px solid var(--line); border-radius: 5px; }
+.message-list { order: 4; padding: 4px 2px 2px; }
+.message p { border: 1px solid var(--line); border-radius: 6px 6px 2px 6px; }
+.member-task-view { order: 2; }
 .privacy-card { border: 1px solid var(--line); border-radius: 5px; }
 .sync-modal, .join-modal, .access-card { border-radius: 8px; }
 .token-label input, .access-card input { border-radius: 5px; }
