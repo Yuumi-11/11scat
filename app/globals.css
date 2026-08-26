@@ -91,7 +91,6 @@ h1, h2, p { margin-top: 0; }
 .member-empty { margin: auto 0; text-align: center; padding: 26px 14px; border: 1px dashed #e9cbd8; border-radius: 13px; }
 .member-empty > span { width: 34px; height: 34px; display: grid; place-items: center; margin: 0 auto 10px; border-radius: 50%; color: #c45182; background: #fff0f6; }
 .member-empty strong { display: block; font-size: 12px; }.member-empty p { margin: 8px 0 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
-.privacy-card { padding: 11px; border-radius: 10px; color: #765668; background: #fff4f8; display: grid; gap: 4px; }.privacy-card strong { font-size: 10px; }.privacy-card span { font-size: 9px; line-height: 1.55; }
 .footer-note { width: min(1640px, calc(100% - 32px)); margin: 12px auto 24px; color: #7d8799; font-size: 9px; display: flex; justify-content: center; gap: 25px; }.footer-note span::before { content: "✓"; color: var(--green); margin-right: 5px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(30,36,52,.38); backdrop-filter: blur(9px); }.sync-modal { width: min(480px, 100%); position: relative; border: 1px solid var(--line); border-radius: 22px; padding: 30px; background: white; box-shadow: 0 30px 100px rgba(28,37,61,.22); }.modal-close { position: absolute; right: 16px; top: 14px; border: 0; background: transparent; color: #7c8697; font-size: 22px; cursor: pointer; }.ticktick-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; color: white; background: #4f78f4; margin-bottom: 20px; font-size: 23px; }.sync-modal h2 { margin: 7px 0 10px; font-size: 24px; letter-spacing: -.04em; }.sync-modal > p { color: #737e91; font-size: 12px; line-height: 1.8; }.wide { width: 100%; }.oauth-link { display: block; text-align: center; margin-top: 14px; color: #6f78a5; text-decoration: none; font-size: 10px; }.token-label { display: grid; gap: 8px; color: #515c70; font-size: 11px; margin: 18px 0 12px; }.token-label input { height: 46px; border: 1px solid var(--line); border-radius: 11px; padding: 0 12px; outline: none; }.token-label input:focus { border-color: #aeb4f5; box-shadow: 0 0 0 3px var(--indigo-soft); }.connected-actions { display: grid; gap: 10px; margin-top: 18px; }.disconnect-button { border: 1px solid #f0d1d1; border-radius: 10px; background: #fff7f7; color: #bd4b4b; padding: 10px; cursor: pointer; font-size: 11px; }
@@ -106,8 +105,8 @@ h1, h2, p { margin-top: 0; }
 .sync-button, .progress-copy, .add-task input, .chat-form textarea, .message p { font-size: 13px; }
 .task-copy strong, .empty-tasks strong, .empty-chat strong { font-size: 15px; }
 .task-copy small, .empty-tasks span, .chat-notice, .empty-chat span { font-size: 12px; }
-.project-picker, .quality-copy small, .quality-icon, .segmented button, .stop-button, .room-controls .room-leave, .local-badge, .message > span, .side-tabs button, .member-summary strong, .privacy-card strong { font-size: 11px; }
-.date-trigger, .date-weekdays, .date-grid button, .date-popover-foot, .participant-tile small, .room-error, .media-caption, .privacy-note, .member-summary small, .member-empty p, .privacy-card span, .footer-note { font-size: 10px; }
+.project-picker, .quality-copy small, .quality-icon, .segmented button, .stop-button, .room-controls .room-leave, .local-badge, .message > span, .side-tabs button, .member-summary strong { font-size: 11px; }
+.date-trigger, .date-weekdays, .date-grid button, .date-popover-foot, .participant-tile small, .room-error, .media-caption, .privacy-note, .member-summary small, .member-empty p, .footer-note { font-size: 10px; }
 .primary-button, .quality-copy strong { font-size: 13px; }
 
 /* One more reading-size step for the 67% room canvas. */
@@ -189,7 +188,6 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Micros
 .chat-form textarea:focus { border: 1px solid #e5a9c3; box-shadow: 0 0 0 3px var(--indigo-soft); }
 .chat-form button { min-width: 0; justify-self: end; border-radius: 9px; }
 .member-task-view { order: 2; }
-.privacy-card { border: 0; border-radius: 10px; }
 .sync-modal, .join-modal, .access-card { border-radius: 18px; }
 .token-label input, .access-card input { border-radius: 10px; }
 
@@ -242,5 +240,5 @@ body { background: #fff3f8; }
 .chat-form textarea:hover { border-color: #cf6d98; }
 .chat-form textarea:focus { border: 2px solid #c95888; background: #fff; box-shadow: 0 0 0 4px rgba(216,95,145,.13); }
 .chat-form textarea::placeholder { color: #9c6f83; opacity: 1; }
-.member-summary strong, .privacy-card strong { font-size: 13px; }
-.member-summary small, .member-empty p, .privacy-card span { font-size: 12px; }
+.member-summary strong { font-size: 13px; }
+.member-summary small, .member-empty p { font-size: 12px; }

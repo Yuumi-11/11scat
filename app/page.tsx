@@ -994,7 +994,6 @@ export default function Home() {
               <span>＋</span><strong>等待其他成员加入</strong>
               <p>成员加入房间、连接自己的滴答清单并同意共享后，这里才会显示其任务名称或仅显示完成比例。</p>
             </div>
-            <div className="privacy-card"><strong>隐私规则</strong><span>默认不公开清单；每位成员可选择“仅共享进度”或“共享任务名称”。</span></div>
           </div>}
         </aside>
       </section>
