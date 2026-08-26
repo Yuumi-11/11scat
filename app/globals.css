@@ -192,3 +192,55 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Micros
 .privacy-card { border: 0; border-radius: 10px; }
 .sync-modal, .join-modal, .access-card { border-radius: 18px; }
 .token-label input, .access-card input { border-radius: 10px; }
+
+/* Readability and contrast pass for the scaled room canvas. */
+body { background: #fff3f8; }
+.topbar { background: #fff; }
+.panel { border-color: #e8c8d6; box-shadow: 0 12px 36px rgba(151,70,105,.1); }
+.task-panel, .chat-panel, .focus-stage { background: #fff; }
+.brand { font-size: 18px; }
+.session-status { border-color: #e5b9cc; background: #fff7fb; font-size: 18px; font-weight: 650; }
+.left-tabs { background: #fff0f6; }
+.left-tabs button { font-size: 16px; font-weight: 650; }
+.left-member, .task-row, .participant-tile, .member-summary { border-color: #e8c8d6; background: #fff9fc; }
+.left-member strong { font-size: 16px; }
+.left-member small { font-size: 13px; }
+.panel-heading h1, .chat-heading h2, .empty-share h2 { font-size: 28px; }
+.eyebrow { font-size: 13px; font-weight: 800; }
+.sync-button { border-color: #e5b9cc; background: #fff0f6; font-size: 13px; font-weight: 700; }
+.progress-copy { font-size: 13px; }
+.task-copy strong, .empty-tasks strong, .empty-chat strong { font-size: 16px; }
+.task-copy small, .empty-tasks span, .empty-chat span { font-size: 13px; }
+.task-row { padding-top: 15px; padding-bottom: 15px; }
+.add-task { border: 2px solid #e5a9c3; background: #fff0f6; color: #9d5575; }
+.add-task input { color: var(--ink); font-size: 15px; font-weight: 550; }
+.add-task input::placeholder { color: #a67d90; opacity: 1; }
+.add-task button { font-size: 13px; font-weight: 800; }
+.project-picker, .date-trigger { font-size: 12px; }
+.participant-tile small { font-size: 14px; font-weight: 700; color: #5e5260; }
+.participant-strip .camera-preview, .participant-strip .tile-preview, .tile-preview-media { background: #fff0f6; }
+.share-canvas { border: 2px solid #e8c8d6; background: #fff9fc; }
+.empty-share p { font-size: 14px; }
+.primary-button { padding: 12px 19px; font-size: 15px; font-weight: 800; }
+.privacy-note { font-size: 11px; }
+.quality-copy strong { font-size: 14px; }
+.quality-copy small, .quality-icon, .segmented button, .stop-button { font-size: 12px; }
+.room-controls button { font-size: 14px; }
+.room-controls .room-leave { font-size: 12px; font-weight: 800; }
+.local-badge { font-size: 12px; }
+.side-tabs { background: #fff0f6; }
+.side-tabs button { padding: 9px; font-size: 13px; font-weight: 700; }
+.chat-notice { color: #75566a; background: #fff0f6; font-size: 13px; }
+.message { max-width: 88%; }
+.message:not(.own) { align-self: flex-start; }
+.message > span { font-size: 12px; }
+.message:not(.own) > span { text-align: left; }
+.message p { padding: 11px 13px; background: #fff0f6; font-size: 15px; line-height: 1.65; }
+.message.own p { background: #f9dce8; }
+.chat-form { border-top-color: #e8c8d6; }
+.chat-form textarea { min-height: 92px; border: 2px solid #dc8daf; background: #fff0f6; color: var(--ink); padding: 13px 14px; font-size: 15px; font-weight: 550; }
+.chat-form textarea:hover { border-color: #cf6d98; }
+.chat-form textarea:focus { border: 2px solid #c95888; background: #fff; box-shadow: 0 0 0 4px rgba(216,95,145,.13); }
+.chat-form textarea::placeholder { color: #9c6f83; opacity: 1; }
+.member-summary strong, .privacy-card strong { font-size: 13px; }
+.member-summary small, .member-empty p, .privacy-card span { font-size: 12px; }

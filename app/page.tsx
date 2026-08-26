@@ -976,6 +976,7 @@ export default function Home() {
               <textarea
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
+                placeholder="输入消息，按 Enter 发送"
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
