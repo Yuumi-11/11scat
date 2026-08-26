@@ -821,10 +821,7 @@ export default function Home() {
   return (
     <main className="app-shell" id="top">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="11scat 首页">
-          <span className="brand-mark">11</span><span>11scat</span>
-        </a>
-        <div className="session-status"><span className="pulse" />私人自习室 · 正在专注</div>
+        <div className="session-status"><span className="pulse" />一一主人专属</div>
       </header>
 
       <section className="workspace">
@@ -976,7 +973,6 @@ export default function Home() {
               <textarea
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="输入消息，按 Enter 发送"
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();

@@ -143,7 +143,7 @@ h1, h2, p { margin-top: 0; }
 body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 .brand { letter-spacing: -.01em; }
 .brand-mark { border-radius: 10px; box-shadow: 0 6px 18px rgba(216,95,145,.16); }
-.session-status { width: min(460px, 44vw); justify-content: center; border-color: var(--line); border-radius: 12px; background: var(--panel); }
+.session-status { grid-column: 2; width: min(460px, 44vw); justify-content: center; border-color: var(--line); border-radius: 12px; background: var(--panel); }
 .panel { border-radius: 16px; box-shadow: 0 10px 35px rgba(151,70,105,.06); }
 .left-tabs { padding: 5px; border-radius: 12px 12px 0 0; }
 .left-tabs button { border-radius: 9px; }
