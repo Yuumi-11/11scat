@@ -16,6 +16,7 @@ type Task = {
 
 type Project = { id: string; name: string };
 type ChatMessage = { id: string; body: string; time: string; sender: string; own?: boolean };
+type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done">;
 type MediaSource = "camera" | "screen";
 type MediaItem = {
   id: string;
@@ -57,54 +58,11 @@ function MediaVideo({ stream, label, className, muted = true }: { stream: MediaS
   return <video className={className} ref={ref} autoPlay muted={muted} playsInline aria-label={label} />;
 }
 
-function DatePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(() => value ? new Date(`${value}T12:00:00`) : new Date());
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const selectedDate = value ? new Date(`${value}T12:00:00`) : null;
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const leading = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: 42 }, (_, index) => {
-    const day = index - leading + 1;
-    return new Date(year, month, day);
-  });
-  const sameDay = (left: Date | null, right: Date) => Boolean(left && left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate());
-  const today = new Date();
-  const displayValue = selectedDate ? `${selectedDate.getFullYear()}年${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日` : "选择截止日期";
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [open]);
-
-  return <div className="date-picker" ref={pickerRef}>
-    <button className="date-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-haspopup="dialog">
-      <span>截止日期</span><strong>{displayValue}</strong><span className="date-chevron">⌄</span>
-    </button>
-    {open && <div className="date-popover" role="dialog" aria-label="选择截止日期">
-      <div className="date-popover-head"><button type="button" onClick={() => setViewDate(new Date(year, month - 1, 1))} aria-label="上个月">‹</button><strong>{year}年{month + 1}月</strong><button type="button" onClick={() => setViewDate(new Date(year, month + 1, 1))} aria-label="下个月">›</button></div>
-      <div className="date-weekdays">{["一", "二", "三", "四", "五", "六", "日"].map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="date-grid">{cells.map((date, index) => {
-        const inMonth = index >= leading && index < leading + daysInMonth;
-        const dateValue = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-        return <button className={`${inMonth ? "" : "muted"}${sameDay(selectedDate, date) ? " selected" : ""}${sameDay(today, date) ? " today" : ""}`} type="button" key={dateValue} onClick={() => { if (inMonth) { onChange(dateValue); setOpen(false); } }} disabled={!inMonth}>{date.getDate()}</button>;
-      })}</div>
-      <div className="date-popover-foot"><button type="button" onClick={() => { onChange(""); setOpen(false); }}>清除</button><button type="button" onClick={() => { const current = new Date(); onChange(`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`); setViewDate(current); setOpen(false); }}>今天</button></div>
-    </div>}
-  </div>;
-}
-
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
-  const [taskDueDate, setTaskDueDate] = useState(localDateInputValue);
+  const [taskView, setTaskView] = useState<"today" | "week">("week");
   const [draft, setDraft] = useState("");
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -129,8 +87,8 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
-  const [sideView, setSideView] = useState<"chat" | "members">("chat");
-  const [leftView, setLeftView] = useState<"tasks" | "members">("tasks");
+  const [sideView, setSideView] = useState<"chat" | "tasks">("chat");
+  const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
   const roomRef = useRef<Room | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -139,6 +97,7 @@ export default function Home() {
   const hostPeerIdRef = useRef("");
   const dataConnectionsRef = useRef(new Map<string, DataConnection>());
   const messagesRef = useRef<ChatMessage[]>([]);
+  const tasksRef = useRef<Task[]>([]);
   const outgoingCallsRef = useRef(new Map<string, MediaConnection>());
   const incomingCallsRef = useRef(new Map<string, MediaConnection>());
   const callPeerRef = useRef<(peerId: string, media: MediaStream, source: MediaSource) => void>(() => undefined);
@@ -149,14 +108,16 @@ export default function Home() {
     setSyncing(true);
     setSyncError("");
     try {
-      const response = await fetch("/api/ticktick/tasks", { cache: "no-store" });
+      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store" });
       if (response.status === 401) {
         setConnected(false);
+        setProjects([]);
         setTasks((current) => current.filter((task) => task.source === "local"));
-        return;
+        return false;
       }
       if (!response.ok) throw new Error("暂时无法读取滴答清单");
       const data = await response.json();
+      if (!Array.isArray(data.tasks) || !Array.isArray(data.projects)) throw new Error("滴答返回的数据格式异常");
       const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
       setConnected(true);
       setProjects(data.projects);
@@ -165,16 +126,32 @@ export default function Home() {
         || data.projects[0];
       setSelectedProject(preferredProject?.id || "");
       setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
+      return true;
     } catch (error) {
+      setConnected(false);
+      setProjects([]);
+      setTasks((current) => current.filter((task) => task.source === "local"));
       setSyncError(error instanceof Error ? error.message : "同步失败");
+      return false;
     } finally {
       setSyncing(false);
     }
   };
 
-  useEffect(() => { void loadTasks(); }, []);
+  useEffect(() => { void loadTasks(); }, [taskView]);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => {
+    tasksRef.current = tasks;
+    const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done }));
+    void roomRef.current?.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify({ type: "task-snapshot", tasks: shared })),
+      { reliable: true },
+    );
+    dataConnectionsRef.current.forEach((connection) => {
+      if (connection.open) connection.send({ type: "task-snapshot", tasks: shared });
+    });
+  }, [tasks]);
   useEffect(() => { displayNameRef.current = displayName.trim(); }, [displayName]);
   useEffect(() => { memberNamesRef.current = memberNames; }, [memberNames]);
   useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
@@ -203,6 +180,12 @@ export default function Home() {
         delete next[participant.identity];
         return next;
       });
+      setMemberTasks((current) => {
+        if (!current[participant.identity]) return current;
+        const next = { ...current };
+        delete next[participant.identity];
+        return next;
+      });
       refreshMembers();
     });
     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -218,7 +201,14 @@ export default function Home() {
     });
     room.on(RoomEvent.DataReceived, (payload, participant) => {
       try {
-        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string };
+        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown };
+        if (message.type === "task-snapshot" && participant && Array.isArray(message.tasks)) {
+          const incomingTasks = message.tasks.filter((item): item is SharedTask => Boolean(
+            item && typeof item === "object" && typeof (item as SharedTask).id === "string" && typeof (item as SharedTask).title === "string",
+          ));
+          setMemberTasks((current) => ({ ...current, [participant.identity]: incomingTasks.slice(0, 50) }));
+          return;
+        }
         if (message.type !== "chat" || !message.id || !message.body || !message.time) return;
         setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, { ...message, sender: participant?.name?.trim() || message.sender || participant?.identity || "成员", own: false }]);
       } catch { /* ignore invalid room messages */ }
@@ -311,6 +301,12 @@ export default function Home() {
         delete next[peerId];
         return next;
       });
+      setMemberTasks((current) => {
+        if (!current[peerId]) return current;
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
       refreshMembers();
     };
 
@@ -396,6 +392,10 @@ export default function Home() {
         setRoomError("");
         refreshMembers();
         connection.send({ type: "presence", name: displayNameRef.current, deviceId: localDeviceId });
+        connection.send({
+          type: "task-snapshot",
+          tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
+        });
         connection.send({ type: "media-request" });
         if (hostPeerIdRef.current === selfPeerIdRef.current && messagesRef.current.length) {
           connection.send({ type: "chat-history", messages: messagesRef.current.map(({ own: _own, ...message }) => message) });
@@ -408,7 +408,7 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown; messages?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown };
+        const message = payload as { type: string; ids?: unknown; messages?: unknown; tasks?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown };
         if (message.type === "presence") {
           rememberPeerName(peerId, message.name);
           const deviceId = typeof message.deviceId === "string" ? message.deviceId.trim().slice(0, 80) : "";
@@ -418,6 +418,13 @@ export default function Home() {
         if (message.type === "media-request") {
           if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
           if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
+          return;
+        }
+        if (message.type === "task-snapshot" && Array.isArray(message.tasks)) {
+          const incomingTasks = message.tasks.filter((item): item is SharedTask => Boolean(
+            item && typeof item === "object" && typeof (item as SharedTask).id === "string" && typeof (item as SharedTask).title === "string",
+          ));
+          setMemberTasks((current) => ({ ...current, [peerId]: incomingTasks.slice(0, 50) }));
           return;
         }
         if (message.type === "chat" && typeof message.id === "string" && typeof message.body === "string" && typeof message.time === "string") {
@@ -620,7 +627,7 @@ export default function Home() {
       const response = await fetch("/api/ticktick/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, projectId: selectedProject, dueDate: taskDueDate }),
+        body: JSON.stringify({ title, projectId: selectedProject, dueDate: localDateInputValue() }),
       });
       if (response.ok) {
         setDraft("");
@@ -668,8 +675,8 @@ export default function Home() {
       return;
     }
     setToken("");
-    setSyncOpen(false);
-    await loadTasks();
+    const loaded = await loadTasks();
+    if (loaded) setSyncOpen(false);
   };
 
   const disconnectTickTick = async () => {
@@ -788,7 +795,7 @@ export default function Home() {
     setChatDraft("");
   };
 
-  const completed = tasks.filter((task) => task.done).length;
+  const visibleTasks = tasks.filter((task) => !task.done);
   const visibleRemoteMembers = roomMembers.slice(0, 1);
   const emptyMemberSlots = Math.max(0, 1 - visibleRemoteMembers.length);
   const mediaItems: MediaItem[] = [];
@@ -825,64 +832,6 @@ export default function Home() {
       </header>
 
       <section className="workspace">
-        <aside className="task-panel panel">
-          <div className="left-tabs" aria-label="左侧导航">
-            <button className={leftView === "tasks" ? "active" : ""} onClick={() => setLeftView("tasks")}>待办事项</button>
-            <button className={leftView === "members" ? "active" : ""} onClick={() => setLeftView("members")}>成员</button>
-          </div>
-          {leftView === "members" ? <div className="left-members">
-            <div className="left-member"><span className="member-avatar">{(displayName || "你").slice(0, 1)}</span><div><strong>{displayName || "你"}</strong><small>正在专注 · {completed}/{tasks.length} 完成</small></div><span className="online-dot" /></div>
-            {roomMembers.map((memberId) => (
-              <div className="left-member" key={memberId}>
-                <span className="member-avatar">{(memberNames[memberId] || memberId).slice(0, 1)}</span>
-                <div><strong>{memberNames[memberId] || memberId}</strong><small>已加入房间</small></div>
-                <span className="online-dot" />
-              </div>
-            ))}
-            <div className="left-member muted"><span className="member-avatar invite">＋</span><div><strong>邀请成员</strong><small>加入后可选择共享任务进度</small></div></div>
-          </div> : <>
-          <div className="panel-heading">
-            <div><span className="eyebrow">滴答清单</span><h1>最近7天</h1></div>
-            <button className="sync-button" onClick={() => setSyncOpen(true)}>
-              <span className={connected ? "sync-dot active" : "sync-dot"} />
-              {syncing ? "读取中" : connected ? "滴答已连接" : "连接滴答"}
-            </button>
-          </div>
-
-          <div className="progress-block">
-            <div className="progress-copy"><span>{completed}/{tasks.length} 已完成</span><strong>{tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%</strong></div>
-            <div className="progress-track"><span style={{ width: `${tasks.length ? (completed / tasks.length) * 100 : 0}%` }} /></div>
-          </div>
-
-          {syncError && <p className="error-message" role="alert">{syncError}</p>}
-          {!syncing && tasks.length === 0 && (
-            <div className="empty-tasks">
-              <strong>{connected ? "最近7天没有待办" : "还没有连接滴答清单"}</strong>
-              <span>{connected ? "这里只显示有截止日期、已逾期或未来7天内到期的任务" : "连接后会跨清单读取滴答的最近7天任务"}</span>
-            </div>
-          )}
-
-          <div className="task-list" aria-live="polite">
-            {tasks.map((task) => (
-              <label className={task.done ? "task-row done" : "task-row"} key={`${task.source}-${task.id}`}>
-                <input type="checkbox" checked={task.done} onChange={() => void toggleTask(task)} disabled={task.done} />
-                <span className="custom-check">✓</span>
-                <span className="task-copy"><strong>{task.title}</strong><small>{task.source === "ticktick" ? "最近7天" : "站内任务"}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
-              </label>
-            ))}
-          </div>
-
-          <div className="add-task">
-            <span>＋</span>
-            <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void addTask()} placeholder={connected ? "添加到滴答清单" : "添加本次自习任务"} />
-            <button onClick={() => void addTask()}>添加</button>
-          </div>
-          {connected && selectedProject && (
-            <div className="project-picker recent-picker"><span>最近7天</span><DatePicker value={taskDueDate} onChange={setTaskDueDate} /></div>
-          )}
-          </>}
-        </aside>
-
         <section className="focus-stage panel">
           <div className="participant-strip">
             <button
@@ -956,14 +905,15 @@ export default function Home() {
           <div className="room-controls"><button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"}>{cameraStream ? "●" : "◉"}</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button></div>
         </section>
 
-        <aside className="chat-panel panel">
-          <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><span className="local-badge">本机</span></div>
+        <aside className="side-panel panel">
           <div className="side-tabs" aria-label="侧栏内容">
-            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}>聊天</button>
-            <button className={sideView === "members" ? "active" : ""} onClick={() => setSideView("members")}>成员任务</button>
+            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}>聊天室</button>
+            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}>任务</button>
           </div>
-          {sideView === "chat" ? <>
-            <div className="chat-notice">成员加入后，消息会在当前房间实时同步；重新加入房间时会收到房主保留的聊天记录。</div>
+
+          {sideView === "chat" ? <div className="chat-view">
+            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><span className="local-badge">实时</span></div>
+            <div className="chat-notice">消息会在当前房间实时同步，房主会为重新加入的成员保留本轮聊天记录。</div>
             <div className="message-list" aria-live="polite">
               {messages.length === 0 ? <div className="empty-chat"><strong>还没有消息</strong><span>可以先记录一句本轮目标或休息提醒。</span></div> : messages.map((message) => (
                 <div className={message.own ? "message own" : "message"} key={message.id}><span>{message.sender} · {message.time}</span><p>{message.body}</p></div>
@@ -980,19 +930,67 @@ export default function Home() {
                   }
                 }}
                 aria-label="输入房间消息"
-                rows={3}
+                placeholder="输入消息，Enter 发送"
+                rows={2}
               />
               <button className="primary-button" type="submit">发送</button>
             </form>
-          </> : <div className="member-task-view">
-            <div className="member-summary">
-              <span className="member-avatar">你</span>
-              <div><strong>你的任务进度</strong><small>{connected ? `${completed}/${tasks.length} 已完成 · 滴答已授权` : `${completed}/${tasks.length} 已完成 · 尚未连接滴答`}</small></div>
-              <b>{tasks.length ? Math.round((completed / tasks.length) * 100) : 0}%</b>
+          </div> : <div className="task-view">
+            <div className="panel-heading">
+              <div><span className="eyebrow">滴答清单</span><h2>{taskView === "today" ? "今天" : "最近 7 天"}</h2></div>
+              <button className="sync-button" onClick={() => setSyncOpen(true)}>
+                <span className={connected ? "sync-dot active" : "sync-dot"} />
+                {syncing ? "读取中" : connected ? "已连接" : "连接滴答"}
+              </button>
             </div>
-            <div className="member-empty">
-              <span>＋</span><strong>等待其他成员加入</strong>
-              <p>成员加入房间、连接自己的滴答清单并同意共享后，这里才会显示其任务名称或仅显示完成比例。</p>
+
+            <div className="task-filters" aria-label="待办时间范围">
+              <button className={taskView === "today" ? "active" : ""} onClick={() => setTaskView("today")}>今天</button>
+              <button className={taskView === "week" ? "active" : ""} onClick={() => setTaskView("week")}>最近 7 天</button>
+            </div>
+            <p className="task-scope-note">仅显示待办任务，不包含日历、课表或已完成事项。</p>
+            {syncError && <p className="error-message" role="alert">{syncError}</p>}
+
+            <div className="task-scroll">
+              <section className="task-group" aria-labelledby="my-tasks-title">
+                <div className="task-group-heading"><h3 id="my-tasks-title">我的待办</h3><span>{visibleTasks.length}</span></div>
+                {!syncing && visibleTasks.length === 0 ? (
+                  <div className="empty-tasks">
+                    <strong>{connected ? `${taskView === "today" ? "今天" : "最近 7 天"}没有待办` : "还没有连接滴答清单"}</strong>
+                    <span>{connected ? "切换时间范围可以查看其他待办" : "连接成功且任务读取完成后才会显示已连接"}</span>
+                  </div>
+                ) : (
+                  <div className="task-list" aria-live="polite">
+                    {visibleTasks.map((task) => (
+                      <label className="task-row" key={`${task.source}-${task.id}`}>
+                        <input type="checkbox" checked={false} onChange={() => void toggleTask(task)} />
+                        <span className="custom-check">✓</span>
+                        <span className="task-copy"><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="add-task">
+                  <span>＋</span>
+                  <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void addTask()} placeholder={connected ? "添加今天的滴答待办" : "添加本次自习任务"} />
+                  <button onClick={() => void addTask()}>添加</button>
+                </div>
+              </section>
+
+              <section className="task-group member-task-group" aria-labelledby="member-tasks-title">
+                <div className="task-group-heading"><h3 id="member-tasks-title">成员待办</h3><span>{roomMembers.length}</span></div>
+                {roomMembers.length === 0 ? (
+                  <div className="member-empty"><strong>等待成员加入</strong><p>成员进入房间后，其当前待办会显示在这里。</p></div>
+                ) : roomMembers.map((memberId) => {
+                  const sharedTasks = memberTasks[memberId] || [];
+                  return <div className="member-task-card" key={memberId}>
+                    <div className="member-task-name"><span className="member-avatar">{(memberNames[memberId] || memberId).slice(0, 1)}</span><strong>{memberNames[memberId] || memberId}</strong><small>{sharedTasks.length} 项</small></div>
+                    {sharedTasks.length === 0 ? <p>暂无待办或正在同步</p> : sharedTasks.map((task) => (
+                      <div className="shared-task-row" key={task.id}><span /><div><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></div></div>
+                    ))}
+                  </div>;
+                })}
+              </section>
             </div>
           </div>}
         </aside>

@@ -242,3 +242,197 @@ body { background: #fff3f8; }
 .chat-form textarea::placeholder { color: #9c6f83; opacity: 1; }
 .member-summary strong { font-size: 13px; }
 .member-summary small, .member-empty p { font-size: 12px; }
+
+/* r15: one focus canvas plus one switchable sidebar, sized to the viewport. */
+html, body { height: 100%; }
+body { overflow: hidden; }
+.app-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  position: relative;
+  inset: auto;
+  transform: none;
+}
+.topbar {
+  height: 56px;
+  padding: 0 18px;
+  position: relative;
+}
+.session-status {
+  width: min(400px, 46vw);
+  padding: 7px 12px;
+  font-size: 15px;
+}
+.workspace {
+  width: calc(100% - 24px);
+  height: calc(100dvh - 68px);
+  margin: 12px auto 0;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+  gap: 12px;
+  align-items: stretch;
+}
+.focus-stage {
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+}
+.participant-strip {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 154px));
+  gap: 7px;
+  padding-bottom: 8px;
+}
+.participant-tile {
+  min-height: 62px;
+  height: 62px;
+  padding: 5px;
+  border-radius: 10px;
+}
+.participant-strip .camera-preview,
+.participant-strip .tile-preview,
+.participant-strip .tile-preview-media {
+  height: 32px;
+  border-radius: 6px;
+}
+.participant-tile small {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.tile-badge {
+  top: 5px;
+  left: 5px;
+  width: 18px;
+  height: 18px;
+  font-size: 8px;
+}
+.share-canvas {
+  flex: 1 1 0;
+  min-height: 0;
+  border-width: 1px;
+}
+.empty-share { width: min(430px, 82%); }
+.empty-share h2 { font-size: 22px; }
+.empty-share p { margin-bottom: 14px; font-size: 14px; }
+.privacy-note { margin-top: 7px; font-size: 11px; }
+.quality-bar { flex: 0 0 auto; padding: 9px 3px 0; }
+.quality-copy strong { font-size: 13px; }
+.quality-copy small, .quality-icon, .segmented button, .stop-button { font-size: 11px; }
+.room-controls { flex: 0 0 auto; margin-top: 7px; padding: 4px 8px; }
+.room-controls button { width: 32px; height: 32px; font-size: 13px; }
+.room-controls .room-leave { font-size: 11px; }
+
+.side-panel {
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.side-tabs {
+  flex: 0 0 auto;
+  order: 0;
+  margin: 0 0 14px;
+  padding: 5px;
+}
+.side-tabs button { padding: 10px; font-size: 14px; }
+.side-tabs button:focus-visible, .task-filters button:focus-visible {
+  outline: 2px solid #cf6d98;
+  outline-offset: 2px;
+}
+.chat-view, .task-view {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-heading { flex: 0 0 auto; padding-bottom: 12px; }
+.chat-heading h2, .panel-heading h2 { margin: 4px 0 0; font-size: 22px; letter-spacing: -.025em; }
+.chat-notice { flex: 0 0 auto; margin: 10px 0; padding: 9px 10px; font-size: 12px; }
+.message-list { flex: 1 1 0; min-height: 0; }
+.message p { padding: 9px 11px; font-size: 14px; }
+.message > span { font-size: 11px; }
+.chat-form {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.chat-form textarea {
+  width: 100%;
+  min-height: 58px;
+  height: 58px;
+  padding: 10px 11px;
+  font-size: 14px;
+}
+.chat-form button {
+  min-width: 66px;
+  height: 42px;
+  padding: 0 15px;
+  justify-self: stretch;
+}
+
+.task-view .panel-heading { flex: 0 0 auto; }
+.task-view .sync-button { padding: 8px 9px; font-size: 12px; }
+.task-filters {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #fff0f6;
+}
+.task-filters button {
+  border: 0;
+  border-radius: 7px;
+  padding: 8px;
+  color: #8c7180;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.task-filters button.active { color: #a33d69; background: #fff; box-shadow: 0 2px 8px rgba(150,70,104,.1); }
+.task-scope-note { flex: 0 0 auto; margin: 8px 1px 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.task-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 5px 3px 2px 0; scrollbar-gutter: stable; }
+.task-group + .task-group { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.task-group-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.task-group-heading h3 { margin: 0; font-size: 15px; }
+.task-group-heading > span { min-width: 24px; padding: 3px 7px; border-radius: 999px; color: #a33d69; background: #fff0f6; font-size: 11px; text-align: center; }
+.task-view .task-list { max-height: none; gap: 7px; overflow: visible; }
+.task-view .task-row { padding: 11px 10px; }
+.task-view .task-copy strong { font-size: 14px; }
+.task-view .task-copy small { font-size: 11px; }
+.task-view .empty-tasks { margin: 0; padding: 18px 12px; }
+.task-view .add-task { margin-top: 9px; padding: 8px 9px; }
+.task-view .add-task input { font-size: 13px; }
+.task-view .add-task button { font-size: 12px; }
+.member-task-group .member-empty { margin: 0; padding: 19px 12px; }
+.member-task-card { padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: #fff9fc; }
+.member-task-card + .member-task-card { margin-top: 8px; }
+.member-task-name { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.member-task-name strong { font-size: 13px; }
+.member-task-name small { color: var(--muted); font-size: 11px; }
+.member-task-card > p { margin: 9px 0 1px 38px; color: var(--muted); font-size: 11px; }
+.shared-task-row { display: grid; grid-template-columns: 8px 1fr; gap: 8px; margin: 9px 0 0 38px; }
+.shared-task-row > span { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: #d96898; }
+.shared-task-row div { min-width: 0; display: grid; gap: 2px; }
+.shared-task-row strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.shared-task-row small { color: var(--muted); font-size: 10px; }
+
+@media (max-width: 1180px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) minmax(320px, 36%); }
+  .quality-copy small { display: none; }
+}
+@media (max-width: 900px) {
+  body { height: auto; overflow-y: auto; }
+  .app-shell { height: auto; min-height: 100dvh; }
+  .workspace { height: auto; grid-template-columns: 1fr; }
+  .focus-stage { min-height: 620px; }
+  .side-panel { height: 620px; }
+}

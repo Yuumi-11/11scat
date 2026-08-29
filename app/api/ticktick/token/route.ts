@@ -12,6 +12,18 @@ export async function POST(request: Request) {
     headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
   if (!check.ok) return new NextResponse("Invalid token", { status: 401 });
+  const projects = await check.json().catch(() => null) as { id?: unknown; closed?: boolean }[] | null;
+  if (!Array.isArray(projects)) return new NextResponse("Task read failed", { status: 502 });
+  const activeProjectIds = projects
+    .filter((project) => !project.closed && typeof project.id === "string")
+    .map((project) => project.id as string);
+  const taskChecks = await Promise.all(activeProjectIds.map((projectId) => fetch(
+    `https://api.dida365.com/open/v1/project/${encodeURIComponent(projectId)}/data`,
+    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+  )));
+  if (taskChecks.some((response) => !response.ok)) {
+    return new NextResponse("Task read failed", { status: 502 });
+  }
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set(COOKIE, encryptToken(token), {

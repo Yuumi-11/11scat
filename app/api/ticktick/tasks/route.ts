@@ -19,7 +19,14 @@ async function tickFetch(path: string, token: string, init?: RequestInit) {
   });
 }
 
-export async function GET() {
+const shanghaiDateKey = (value: Date | number) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(value);
+
+export async function GET(request: Request) {
   const token = await accessToken();
   if (!token) return new NextResponse("Not connected", { status: 401 });
   const projectResponse = await tickFetch("/project", token);
@@ -27,21 +34,27 @@ export async function GET() {
 
   const projects: TickProject[] = await projectResponse.json();
   const activeProjects = projects.filter((project) => !project.closed);
-  const datasets = await Promise.all(activeProjects.map(async (project) => {
+  const datasetResponses = await Promise.all(activeProjects.map(async (project) => {
     const response = await tickFetch(`/project/${encodeURIComponent(project.id)}/data`, token);
-    if (!response.ok) return [] as TickTask[];
-    const data = await response.json();
-    return (data.tasks || []) as TickTask[];
+    if (!response.ok) return { ok: false as const, tasks: [] as TickTask[] };
+    const data = await response.json().catch(() => null);
+    if (!data || !Array.isArray(data.tasks)) return { ok: false as const, tasks: [] as TickTask[] };
+    return { ok: true as const, tasks: data.tasks as TickTask[] };
   }));
+  if (datasetResponses.some((dataset) => !dataset.ok)) {
+    return new NextResponse("TickTick task read failed", { status: 502 });
+  }
 
   const projectNames = new Map(activeProjects.map((project) => [project.id, project.name]));
-  const sevenDaysFromNow = Date.now() + 7 * 24 * 60 * 60 * 1000;
-  const tasks = datasets
-    .flat()
+  const view = new URL(request.url).searchParams.get("view") === "today" ? "today" : "week";
+  const todayKey = shanghaiDateKey(Date.now());
+  const finalDateKey = view === "today" ? todayKey : shanghaiDateKey(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const tasks = datasetResponses
+    .flatMap((dataset) => dataset.tasks)
     .filter((task) => {
       if (task.status || !task.dueDate) return false;
-      const dueAt = Date.parse(task.dueDate);
-      return Number.isFinite(dueAt) && dueAt <= sevenDaysFromNow;
+      const dueDateKey = task.dueDate.slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(dueDateKey) && dueDateKey <= finalDateKey;
     })
     .sort((a, b) => Date.parse(a.dueDate || "") - Date.parse(b.dueDate || ""))
     .slice(0, 50)
@@ -54,7 +67,7 @@ export async function GET() {
       done: false,
     }));
   return NextResponse.json({
-    view: "next-seven-days",
+    view,
     projects: activeProjects.map(({ id, name }) => ({ id, name })),
     tasks,
   });
