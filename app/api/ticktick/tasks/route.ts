@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import { decryptToken } from "../crypto";
 
 type TickProject = { id: string; name: string; closed?: boolean };
-type TickTask = { id: string; projectId: string; title: string; status?: number; dueDate?: string };
+type TickTask = {
+  id: string;
+  projectId: string;
+  title: string;
+  status?: number;
+  dueDate?: string;
+  startDate?: string;
+};
 type TickV2Snapshot = {
   inboxId?: string;
   syncTaskBean?: {
@@ -72,7 +79,9 @@ export async function GET(request: Request) {
   const projects: TickProject[] = await projectResponse.json();
   const activeProjects = projects.filter((project) => !project.closed);
   const snapshot = await tickV2Snapshot(token);
-  const inboxId = typeof snapshot?.inboxId === "string" ? snapshot.inboxId : "";
+  const inboxId = typeof snapshot?.inboxId === "string"
+    ? snapshot.inboxId
+    : (process.env.TICKTICK_INBOX_ID || "");
   const projectsToRead = inboxId && !activeProjects.some((project) => project.id === inboxId)
     ? [...activeProjects, { id: inboxId, name: "收集箱" }]
     : activeProjects;
@@ -101,18 +110,19 @@ export async function GET(request: Request) {
   const finalDateKey = view === "today" ? todayKey : shanghaiDateKey(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const tasks = [...uniqueTasks.values()]
     .filter((task) => {
-      if (task.status || !task.dueDate) return false;
-      const dueDateKey = task.dueDate.slice(0, 10);
+      const taskDate = task.dueDate || task.startDate;
+      if (task.status || !taskDate) return false;
+      const dueDateKey = taskDate.slice(0, 10);
       return /^\d{4}-\d{2}-\d{2}$/.test(dueDateKey) && dueDateKey <= finalDateKey;
     })
-    .sort((a, b) => Date.parse(a.dueDate || "") - Date.parse(b.dueDate || ""))
+    .sort((a, b) => Date.parse(a.dueDate || a.startDate || "") - Date.parse(b.dueDate || b.startDate || ""))
     .slice(0, 50)
     .map((task) => ({
       id: task.id,
       projectId: task.projectId,
       title: task.title,
       project: projectNames.get(task.projectId) || "滴答清单",
-      dueDate: task.dueDate,
+      dueDate: task.dueDate || task.startDate,
       done: false,
     }));
   return NextResponse.json({
