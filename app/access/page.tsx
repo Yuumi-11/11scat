@@ -1,5 +1,5 @@
 type AccessPageProps = {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string }>;
 };
 
 export const metadata = {
@@ -8,7 +8,7 @@ export const metadata = {
 };
 
 export default async function AccessPage({ searchParams }: AccessPageProps) {
-  const { error, next } = await searchParams;
+  const { error } = await searchParams;
 
   return (
     <main className="access-shell">
@@ -19,9 +19,8 @@ export default async function AccessPage({ searchParams }: AccessPageProps) {
         </div>
         <span className="eyebrow access-eyebrow">PRIVATE STUDY SPACE</span>
         <h1>输入身份识别码</h1>
-        <p>识别码用于确认身份并恢复你的昵称与个人连接。</p>
+        <p>输入身份验证码后会自动进入同一个自习房间，并恢复你的昵称与个人连接。</p>
         <form action="/api/access" method="post">
-          <input type="hidden" name="next" value={next || "/"} />
           <label htmlFor="identityCode">身份识别码</label>
           <input
             id="identityCode"

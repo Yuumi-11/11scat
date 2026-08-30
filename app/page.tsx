@@ -135,10 +135,11 @@ export default function Home() {
       try {
         const response = await fetch("/api/identity/me", { cache: "no-store" });
         if (!response.ok) throw new Error("profile unavailable");
-        const data = await response.json() as { nickname?: unknown };
+        const data = await response.json() as { identityId?: unknown; nickname?: unknown };
         const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
-        if (!disposed && nickname) {
-          setDisplayName(nickname);
+        const identityName = typeof data.identityId === "string" ? data.identityId.trim().slice(0, 24) : "";
+        if (!disposed) {
+          setDisplayName(nickname || identityName || "成员");
           setJoined(true);
         }
       } catch {
@@ -534,7 +535,6 @@ export default function Home() {
           }
         } catch { /* STUN defaults remain available when TURN config cannot be loaded. */ }
 
-        const requestedHost = new URL(window.location.href).searchParams.get("host") || "";
         const defaultRoomPeerId = "11scat-global-room";
 
         const handleCall = (call: MediaConnection) => {
@@ -572,20 +572,11 @@ export default function Home() {
           peer.on("open", (id) => {
             if (disposed) return;
             selfPeerIdRef.current = id;
-            const hostId = requestedHost || defaultRoomPeerId;
+            const hostId = defaultRoomPeerId;
             hostPeerIdRef.current = hostId;
-            const inviteParams = new URLSearchParams(window.location.search);
-            inviteParams.delete("v");
-            inviteParams.set("host", hostId);
-            const stableInviteUrl = `${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`;
+            const stableInviteUrl = `${window.location.origin}${window.location.pathname}`;
             setInviteUrl(stableInviteUrl);
-            if (hostId === id) {
-              const ownerParams = new URLSearchParams(window.location.search);
-              ownerParams.delete("host");
-              ownerParams.delete("v");
-              const ownerQuery = ownerParams.toString();
-              window.history.replaceState(null, "", `${window.location.pathname}${ownerQuery ? `?${ownerQuery}` : ""}`);
-            }
+            if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
             setRoomStatus("ready");
             if (hostId !== id) connectToPeer(hostId);
           });
@@ -598,7 +589,7 @@ export default function Home() {
               return;
             }
             if (error.type === "peer-unavailable") {
-              setRoomError("房主暂时不在线，请让房主打开网站后重新复制房间链接。");
+              setRoomError("房间正在重新连接，请稍候或刷新页面。");
               return;
             }
             if (error.type === "webrtc") {
@@ -610,7 +601,7 @@ export default function Home() {
           });
         };
 
-        attachPeer(new Peer(requestedHost || defaultRoomPeerId, peerOptions), true);
+        attachPeer(new Peer(defaultRoomPeerId, peerOptions), true);
       } catch {
         setRoomStatus("error");
         setRoomError("实时房间组件加载失败，请刷新页面重试。");
@@ -810,27 +801,6 @@ export default function Home() {
     }
   };
 
-  const saveNickname = async (event: FormEvent) => {
-    event.preventDefault();
-    const nickname = displayName.trim().slice(0, 24);
-    if (!nickname) return;
-    setJoinError("");
-    try {
-      const response = await fetch("/api/identity/me", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname }),
-      });
-      if (!response.ok) throw new Error("nickname save failed");
-      const data = await response.json() as { nickname?: unknown };
-      const savedNickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : nickname;
-      setDisplayName(savedNickname);
-      setJoined(true);
-    } catch {
-      setJoinError("昵称没有保存成功，请重试。");
-    }
-  };
-
   const submitActivity = (event: FormEvent) => {
     event.preventDefault();
     const nextActivity = activity.trim().slice(0, 80);
@@ -982,7 +952,7 @@ export default function Home() {
               </svg>
             </button>
             <button aria-label="更多" data-tooltip="更多">⋮</button>
-            <button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button>
+            <button className="room-leave" onClick={() => { stopShare(); stopCamera(); window.location.assign("/access"); }}>退出房间</button>
           </div>
         </section>
 
@@ -1073,23 +1043,7 @@ export default function Home() {
         </aside>
       </section>
 
-      {profileReady && !joined && (
-        <div className="modal-backdrop join-backdrop" role="presentation">
-          <section className="join-modal" role="dialog" aria-modal="true" aria-labelledby="join-title">
-            <span className="ticktick-mark">11</span>
-            <span className="eyebrow">11SCAT STUDY ROOM</span>
-            <h2 id="join-title">进入自习室</h2>
-            <p>先设置一个房间内显示的称号。其他成员会用这个名称看到你。</p>
-            <form onSubmit={saveNickname}>
-              <label className="token-label">你的称号
-                <input name="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} pattern=".*\S.*" title="请输入你的称号" required autoFocus />
-              </label>
-              {joinError && <p className="error-message" role="alert">{joinError}</p>}
-              <button className="primary-button wide" type="submit">进入房间</button>
-            </form>
-          </section>
-        </div>
-      )}
+      {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}
 
       {shareModeOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setShareModeOpen(false)}>

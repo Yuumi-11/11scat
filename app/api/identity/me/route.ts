@@ -6,7 +6,7 @@ export async function GET() {
   const identityId = await currentIdentityId();
   if (!identityId) return new NextResponse("Unauthorized", { status: 401 });
   const user = await getUser(identityId);
-  return NextResponse.json({ nickname: user?.nickname || "" });
+  return NextResponse.json({ identityId, nickname: user?.nickname || "" });
 }
 
 export async function POST(request: Request) {
