@@ -326,7 +326,7 @@ body { overflow: hidden; }
 .side-panel {
   height: 100%;
   min-height: 0;
-  padding: 16px;
+  padding: 16px 8px 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -351,7 +351,7 @@ body { overflow: hidden; }
 .chat-heading { flex: 0 0 auto; padding-bottom: 12px; }
 .chat-heading h2, .panel-heading h2 { margin: 4px 0 0; font-size: 22px; letter-spacing: -.025em; }
 .chat-notice { flex: 0 0 auto; margin: 10px 0; padding: 9px 10px; font-size: 12px; }
-.message-list { flex: 1 1 0; min-height: 0; }
+.message-list { flex: 1 1 0; min-height: 0; padding-right: 0; padding-left: 0; }
 .message p { padding: 9px 11px; font-size: 14px; }
 .message > span { font-size: 11px; }
 .chat-form {
