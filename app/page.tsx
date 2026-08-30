@@ -380,7 +380,7 @@ export default function Home() {
 
     function connectToPeer(peerId: string) {
       const selfId = selfPeerIdRef.current;
-      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 2) return;
+      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 1) return;
       bindConnection(localPeer.connect(peerId, {
         reliable: true,
         metadata: { room: hostPeerIdRef.current, name: displayNameRef.current, deviceId: localDeviceId },
@@ -406,7 +406,7 @@ export default function Home() {
           }
         }
         const existing = connections.get(peerId);
-        if (!existing && connections.size >= 2) {
+        if (!existing && connections.size >= 1) {
           connection.close();
           return;
         }
@@ -865,9 +865,9 @@ export default function Home() {
   };
 
   const visibleTasks = tasks.filter((task) => !task.done);
-  const visibleRemoteMembers = roomMembers.slice(0, 2);
+  const visibleRemoteMembers = roomMembers.slice(0, 1);
   const taskBoardMembers = visibleRemoteMembers.filter((memberId) => Boolean(memberNames[memberId]));
-  const emptyMemberSlots = Math.max(0, 2 - visibleRemoteMembers.length);
+  const emptyMemberSlots = Math.max(0, 1 - visibleRemoteMembers.length);
   const mediaItems: MediaItem[] = [];
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
