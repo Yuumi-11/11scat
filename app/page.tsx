@@ -566,7 +566,7 @@ export default function Home() {
           });
         };
 
-        const attachPeer = (peer: PeerClient, allowDefaultFallback: boolean) => {
+        const attachPeer = (peer: PeerClient, allowGuestFallback: boolean) => {
           localPeer = peer;
           peerRef.current = peer;
           peer.on("open", (id) => {
@@ -579,14 +579,20 @@ export default function Home() {
             inviteParams.set("host", hostId);
             const stableInviteUrl = `${window.location.origin}${window.location.pathname}?${inviteParams.toString()}`;
             setInviteUrl(stableInviteUrl);
-            if (!requestedHost && hostId === id) window.history.replaceState(null, "", `${window.location.pathname}?${inviteParams.toString()}`);
+            if (hostId === id) {
+              const ownerParams = new URLSearchParams(window.location.search);
+              ownerParams.delete("host");
+              ownerParams.delete("v");
+              const ownerQuery = ownerParams.toString();
+              window.history.replaceState(null, "", `${window.location.pathname}${ownerQuery ? `?${ownerQuery}` : ""}`);
+            }
             setRoomStatus("ready");
             if (hostId !== id) connectToPeer(hostId);
           });
           peer.on("connection", (connection) => bindConnection(connection, true));
           peer.on("call", handleCall);
           peer.on("error", (error) => {
-            if (error.type === "unavailable-id" && allowDefaultFallback && !disposed) {
+            if (error.type === "unavailable-id" && allowGuestFallback && !disposed) {
               peer.destroy();
               attachPeer(new Peer(peerOptions), false);
               return;
@@ -604,10 +610,7 @@ export default function Home() {
           });
         };
 
-        attachPeer(
-          requestedHost ? new Peer(peerOptions) : new Peer(defaultRoomPeerId, peerOptions),
-          !requestedHost,
-        );
+        attachPeer(new Peer(requestedHost || defaultRoomPeerId, peerOptions), true);
       } catch {
         setRoomStatus("error");
         setRoomError("实时房间组件加载失败，请刷新页面重试。");
