@@ -53,6 +53,7 @@ function MediaVideo({ stream, label, className, muted = true }: { stream: MediaS
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskView, setTaskView] = useState<"today" | "week">("today");
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -83,7 +84,6 @@ export default function Home() {
   const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
   const [activity, setActivity] = useState("");
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
-  const [taskOwnerId, setTaskOwnerId] = useState("self");
   const roomRef = useRef<Room | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -104,7 +104,7 @@ export default function Home() {
     setSyncing(true);
     setSyncError("");
     try {
-      const response = await fetch("/api/ticktick/tasks?view=week", { cache: "no-store" });
+      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store" });
       if (response.status === 401) {
         setConnected(false);
         setTasks((current) => current.filter((task) => task.source === "local"));
@@ -127,7 +127,7 @@ export default function Home() {
     }
   };
 
-  useEffect(() => { void loadTasks(); }, []);
+  useEffect(() => { void loadTasks(); }, [taskView]);
 
   useEffect(() => {
     let disposed = false;
@@ -839,6 +839,7 @@ export default function Home() {
     dataConnectionsRef.current.forEach((connection) => {
       if (connection.open) connection.send({ type: "activity", activity: nextActivity });
     });
+    (event.currentTarget.querySelector("input") as HTMLInputElement | null)?.blur();
   };
 
   const sendMessage = (event: FormEvent) => {
@@ -865,10 +866,8 @@ export default function Home() {
 
   const visibleTasks = tasks.filter((task) => !task.done);
   const visibleRemoteMembers = roomMembers.slice(0, 2);
+  const taskBoardMembers = visibleRemoteMembers.filter((memberId) => Boolean(memberNames[memberId]));
   const emptyMemberSlots = Math.max(0, 2 - visibleRemoteMembers.length);
-  const selectedOwnerName = taskOwnerId === "self" ? "我" : memberNames[taskOwnerId] || "成员";
-  const selectedTasks = taskOwnerId === "self" ? visibleTasks : memberTasks[taskOwnerId] || [];
-  const selectedActivity = taskOwnerId === "self" ? activity : memberActivities[taskOwnerId] || "";
   const mediaItems: MediaItem[] = [];
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
@@ -880,10 +879,6 @@ export default function Home() {
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const mediaIds = mediaItems.map((item) => item.id).join("|");
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
-
-  useEffect(() => {
-    if (taskOwnerId !== "self" && !roomMembers.includes(taskOwnerId)) setTaskOwnerId("self");
-  }, [roomMembers, taskOwnerId]);
 
   useEffect(() => {
     if (!mediaItems.length) {
@@ -1008,52 +1003,59 @@ export default function Home() {
               <button className="primary-button" type="submit">发送</button>
             </form>
           </div> : <div className="task-view">
-            <div className="task-owner-tabs" aria-label="选择任务板成员">
-              <button className={taskOwnerId === "self" ? "active" : ""} onClick={() => setTaskOwnerId("self")}>我</button>
-              {Array.from({ length: 2 }, (_, index) => {
-                const memberId = visibleRemoteMembers[index];
-                return (
-                  <button
-                    className={memberId && taskOwnerId === memberId ? "active" : ""}
-                    disabled={!memberId}
-                    onClick={() => memberId && setTaskOwnerId(memberId)}
-                    key={memberId || `member-slot-${index}`}
-                  >
-                    {memberId ? memberNames[memberId] || `成员 ${String.fromCharCode(65 + index)}` : `成员 ${String.fromCharCode(65 + index)}`}
-                  </button>
-                );
-              })}
-            </div>
-
-            {taskOwnerId === "self" ? (
-              <form className="activity-box" onSubmit={submitActivity}>
-                <label htmlFor="activity-input">我正在</label>
-                <input id="activity-input" value={activity} onChange={(event) => setActivity(event.target.value)} maxLength={80} aria-label="填写你正在进行的事情，按 Enter 同步" />
-              </form>
-            ) : (
-              <div className="activity-box readonly"><strong>{selectedOwnerName} 正在</strong><span>{selectedActivity}</span></div>
-            )}
+            <button
+              className="task-range-switch"
+              type="button"
+              onClick={() => setTaskView((current) => current === "today" ? "week" : "today")}
+              aria-label={`当前显示${taskView === "today" ? "今天" : "最近 7 天"}，点击切换到${taskView === "today" ? "最近 7 天" : "今天"}`}
+            >
+              <span aria-hidden="true">▦</span>{taskView === "today" ? "今天" : "最近 7 天"}
+            </button>
             {syncError && <p className="error-message" role="alert">{syncError}</p>}
 
             <div className="task-scroll">
-              {taskOwnerId === "self" && !syncing && !connected ? (
-                <div className="ticktick-connect-empty"><button className="primary-button" onClick={() => setSyncOpen(true)}>连接滴答</button></div>
-              ) : (
-                <div className="task-list" aria-live="polite">
-                  {selectedTasks.map((task) => taskOwnerId === "self" ? (
+              <section className="task-person-card self-task-card" aria-label="我的任务">
+                <form className="activity-box" onSubmit={submitActivity}>
+                  <label htmlFor="activity-input">我正在</label>
+                  <input id="activity-input" value={activity} onChange={(event) => setActivity(event.target.value)} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 同步" />
+                </form>
+                <div className="task-person-list">
+                  {!syncing && !connected ? (
+                    <div className="ticktick-connect-empty"><button className="primary-button" type="button" onClick={() => setSyncOpen(true)}>连接滴答</button></div>
+                  ) : (
+                    <div className="task-list" aria-live="polite">
+                      {visibleTasks.map((task) => (
                       <label className="task-row" key={task.id}>
-                        <input type="checkbox" checked={false} onChange={() => void toggleTask(task as Task)} />
+                        <input type="checkbox" checked={false} onChange={() => void toggleTask(task)} />
                         <span className="custom-check">✓</span>
                         <span className="task-copy"><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
                       </label>
-                    ) : (
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {taskBoardMembers.map((memberId) => {
+                const nickname = memberNames[memberId];
+                const sharedTasks = memberTasks[memberId] || [];
+                const memberActivity = memberActivities[memberId] || "...";
+                return (
+                  <section className="task-person-card" aria-label={`${nickname}的任务`} key={memberId}>
+                    <div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div>
+                    <div className="task-person-list">
+                      <div className="task-list">
+                        {sharedTasks.map((task) => (
                       <div className="task-row readonly-task" key={task.id}>
                         <span className="custom-check" />
                         <span className="task-copy"><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
                       </div>
-                    ))}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           </div>}
         </aside>
