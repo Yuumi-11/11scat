@@ -479,8 +479,15 @@ body { overflow: hidden; }
   position: relative;
   width: 46px;
   height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
   font-size: 18px;
 }
+.room-controls .room-control-icon { display: block; flex: 0 0 auto; margin: 0; }
+.room-controls .room-stop-icon { fill: currentColor; stroke: none; }
 .room-controls button[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
