@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 function key(): Buffer {
-  const secret = process.env.TICKTICK_COOKIE_SECRET || process.env.SITE_PASSWORD;
-  if (!secret) throw new Error("TickTick cookie encryption is not configured");
+  const secret = process.env.TICKTICK_STORAGE_SECRET || process.env.TICKTICK_COOKIE_SECRET || process.env.SITE_PASSWORD;
+  if (!secret) throw new Error("TickTick storage encryption is not configured");
   return createHash("sha256").update(`11scat-ticktick:${secret}`).digest();
 }
 

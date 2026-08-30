@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { decryptToken } from "../crypto";
+import { accessToken } from "../store";
 
 type TickProject = { id: string; name: string; closed?: boolean };
 type TickTask = {
@@ -18,12 +17,6 @@ type TickV2Snapshot = {
     update?: TickTask[];
   };
 };
-
-async function accessToken() {
-  const payload = (await cookies()).get("tt_access")?.value;
-  if (!payload) return null;
-  try { return decryptToken(payload); } catch { return null; }
-}
 
 async function tickFetch(path: string, token: string, init?: RequestInit) {
   return fetch(`https://api.dida365.com/open/v1${path}`, {

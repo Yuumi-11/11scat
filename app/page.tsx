@@ -14,7 +14,6 @@ type Task = {
   source: "ticktick" | "local";
 };
 
-type Project = { id: string; name: string };
 type ChatMessage = { id: string; body: string; time: string; sender: string; own?: boolean };
 type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done">;
 type MediaSource = "camera" | "screen";
@@ -27,12 +26,6 @@ type MediaItem = {
 };
 
 const USE_LIVEKIT = false;
-
-const pad = (value: number) => String(value).padStart(2, "0");
-const localDateInputValue = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-};
 
 const formatDueDate = (dueDate?: string) => {
   if (!dueDate) return "";
@@ -60,11 +53,8 @@ function MediaVideo({ stream, label, className, muted = true }: { stream: MediaS
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState("");
-  const [taskView, setTaskView] = useState<"today" | "week">("week");
-  const [draft, setDraft] = useState("");
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
+  const [shareModeOpen, setShareModeOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareError, setShareError] = useState("");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -73,6 +63,8 @@ export default function Home() {
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [displayName, setDisplayName] = useState("");
   const [joined, setJoined] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const [remoteCameras, setRemoteCameras] = useState<Record<string, MediaStream>>({});
   const [remoteScreens, setRemoteScreens] = useState<Record<string, MediaStream>>({});
   const [activeMediaId, setActiveMediaId] = useState("");
@@ -89,6 +81,9 @@ export default function Home() {
   const [chatDraft, setChatDraft] = useState("");
   const [sideView, setSideView] = useState<"chat" | "tasks">("chat");
   const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
+  const [activity, setActivity] = useState("");
+  const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
+  const [taskOwnerId, setTaskOwnerId] = useState("self");
   const roomRef = useRef<Room | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -98,6 +93,7 @@ export default function Home() {
   const dataConnectionsRef = useRef(new Map<string, DataConnection>());
   const messagesRef = useRef<ChatMessage[]>([]);
   const tasksRef = useRef<Task[]>([]);
+  const activityRef = useRef("");
   const outgoingCallsRef = useRef(new Map<string, MediaConnection>());
   const incomingCallsRef = useRef(new Map<string, MediaConnection>());
   const callPeerRef = useRef<(peerId: string, media: MediaStream, source: MediaSource) => void>(() => undefined);
@@ -108,10 +104,9 @@ export default function Home() {
     setSyncing(true);
     setSyncError("");
     try {
-      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store" });
+      const response = await fetch("/api/ticktick/tasks?view=week", { cache: "no-store" });
       if (response.status === 401) {
         setConnected(false);
-        setProjects([]);
         setTasks((current) => current.filter((task) => task.source === "local"));
         return false;
       }
@@ -120,16 +115,10 @@ export default function Home() {
       if (!Array.isArray(data.tasks) || !Array.isArray(data.projects)) throw new Error("滴答返回的数据格式异常");
       const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
       setConnected(true);
-      setProjects(data.projects);
-      const preferredProject = data.projects.find((project: Project) => /工作/.test(project.name))
-        || data.projects.find((project: Project) => !/欢迎/.test(project.name))
-        || data.projects[0];
-      setSelectedProject(preferredProject?.id || "");
       setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
       return true;
     } catch (error) {
       setConnected(false);
-      setProjects([]);
       setTasks((current) => current.filter((task) => task.source === "local"));
       setSyncError(error instanceof Error ? error.message : "同步失败");
       return false;
@@ -138,9 +127,32 @@ export default function Home() {
     }
   };
 
-  useEffect(() => { void loadTasks(); }, [taskView]);
+  useEffect(() => { void loadTasks(); }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/identity/me", { cache: "no-store" });
+        if (!response.ok) throw new Error("profile unavailable");
+        const data = await response.json() as { nickname?: unknown };
+        const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
+        if (!disposed && nickname) {
+          setDisplayName(nickname);
+          setJoined(true);
+        }
+      } catch {
+        if (!disposed) setJoinError("暂时无法读取身份资料，请刷新页面重试。");
+      } finally {
+        if (!disposed) setProfileReady(true);
+      }
+    };
+    void loadProfile();
+    return () => { disposed = true; };
+  }, []);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { activityRef.current = activity.trim().slice(0, 80); }, [activity]);
   useEffect(() => {
     tasksRef.current = tasks;
     const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done }));
@@ -186,6 +198,12 @@ export default function Home() {
         delete next[participant.identity];
         return next;
       });
+      setMemberActivities((current) => {
+        if (!(participant.identity in current)) return current;
+        const next = { ...current };
+        delete next[participant.identity];
+        return next;
+      });
       refreshMembers();
     });
     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -201,7 +219,12 @@ export default function Home() {
     });
     room.on(RoomEvent.DataReceived, (payload, participant) => {
       try {
-        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown };
+        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown; activity?: unknown };
+        if (message.type === "activity" && participant && typeof message.activity === "string") {
+          const nextActivity = message.activity.trim().slice(0, 80);
+          setMemberActivities((current) => ({ ...current, [participant.identity]: nextActivity }));
+          return;
+        }
         if (message.type === "task-snapshot" && participant && Array.isArray(message.tasks)) {
           const incomingTasks = message.tasks.filter((item): item is SharedTask => Boolean(
             item && typeof item === "object" && typeof (item as SharedTask).id === "string" && typeof (item as SharedTask).title === "string",
@@ -307,6 +330,12 @@ export default function Home() {
         delete next[peerId];
         return next;
       });
+      setMemberActivities((current) => {
+        if (!(peerId in current)) return current;
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
       refreshMembers();
     };
 
@@ -351,7 +380,7 @@ export default function Home() {
 
     function connectToPeer(peerId: string) {
       const selfId = selfPeerIdRef.current;
-      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 1) return;
+      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 2) return;
       bindConnection(localPeer.connect(peerId, {
         reliable: true,
         metadata: { room: hostPeerIdRef.current, name: displayNameRef.current, deviceId: localDeviceId },
@@ -377,7 +406,7 @@ export default function Home() {
           }
         }
         const existing = connections.get(peerId);
-        if (!existing && connections.size >= 1) {
+        if (!existing && connections.size >= 2) {
           connection.close();
           return;
         }
@@ -391,7 +420,7 @@ export default function Home() {
         rememberPeerName(peerId, connection.metadata?.name);
         setRoomError("");
         refreshMembers();
-        connection.send({ type: "presence", name: displayNameRef.current, deviceId: localDeviceId });
+        connection.send({ type: "presence", name: displayNameRef.current, deviceId: localDeviceId, activity: activityRef.current });
         connection.send({
           type: "task-snapshot",
           tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
@@ -408,11 +437,20 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown; messages?: unknown; tasks?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown };
+        const message = payload as { type: string; ids?: unknown; messages?: unknown; tasks?: unknown; id?: unknown; body?: unknown; time?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown };
         if (message.type === "presence") {
           rememberPeerName(peerId, message.name);
+          if (typeof message.activity === "string") {
+            const nextActivity = message.activity.trim().slice(0, 80);
+            setMemberActivities((current) => ({ ...current, [peerId]: nextActivity }));
+          }
           const deviceId = typeof message.deviceId === "string" ? message.deviceId.trim().slice(0, 80) : "";
           if (deviceId) peerDeviceIds.set(peerId, deviceId);
+          return;
+        }
+        if (message.type === "activity" && typeof message.activity === "string") {
+          const nextActivity = message.activity.trim().slice(0, 80);
+          setMemberActivities((current) => ({ ...current, [peerId]: nextActivity }));
           return;
         }
         if (message.type === "media-request") {
@@ -619,31 +657,6 @@ export default function Home() {
     }
   }, [stream, roomMembers]);
 
-  const addTask = async () => {
-    const title = draft.trim();
-    if (!title) return;
-
-    if (connected && selectedProject) {
-      const response = await fetch("/api/ticktick/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, projectId: selectedProject, dueDate: localDateInputValue() }),
-      });
-      if (response.ok) {
-        setDraft("");
-        await loadTasks();
-        return;
-      }
-      setSyncError("任务没有写入滴答清单，请重试");
-      return;
-    }
-
-    setTasks((current) => [...current, {
-      id: String(Date.now()), title, project: "本次自习", done: false, source: "local",
-    }]);
-    setDraft("");
-  };
-
   const toggleTask = async (task: Task) => {
     if (task.done) return;
     setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: true } : item));
@@ -682,19 +695,18 @@ export default function Home() {
   const disconnectTickTick = async () => {
     await fetch("/api/ticktick/token", { method: "DELETE" });
     setConnected(false);
-    setProjects([]);
     setTasks((current) => current.filter((task) => task.source === "local"));
     setSyncOpen(false);
   };
 
-  const startShare = async () => {
+  const startShare = async (mode: "detail" | "motion") => {
     setShareError("");
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setShareError("当前浏览器不支持屏幕共享，请使用最新版 Chrome、Edge 或 Safari。");
       return;
     }
     try {
-      const detailMode = shareMode === "detail";
+      const detailMode = mode === "detail";
       const nextStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: detailMode ? 2560 : 1920 },
@@ -711,9 +723,31 @@ export default function Home() {
       }
       stream?.getTracks().forEach((item) => item.stop());
       setStream(nextStream);
+      setShareMode(mode);
       setActiveMediaId("self-screen");
     } catch (error) {
       if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
+    }
+  };
+
+  const chooseShareMode = async (mode: "detail" | "motion") => {
+    setShareMode(mode);
+    setShareModeOpen(false);
+    const track = stream?.getVideoTracks()[0];
+    if (!track) {
+      await startShare(mode);
+      return;
+    }
+    const detailMode = mode === "detail";
+    track.contentHint = detailMode ? "detail" : "motion";
+    try {
+      await track.applyConstraints({
+        width: { ideal: detailMode ? 2560 : 1920 },
+        height: { ideal: detailMode ? 1440 : 1080 },
+        frameRate: { ideal: detailMode ? 15 : 30, max: detailMode ? 20 : 60 },
+      });
+    } catch {
+      setShareError("共享模式已切换，但当前浏览器保留了原始画面参数。");
     }
   };
 
@@ -773,6 +807,40 @@ export default function Home() {
     }
   };
 
+  const saveNickname = async (event: FormEvent) => {
+    event.preventDefault();
+    const nickname = displayName.trim().slice(0, 24);
+    if (!nickname) return;
+    setJoinError("");
+    try {
+      const response = await fetch("/api/identity/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nickname }),
+      });
+      if (!response.ok) throw new Error("nickname save failed");
+      const data = await response.json() as { nickname?: unknown };
+      const savedNickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : nickname;
+      setDisplayName(savedNickname);
+      setJoined(true);
+    } catch {
+      setJoinError("昵称没有保存成功，请重试。");
+    }
+  };
+
+  const submitActivity = (event: FormEvent) => {
+    event.preventDefault();
+    const nextActivity = activity.trim().slice(0, 80);
+    setActivity(nextActivity);
+    void roomRef.current?.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify({ type: "activity", activity: nextActivity })),
+      { reliable: true },
+    );
+    dataConnectionsRef.current.forEach((connection) => {
+      if (connection.open) connection.send({ type: "activity", activity: nextActivity });
+    });
+  };
+
   const sendMessage = (event: FormEvent) => {
     event.preventDefault();
     const body = chatDraft.trim();
@@ -796,8 +864,11 @@ export default function Home() {
   };
 
   const visibleTasks = tasks.filter((task) => !task.done);
-  const visibleRemoteMembers = roomMembers.slice(0, 1);
-  const emptyMemberSlots = Math.max(0, 1 - visibleRemoteMembers.length);
+  const visibleRemoteMembers = roomMembers.slice(0, 2);
+  const emptyMemberSlots = Math.max(0, 2 - visibleRemoteMembers.length);
+  const selectedOwnerName = taskOwnerId === "self" ? "我" : memberNames[taskOwnerId] || "成员";
+  const selectedTasks = taskOwnerId === "self" ? visibleTasks : memberTasks[taskOwnerId] || [];
+  const selectedActivity = taskOwnerId === "self" ? activity : memberActivities[taskOwnerId] || "";
   const mediaItems: MediaItem[] = [];
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
@@ -809,6 +880,10 @@ export default function Home() {
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const mediaIds = mediaItems.map((item) => item.id).join("|");
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
+
+  useEffect(() => {
+    if (taskOwnerId !== "self" && !roomMembers.includes(taskOwnerId)) setTaskOwnerId("self");
+  }, [roomMembers, taskOwnerId]);
 
   useEffect(() => {
     if (!mediaItems.length) {
@@ -845,7 +920,7 @@ export default function Home() {
                 ? <MediaVideo className="tile-preview-media" stream={stream} label="你的屏幕预览" />
                 : cameraStream
                   ? <MediaVideo className="camera-preview" stream={cameraStream} label="你的摄像头预览" />
-                  : <div className="tile-preview">摄像头关闭</div>}
+                  : <div className="tile-preview" aria-hidden="true" />}
               <small>{displayName || "你"}</small>
             </button>
             {visibleRemoteMembers.map((peerId, index) => (
@@ -861,15 +936,15 @@ export default function Home() {
                   ? <MediaVideo className="tile-preview-media" stream={remoteScreens[peerId]} label={`成员 ${index + 1} 的屏幕预览`} />
                   : remoteCameras[peerId]
                     ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
-                    : <div className="tile-preview invite-preview">摄像头关闭</div>}
-                <small>{memberNames[peerId] || peerId} · 已连接</small>
+                    : <div className="tile-preview invite-preview" aria-hidden="true" />}
+                <small>{memberNames[peerId] || peerId}</small>
               </button>
             ))}
             {Array.from({ length: emptyMemberSlots }, (_, index) => (
               <button className="participant-tile participant-invite" type="button" onClick={() => void copyInviteLink()} key={`empty-${index}`}>
-                <span className={index === 0 ? "tile-badge invite" : "tile-badge ghost"}>{index === 0 ? "＋" : "?"}</span>
-                <span className="tile-preview invite-preview">{roomStatus === "connecting" ? "房间连接中" : inviteCopied ? "邀请链接已复制" : "邀请成员"}</span>
-                <small>{roomStatus === "error" ? "连接异常" : "点击复制房间链接"}</small>
+                <span className="tile-badge invite">＋</span>
+                <span className="tile-preview invite-preview" aria-hidden="true" />
+                <small>{roomStatus === "error" ? "连接异常" : inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</small>
               </button>
             ))}
           </div>
@@ -886,36 +961,34 @@ export default function Home() {
                 <button className="media-nav media-next" type="button" onClick={() => stepMedia(1)} aria-label="查看下一个画面">›</button>
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
+              {stream && <button className="share-mode-switch" type="button" onClick={() => setShareModeOpen(true)} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
             </> : (
               <div className="empty-share">
                 <div className="share-glyph"><span /><span /><span /></div>
-                <h2>共享你的学习窗口</h2>
-                <p>文字与代码模式优先保留细节，适合长时间自习和讲题。</p>
-                <button className="primary-button" onClick={startShare}>开始高清共享</button>
-                <span className="privacy-note">只会共享你主动选择的窗口或屏幕</span>
+                <button className="primary-button" onClick={() => setShareModeOpen(true)}>开始共享</button>
               </div>
             )}
           </div>
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
-          <div className="quality-bar">
-            <div className="quality-copy"><span className="quality-icon">HD</span><div><strong>{shareMode === "detail" ? "文字 / 代码优先" : "动态画面优先"}</strong><small>{shareMode === "detail" ? "最高 1440p · 15 FPS · 细节增强" : "最高 1080p · 30 FPS · 动态流畅"}</small></div></div>
-            <div className="segmented"><button className={shareMode === "detail" ? "active" : ""} onClick={() => setShareMode("detail")}>文字 / 代码</button><button className={shareMode === "motion" ? "active" : ""} onClick={() => setShareMode("motion")}>动态画面</button></div>
-            {stream && <button className="stop-button" onClick={stopShare}>停止共享</button>}
+          <div className="room-controls">
+            <button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"}>◉</button>
+            <button aria-label="麦克风" data-tooltip="麦克风功能即将开放">♩</button>
+            <button className="room-stop" onClick={stopShare} aria-label="停止共享" data-tooltip={stream ? "停止当前共享" : "当前没有共享画面"}>■</button>
+            <button aria-label="更多设置" data-tooltip="更多设置即将开放">⋮</button>
+            <button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button>
           </div>
-          <div className="room-controls"><button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"}>{cameraStream ? "●" : "◉"}</button><button aria-label="静音">♩</button><button className="room-stop" onClick={stopShare} aria-label="停止共享">■</button><button aria-label="更多设置">⋮</button><button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button></div>
         </section>
 
         <aside className="side-panel panel">
           <div className="side-tabs" aria-label="侧栏内容">
             <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}>聊天室</button>
-            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}>任务</button>
+            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}>任务板</button>
           </div>
 
           {sideView === "chat" ? <div className="chat-view">
-            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><span className="local-badge">实时</span></div>
-            <div className="chat-notice">消息会在当前房间实时同步，房主会为重新加入的成员保留本轮聊天记录。</div>
+            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div></div>
             <div className="message-list" aria-live="polite">
-              {messages.length === 0 ? <div className="empty-chat"><strong>还没有消息</strong><span>可以先记录一句本轮目标或休息提醒。</span></div> : messages.map((message) => (
+              {messages.length === 0 ? <div className="empty-chat"><strong>还没有消息</strong></div> : messages.map((message) => (
                 <div className={message.own ? "message own" : "message"} key={message.id}><span>{message.sender} · {message.time}</span><p>{message.body}</p></div>
               ))}
             </div>
@@ -930,91 +1003,95 @@ export default function Home() {
                   }
                 }}
                 aria-label="输入房间消息"
-                placeholder="输入消息，Enter 发送"
                 rows={2}
               />
               <button className="primary-button" type="submit">发送</button>
             </form>
           </div> : <div className="task-view">
-            <div className="panel-heading">
-              <div><span className="eyebrow">滴答清单</span><h2>{taskView === "today" ? "今天" : "最近 7 天"}</h2></div>
-              <button className="sync-button" onClick={() => setSyncOpen(true)}>
-                <span className={connected ? "sync-dot active" : "sync-dot"} />
-                {syncing ? "读取中" : connected ? "已连接" : "连接滴答"}
-              </button>
+            <div className="task-owner-tabs" aria-label="选择任务板成员">
+              <button className={taskOwnerId === "self" ? "active" : ""} onClick={() => setTaskOwnerId("self")}>我</button>
+              {Array.from({ length: 2 }, (_, index) => {
+                const memberId = visibleRemoteMembers[index];
+                return (
+                  <button
+                    className={memberId && taskOwnerId === memberId ? "active" : ""}
+                    disabled={!memberId}
+                    onClick={() => memberId && setTaskOwnerId(memberId)}
+                    key={memberId || `member-slot-${index}`}
+                  >
+                    {memberId ? memberNames[memberId] || `成员 ${String.fromCharCode(65 + index)}` : `成员 ${String.fromCharCode(65 + index)}`}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="task-filters" aria-label="待办时间范围">
-              <button className={taskView === "today" ? "active" : ""} onClick={() => setTaskView("today")}>今天</button>
-              <button className={taskView === "week" ? "active" : ""} onClick={() => setTaskView("week")}>最近 7 天</button>
-            </div>
-            <p className="task-scope-note">仅显示待办任务，不包含日历、课表或已完成事项。</p>
+            {taskOwnerId === "self" ? (
+              <form className="activity-box" onSubmit={submitActivity}>
+                <label htmlFor="activity-input">我正在</label>
+                <input id="activity-input" value={activity} onChange={(event) => setActivity(event.target.value)} maxLength={80} aria-label="填写你正在进行的事情，按 Enter 同步" />
+              </form>
+            ) : (
+              <div className="activity-box readonly"><strong>{selectedOwnerName} 正在</strong><span>{selectedActivity}</span></div>
+            )}
             {syncError && <p className="error-message" role="alert">{syncError}</p>}
 
             <div className="task-scroll">
-              <section className="task-group" aria-labelledby="my-tasks-title">
-                <div className="task-group-heading"><h3 id="my-tasks-title">我的待办</h3><span>{visibleTasks.length}</span></div>
-                {!syncing && visibleTasks.length === 0 ? (
-                  <div className="empty-tasks">
-                    <strong>{connected ? `${taskView === "today" ? "今天" : "最近 7 天"}没有待办` : "还没有连接滴答清单"}</strong>
-                    <span>{connected ? "切换时间范围可以查看其他待办" : "连接成功且任务读取完成后才会显示已连接"}</span>
-                  </div>
-                ) : (
-                  <div className="task-list" aria-live="polite">
-                    {visibleTasks.map((task) => (
-                      <label className="task-row" key={`${task.source}-${task.id}`}>
-                        <input type="checkbox" checked={false} onChange={() => void toggleTask(task)} />
+              {taskOwnerId === "self" && !syncing && !connected ? (
+                <div className="ticktick-connect-empty"><button className="primary-button" onClick={() => setSyncOpen(true)}>连接滴答</button></div>
+              ) : (
+                <div className="task-list" aria-live="polite">
+                  {selectedTasks.map((task) => taskOwnerId === "self" ? (
+                      <label className="task-row" key={task.id}>
+                        <input type="checkbox" checked={false} onChange={() => void toggleTask(task as Task)} />
                         <span className="custom-check">✓</span>
                         <span className="task-copy"><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
                       </label>
+                    ) : (
+                      <div className="task-row readonly-task" key={task.id}>
+                        <span className="custom-check" />
+                        <span className="task-copy"><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></span>
+                      </div>
                     ))}
-                  </div>
-                )}
-                <div className="add-task">
-                  <span>＋</span>
-                  <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void addTask()} placeholder={connected ? "添加今天的滴答待办" : "添加本次自习任务"} />
-                  <button onClick={() => void addTask()}>添加</button>
                 </div>
-              </section>
-
-              <section className="task-group member-task-group" aria-labelledby="member-tasks-title">
-                <div className="task-group-heading"><h3 id="member-tasks-title">成员待办</h3><span>{roomMembers.length}</span></div>
-                {roomMembers.length === 0 ? (
-                  <div className="member-empty"><strong>等待成员加入</strong><p>成员进入房间后，其当前待办会显示在这里。</p></div>
-                ) : roomMembers.map((memberId) => {
-                  const sharedTasks = memberTasks[memberId] || [];
-                  return <div className="member-task-card" key={memberId}>
-                    <div className="member-task-name"><span className="member-avatar">{(memberNames[memberId] || memberId).slice(0, 1)}</span><strong>{memberNames[memberId] || memberId}</strong><small>{sharedTasks.length} 项</small></div>
-                    {sharedTasks.length === 0 ? <p>暂无待办或正在同步</p> : sharedTasks.map((task) => (
-                      <div className="shared-task-row" key={task.id}><span /><div><strong>{task.title}</strong><small>{task.project}{task.dueDate ? ` · ${formatDueDate(task.dueDate)}` : ""}</small></div></div>
-                    ))}
-                  </div>;
-                })}
-              </section>
+              )}
             </div>
           </div>}
         </aside>
       </section>
 
-      {!joined && (
+      {profileReady && !joined && (
         <div className="modal-backdrop join-backdrop" role="presentation">
           <section className="join-modal" role="dialog" aria-modal="true" aria-labelledby="join-title">
             <span className="ticktick-mark">11</span>
             <span className="eyebrow">11SCAT STUDY ROOM</span>
             <h2 id="join-title">进入自习室</h2>
             <p>先设置一个房间内显示的称号。其他成员会用这个名称看到你。</p>
-            <form onSubmit={(event) => {
-              event.preventDefault();
-              const name = displayName.trim();
-              if (!name) return;
-              setDisplayName(name.slice(0, 24));
-              setJoined(true);
-            }}>
+            <form onSubmit={saveNickname}>
               <label className="token-label">你的称号
                 <input name="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={24} pattern=".*\S.*" title="请输入你的称号" required autoFocus />
               </label>
+              {joinError && <p className="error-message" role="alert">{joinError}</p>}
               <button className="primary-button wide" type="submit">进入房间</button>
             </form>
+          </section>
+        </div>
+      )}
+
+      {shareModeOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShareModeOpen(false)}>
+          <section className="share-mode-modal" role="dialog" aria-modal="true" aria-labelledby="share-mode-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭">×</button>
+            <h2 id="share-mode-title">选择共享模式</h2>
+            <div className="share-mode-options">
+              <button type="button" onClick={() => void chooseShareMode("detail")}>
+                <strong>文字 / 代码</strong>
+                <span>字迹清晰，适合阅读和讲题</span>
+              </button>
+              <button type="button" onClick={() => void chooseShareMode("motion")}>
+                <strong>动态画面</strong>
+                <span>帧率更高，适合视频和演示</span>
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -1025,7 +1102,7 @@ export default function Home() {
             <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭">×</button>
             <span className="ticktick-mark">✓</span><span className="eyebrow">REAL TICKTICK CONNECTION</span>
             <h2 id="sync-title">连接你的滴答清单</h2>
-            <p>这里不再使用演示任务。Token 只会以加密、HttpOnly Cookie 保存在你的浏览器中，用于读取任务、添加任务和同步完成状态。</p>
+            <p>Token 会按身份加密保存在服务器中，用于读取任务和同步完成状态。以后使用同一身份识别码时会自动恢复。</p>
             {connected ? (
               <div className="connected-actions"><button className="primary-button wide" onClick={() => { setSyncOpen(false); void loadTasks(); }}>立即刷新</button><button className="disconnect-button" onClick={() => void disconnectTickTick()}>断开滴答清单</button></div>
             ) : (

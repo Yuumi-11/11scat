@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { encryptToken } from "../crypto";
+import { clearAccessToken, saveAccessToken } from "../store";
 
 const COOKIE = "tt_access";
 
@@ -25,14 +25,14 @@ export async function POST(request: Request) {
     return new NextResponse("Task read failed", { status: 502 });
   }
 
+  if (!(await saveAccessToken(token))) return new NextResponse("Unauthorized", { status: 401 });
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(COOKIE, encryptToken(token), {
-    httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30,
-  });
+  response.cookies.set(COOKIE, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
   return response;
 }
 
 export async function DELETE() {
+  if (!(await clearAccessToken())) return new NextResponse("Unauthorized", { status: 401 });
   const response = NextResponse.json({ ok: true });
   response.cookies.set(COOKIE, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
   return response;

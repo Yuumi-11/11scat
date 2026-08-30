@@ -18,24 +18,24 @@ export default async function AccessPage({ searchParams }: AccessPageProps) {
           <strong>11scat</strong>
         </div>
         <span className="eyebrow access-eyebrow">PRIVATE STUDY SPACE</span>
-        <h1>输入访问密码</h1>
-        <p>这个自习空间仅向受邀访客开放。</p>
+        <h1>输入身份识别码</h1>
+        <p>识别码用于确认身份并恢复你的昵称与个人连接。</p>
         <form action="/api/access" method="post">
           <input type="hidden" name="next" value={next || "/"} />
-          <label htmlFor="password">访问密码</label>
+          <label htmlFor="identityCode">身份识别码</label>
           <input
-            id="password"
-            name="password"
+            id="identityCode"
+            name="identityCode"
             type="password"
             inputMode="numeric"
             autoComplete="current-password"
             required
             autoFocus
           />
-          {error && <div className="access-error" role="alert">密码不正确，请重新输入。</div>}
+          {error && <div className="access-error" role="alert">识别码无效，请重新输入。</div>}
           <button className="primary-button access-submit" type="submit">进入 11scat</button>
         </form>
-        <small>验证成功后，此设备将在 7 天内保持访问状态。</small>
+        <small>为了安全，页面和日志不会显示完整识别码。</small>
       </section>
     </main>
   );
