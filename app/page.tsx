@@ -966,10 +966,15 @@ export default function Home() {
           </div>
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
           <div className="room-controls">
-            <button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"}>◉</button>
-            <button aria-label="麦克风" data-tooltip="麦克风功能即将开放">♩</button>
-            <button className="room-stop" onClick={stopShare} aria-label="停止共享" data-tooltip={stream ? "停止当前共享" : "当前没有共享画面"}>■</button>
-            <button aria-label="更多设置" data-tooltip="更多设置即将开放">⋮</button>
+            <button className={cameraStream ? "camera-on" : ""} onClick={() => void toggleCamera()} aria-label="开启摄像头" data-tooltip="开启摄像头">◉</button>
+            <button aria-label="静音" data-tooltip="静音">
+              <svg className="room-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 9.5V6a3 3 0 0 1 6 0v5.5a3 3 0 0 1-.35 1.41" />
+                <path d="M5.5 10.5v1a6.5 6.5 0 0 0 10.64 5.01M18.5 10.5v1a6.47 6.47 0 0 1-.71 2.95M12 18v3M9 21h6M4 4l16 16" />
+              </svg>
+            </button>
+            <button className="room-stop" onClick={stopShare} aria-label="结束共享" data-tooltip="结束共享">■</button>
+            <button aria-label="更多" data-tooltip="更多">⋮</button>
             <button className="room-leave" onClick={() => { stopShare(); stopCamera(); setJoined(false); }}>退出房间</button>
           </div>
         </section>

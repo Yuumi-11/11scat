@@ -224,6 +224,7 @@ body { background: #fff3f8; }
 .quality-copy strong { font-size: 14px; }
 .quality-copy small, .quality-icon, .segmented button, .stop-button { font-size: 12px; }
 .room-controls button { font-size: 14px; }
+.room-control-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
 .room-controls .room-leave { font-size: 12px; font-weight: 800; }
 .local-badge { font-size: 12px; }
 .side-tabs { background: #fff0f6; }
