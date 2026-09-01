@@ -275,6 +275,58 @@ export default function Home() {
     const mediaRetryCounts = new Map<string, number>();
     const peerDeviceIds = new Map<string, string>();
     let localDeviceId = "";
+    let reconnectTimer: number | null = null;
+    let reconnectAttempts = 0;
+    let initializingRoom = false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer === null) return;
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const recoverRoomConnection = () => {
+      if (disposed) return;
+      if (!navigator.onLine) {
+        setRoomStatus("connecting");
+        setRoomError("网络已断开，恢复后会自动重新连接。");
+        return;
+      }
+      const peer = localPeer;
+      if (!peer || peer.destroyed) {
+        void initializeRoom();
+        return;
+      }
+      if (peer.disconnected) {
+        try { peer.reconnect(); } catch {
+          peer.destroy();
+          if (localPeer === peer) localPeer = null;
+          void initializeRoom();
+        }
+        return;
+      }
+      if (peer.open) {
+        reconnectAttempts = 0;
+        setRoomStatus("ready");
+        setRoomError("");
+        const hostId = hostPeerIdRef.current;
+        if (hostId && hostId !== peer.id && !connections.has(hostId)) connectToPeer(hostId);
+      }
+    };
+
+    const scheduleRoomRecovery = (delay = 700) => {
+      if (disposed || reconnectTimer !== null) return;
+      setRoomStatus("connecting");
+      setRoomError(navigator.onLine ? "房间连接正在恢复，请稍候。" : "网络已断开，恢复后会自动重新连接。");
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        recoverRoomConnection();
+        if (!disposed && navigator.onLine && (!localPeer?.open || localPeer.disconnected)) {
+          reconnectAttempts += 1;
+          scheduleRoomRecovery(Math.min(700 * (2 ** reconnectAttempts), 10000));
+        }
+      }, delay);
+    };
 
     const rememberPeerName = (peerId: string, value: unknown) => {
       const name = typeof value === "string" ? value.trim().slice(0, 24) : "";
@@ -500,6 +552,8 @@ export default function Home() {
     }
 
     const initializeRoom = async () => {
+      if (disposed || initializingRoom) return;
+      initializingRoom = true;
       try {
         const { Peer } = await import("peerjs");
         if (disposed) return;
@@ -571,6 +625,8 @@ export default function Home() {
           peerRef.current = peer;
           peer.on("open", (id) => {
             if (disposed) return;
+            clearReconnectTimer();
+            reconnectAttempts = 0;
             selfPeerIdRef.current = id;
             const hostId = defaultRoomPeerId;
             hostPeerIdRef.current = hostId;
@@ -578,10 +634,14 @@ export default function Home() {
             setInviteUrl(stableInviteUrl);
             if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
             setRoomStatus("ready");
+            setRoomError("");
             if (hostId !== id) connectToPeer(hostId);
           });
           peer.on("connection", (connection) => bindConnection(connection, true));
           peer.on("call", handleCall);
+          peer.on("disconnected", () => {
+            if (!disposed && localPeer === peer) scheduleRoomRecovery();
+          });
           peer.on("error", (error) => {
             if (error.type === "unavailable-id" && allowGuestFallback && !disposed) {
               peer.destroy();
@@ -596,6 +656,10 @@ export default function Home() {
               setRoomError("画面连接正在重试，请稍候。");
               return;
             }
+            if (["disconnected", "network", "server-error", "socket-error", "socket-closed"].includes(error.type)) {
+              scheduleRoomRecovery();
+              return;
+            }
             setRoomStatus("error");
             setRoomError("实时房间连接失败，请检查代理网络后刷新页面。");
           });
@@ -605,16 +669,33 @@ export default function Home() {
       } catch {
         setRoomStatus("error");
         setRoomError("实时房间组件加载失败，请刷新页面重试。");
+      } finally {
+        initializingRoom = false;
       }
     };
 
-    const leaveOnPageHide = () => localPeer?.destroy();
-    window.addEventListener("pagehide", leaveOnPageHide);
+    const recoverWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      clearReconnectTimer();
+      recoverRoomConnection();
+    };
+    const recoverWhenActive = () => {
+      clearReconnectTimer();
+      recoverRoomConnection();
+    };
+    document.addEventListener("visibilitychange", recoverWhenVisible);
+    window.addEventListener("focus", recoverWhenActive);
+    window.addEventListener("online", recoverWhenActive);
+    window.addEventListener("pageshow", recoverWhenActive);
     void initializeRoom();
 
     return () => {
       disposed = true;
-      window.removeEventListener("pagehide", leaveOnPageHide);
+      clearReconnectTimer();
+      document.removeEventListener("visibilitychange", recoverWhenVisible);
+      window.removeEventListener("focus", recoverWhenActive);
+      window.removeEventListener("online", recoverWhenActive);
+      window.removeEventListener("pageshow", recoverWhenActive);
       callPeerRef.current = () => undefined;
       connections.forEach((connection) => connection.close());
       outgoingCalls.forEach((call) => call.close());
