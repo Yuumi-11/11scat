@@ -1579,7 +1579,7 @@ export default function Home() {
                       event.currentTarget.form?.requestSubmit();
                     }
                   }}
-                  placeholder="输入消息，也可以粘贴图片或添加文件"
+                  placeholder="输入消息"
                   aria-label="输入房间消息"
                   rows={2}
                 />
