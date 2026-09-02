@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { currentIdentityId } from "../../identity/session";
 
 type RoomParticipant = {
   peerId: string;
   deviceId: string;
   name: string;
+  identityId: string;
   seenAt: number;
 };
 
@@ -21,7 +23,7 @@ function activeParticipants(now = Date.now()) {
   for (const [deviceId, participant] of participants) {
     if (now - participant.seenAt > presenceLifetime) participants.delete(deviceId);
   }
-  return [...participants.values()].map(({ peerId, deviceId, name }) => ({ peerId, deviceId, name }));
+  return [...participants.values()].map(({ peerId, deviceId, name, identityId }) => ({ peerId, deviceId, name, identityId }));
 }
 
 export function GET() {
@@ -31,6 +33,8 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
+  const identityId = await currentIdentityId();
+  if (!identityId) return new NextResponse("Unauthorized", { status: 401 });
   const body = await request.json().catch(() => ({}));
   const peerId = typeof body.peerId === "string" ? body.peerId.trim() : "";
   const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim() : "";
@@ -39,15 +43,17 @@ export async function POST(request: Request) {
     return new NextResponse("Invalid presence", { status: 400 });
   }
 
-  participants.set(deviceId, { peerId, deviceId, name: name || "成员", seenAt: Date.now() });
+  participants.set(deviceId, { peerId, deviceId, name: name || "成员", identityId, seenAt: Date.now() });
   return NextResponse.json({ participants: activeParticipants() }, {
     headers: { "Cache-Control": "private, no-store" },
   });
 }
 
 export async function DELETE(request: Request) {
+  const identityId = await currentIdentityId();
+  if (!identityId) return new NextResponse("Unauthorized", { status: 401 });
   const body = await request.json().catch(() => ({}));
   const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim() : "";
-  if (devicePattern.test(deviceId)) participants.delete(deviceId);
+  if (devicePattern.test(deviceId) && participants.get(deviceId)?.identityId === identityId) participants.delete(deviceId);
   return new NextResponse(null, { status: 204 });
 }
