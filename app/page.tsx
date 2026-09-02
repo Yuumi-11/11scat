@@ -274,8 +274,10 @@ export default function Home() {
     const incomingCalls = incomingCallsRef.current;
     const mediaRetryCounts = new Map<string, number>();
     const peerDeviceIds = new Map<string, string>();
+    const pendingPeerIds = new Set<string>();
     let localDeviceId = "";
     let reconnectTimer: number | null = null;
+    let presenceTimer: number | null = null;
     let reconnectAttempts = 0;
     let initializingRoom = false;
 
@@ -328,6 +330,55 @@ export default function Home() {
       }, delay);
     };
 
+    const syncRoomPresence = async () => {
+      const peer = localPeer;
+      if (disposed || !peer?.open || !peer.id || !localDeviceId) return;
+      try {
+        const response = await fetch("/api/room/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peerId: peer.id, deviceId: localDeviceId, name: displayNameRef.current }),
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("presence unavailable");
+        const data = await response.json() as { participants?: unknown };
+        if (!Array.isArray(data.participants)) return;
+        const discovered = data.participants.filter((item): item is { peerId: string; deviceId: string; name: string } => Boolean(
+          item && typeof item === "object"
+          && typeof (item as { peerId?: unknown }).peerId === "string"
+          && typeof (item as { deviceId?: unknown }).deviceId === "string"
+          && typeof (item as { name?: unknown }).name === "string",
+        )).filter((item) => item.peerId !== peer.id && item.deviceId !== localDeviceId);
+        discovered.forEach((item) => rememberPeerName(item.peerId, item.name));
+        const roomPeerIds = [peer.id, ...discovered.map((item) => item.peerId)].sort();
+        hostPeerIdRef.current = roomPeerIds[0] || peer.id;
+        discovered
+          .map((item) => item.peerId)
+          .sort()
+          .forEach((peerId) => {
+            if (peer.id.localeCompare(peerId) < 0) connectToPeer(peerId);
+          });
+      } catch {
+        if (!disposed && document.visibilityState === "visible") scheduleRoomRecovery(1200);
+      }
+    };
+
+    const startPresenceHeartbeat = () => {
+      if (presenceTimer !== null) window.clearInterval(presenceTimer);
+      void syncRoomPresence();
+      presenceTimer = window.setInterval(() => void syncRoomPresence(), 5000);
+    };
+
+    const leaveRoomPresence = () => {
+      if (!localDeviceId) return;
+      void fetch("/api/room/presence", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: localDeviceId }),
+        keepalive: true,
+      });
+    };
+
     const rememberPeerName = (peerId: string, value: unknown) => {
       const name = typeof value === "string" ? value.trim().slice(0, 24) : "";
       if (!name) return;
@@ -362,6 +413,7 @@ export default function Home() {
     const removePeer = (peerId: string) => {
       connections.delete(peerId);
       peerDeviceIds.delete(peerId);
+      pendingPeerIds.delete(peerId);
       closePeerCalls(peerId);
       setRoomStatus("ready");
       setRoomError("");
@@ -433,11 +485,16 @@ export default function Home() {
 
     function connectToPeer(peerId: string) {
       const selfId = selfPeerIdRef.current;
-      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || connections.size >= 1) return;
-      bindConnection(localPeer.connect(peerId, {
-        reliable: true,
-        metadata: { room: hostPeerIdRef.current, name: displayNameRef.current, deviceId: localDeviceId },
-      }));
+      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || pendingPeerIds.has(peerId) || connections.size >= 1) return;
+      pendingPeerIds.add(peerId);
+      try {
+        bindConnection(localPeer.connect(peerId, {
+          reliable: true,
+          metadata: { room: "11scat-global-room", name: displayNameRef.current, deviceId: localDeviceId },
+        }));
+      } catch {
+        pendingPeerIds.delete(peerId);
+      }
     }
 
     function bindConnection(connection: DataConnection, incoming = false) {
@@ -445,6 +502,7 @@ export default function Home() {
 
       const handleOpen = () => {
         if (disposed) return;
+        pendingPeerIds.delete(peerId);
         const incomingDeviceId = incoming && typeof connection.metadata?.deviceId === "string"
           ? connection.metadata.deviceId.trim().slice(0, 80)
           : "";
@@ -543,11 +601,15 @@ export default function Home() {
         });
       });
       connection.on("close", () => {
+        pendingPeerIds.delete(peerId);
         if (connections.get(peerId) !== connection) return;
         removePeer(peerId);
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
       });
-      connection.on("error", () => removePeer(peerId));
+      connection.on("error", () => {
+        pendingPeerIds.delete(peerId);
+        removePeer(peerId);
+      });
       if (connection.open) handleOpen();
     }
 
@@ -589,8 +651,6 @@ export default function Home() {
           }
         } catch { /* STUN defaults remain available when TURN config cannot be loaded. */ }
 
-        const defaultRoomPeerId = "11scat-global-room";
-
         const handleCall = (call: MediaConnection) => {
           const peerId = call.peer;
           const source: MediaSource = call.metadata?.source === "screen" ? "screen" : "camera";
@@ -620,7 +680,7 @@ export default function Home() {
           });
         };
 
-        const attachPeer = (peer: PeerClient, allowGuestFallback: boolean) => {
+        const attachPeer = (peer: PeerClient) => {
           localPeer = peer;
           peerRef.current = peer;
           peer.on("open", (id) => {
@@ -628,14 +688,13 @@ export default function Home() {
             clearReconnectTimer();
             reconnectAttempts = 0;
             selfPeerIdRef.current = id;
-            const hostId = defaultRoomPeerId;
-            hostPeerIdRef.current = hostId;
+            hostPeerIdRef.current = id;
             const stableInviteUrl = `${window.location.origin}${window.location.pathname}`;
             setInviteUrl(stableInviteUrl);
             if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
             setRoomStatus("ready");
             setRoomError("");
-            if (hostId !== id) connectToPeer(hostId);
+            startPresenceHeartbeat();
           });
           peer.on("connection", (connection) => bindConnection(connection, true));
           peer.on("call", handleCall);
@@ -643,13 +702,8 @@ export default function Home() {
             if (!disposed && localPeer === peer) scheduleRoomRecovery();
           });
           peer.on("error", (error) => {
-            if (error.type === "unavailable-id" && allowGuestFallback && !disposed) {
-              peer.destroy();
-              attachPeer(new Peer(peerOptions), false);
-              return;
-            }
             if (error.type === "peer-unavailable") {
-              setRoomError("房间正在重新连接，请稍候或刷新页面。");
+              void syncRoomPresence();
               return;
             }
             if (error.type === "webrtc") {
@@ -665,7 +719,7 @@ export default function Home() {
           });
         };
 
-        attachPeer(new Peer(defaultRoomPeerId, peerOptions), true);
+        attachPeer(new Peer(peerOptions));
       } catch {
         setRoomStatus("error");
         setRoomError("实时房间组件加载失败，请刷新页面重试。");
@@ -678,10 +732,12 @@ export default function Home() {
       if (document.visibilityState !== "visible") return;
       clearReconnectTimer();
       recoverRoomConnection();
+      void syncRoomPresence();
     };
     const recoverWhenActive = () => {
       clearReconnectTimer();
       recoverRoomConnection();
+      void syncRoomPresence();
     };
     document.addEventListener("visibilitychange", recoverWhenVisible);
     window.addEventListener("focus", recoverWhenActive);
@@ -692,6 +748,8 @@ export default function Home() {
     return () => {
       disposed = true;
       clearReconnectTimer();
+      if (presenceTimer !== null) window.clearInterval(presenceTimer);
+      leaveRoomPresence();
       document.removeEventListener("visibilitychange", recoverWhenVisible);
       window.removeEventListener("focus", recoverWhenActive);
       window.removeEventListener("online", recoverWhenActive);
@@ -703,6 +761,7 @@ export default function Home() {
       connections.clear();
       outgoingCalls.clear();
       incomingCalls.clear();
+      pendingPeerIds.clear();
       localPeer?.destroy();
       peerRef.current = null;
     };
