@@ -557,7 +557,10 @@ body { overflow: hidden; }
   height: 58px;
   padding: 10px 11px;
   font-size: 14px;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+.chat-form textarea::-webkit-scrollbar { display: none; }
 .chat-form .chat-send-button {
   min-width: 66px;
   height: 42px;
