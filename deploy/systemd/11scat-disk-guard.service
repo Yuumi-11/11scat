@@ -1,0 +1,6 @@
+[Unit]
+Description=Report 11scat VPS root disk usage
+
+[Service]
+Type=oneshot
+ExecStart=/opt/11scat-web/check-disk.sh
