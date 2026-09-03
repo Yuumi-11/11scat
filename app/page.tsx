@@ -180,6 +180,52 @@ export default function Home() {
   const chatAtBottomRef = useRef(true);
   const chatSavedScrollTopRef = useRef(0);
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
+  const notificationAudioContextRef = useRef<AudioContext | null>(null);
+  const notifiedMessageIdsRef = useRef(new Set<string>());
+
+  const playNotificationSound = useCallback((messageId: string) => {
+    if (notifiedMessageIdsRef.current.has(messageId)) return;
+    if (notifiedMessageIdsRef.current.size > 500) notifiedMessageIdsRef.current.clear();
+    notifiedMessageIdsRef.current.add(messageId);
+    try {
+      const context = notificationAudioContextRef.current || new window.AudioContext();
+      notificationAudioContextRef.current = context;
+      void context.resume().then(() => {
+        const start = context.currentTime;
+        const gain = context.createGain();
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.12, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.34);
+        gain.connect(context.destination);
+        [659.25, 880].forEach((frequency, index) => {
+          const oscillator = context.createOscillator();
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(frequency, start + index * 0.08);
+          oscillator.connect(gain);
+          oscillator.start(start + index * 0.08);
+          oscillator.stop(start + 0.34);
+        });
+      }).catch(() => undefined);
+    } catch { /* Audio may be unavailable until the browser allows playback. */ }
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const context = notificationAudioContextRef.current || new window.AudioContext();
+        notificationAudioContextRef.current = context;
+        if (context.state === "suspended") void context.resume();
+      } catch { /* Web Audio is optional. */ }
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      void notificationAudioContextRef.current?.close();
+      notificationAudioContextRef.current = null;
+    };
+  }, []);
 
   useEffect(() => () => {
     if (chatImagePreview) URL.revokeObjectURL(chatImagePreview);
@@ -438,6 +484,7 @@ export default function Home() {
         const normalized = normalizeIncomingMessage(message, identityIdRef.current);
         if (!normalized) return;
         const incomingMessage: ChatMessage = { ...normalized, sender: participant?.name?.trim() || normalized.sender || participant?.identity || "成员" };
+        playNotificationSound(incomingMessage.id);
         setMessages((current) => current.some((item) => item.id === incomingMessage.id) ? current : [...current, incomingMessage]);
       } catch { /* ignore invalid room messages */ }
     });
@@ -467,7 +514,7 @@ export default function Home() {
     };
     void connect();
     return () => { disposed = true; room.disconnect(); roomRef.current = null; };
-  }, [displayName, joined]);
+  }, [displayName, joined, playNotificationSound]);
 
   useEffect(() => {
     if (!joined || USE_LIVEKIT) return;
@@ -803,6 +850,7 @@ export default function Home() {
             ...normalized,
             sender: normalized.sender || memberNamesRef.current[peerId] || "成员",
           };
+          playNotificationSound(incomingMessage.id);
           setMessages((current) => current.some((item) => item.id === incomingMessage.id) ? current : [...current, incomingMessage]);
           return;
         }
@@ -980,7 +1028,7 @@ export default function Home() {
       localPeer?.destroy();
       peerRef.current = null;
     };
-  }, [joined]);
+  }, [joined, playNotificationSound]);
 
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
@@ -1530,7 +1578,7 @@ export default function Home() {
                   {message.attachment?.kind === "image" && <a className="message-image-link" href={message.attachment.url} target="_blank" rel="noreferrer" aria-label="查看原图">
                     <img className="message-image" src={message.attachment.url} alt={message.attachment.name} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
                   </a>}
-                  {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} target="_blank" rel="noreferrer">
+                  {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} download={message.attachment.name}>
                     <span className="message-file-icon" aria-hidden="true">↓</span>
                     <span><strong>{message.attachment.name}</strong><small>{formatFileSize(message.attachment.size)}</small></span>
                   </a>}
@@ -1563,7 +1611,7 @@ export default function Home() {
                   }}
                   tabIndex={-1}
                 />
-                <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="选择图片或文件" title="选择图片或文件">
+                <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" title="发送图片或文件">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
                 <textarea
