@@ -48,7 +48,12 @@ export async function POST(request: NextRequest) {
     replyTo: normalizeQuote(body.replyTo),
     identityId,
     sender: user?.nickname || identityId,
-    time: new Date(now).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+    time: new Date(now).toLocaleTimeString("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }),
     createdAt: now,
   });
   return NextResponse.json({ message }, { status: 201, headers: { "Cache-Control": "no-store" } });

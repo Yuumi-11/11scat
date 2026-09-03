@@ -53,6 +53,19 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
 };
 
+const beijingTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const formatChatTime = (message: ChatMessage) => (
+  typeof message.createdAt === "number" && Number.isFinite(message.createdAt)
+    ? beijingTimeFormatter.format(new Date(message.createdAt))
+    : message.time
+);
+
 const normalizeChatQuote = (value: unknown): ChatQuote | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const quote = value as Partial<ChatQuote>;
@@ -1568,11 +1581,11 @@ export default function Home() {
                     longPressTriggeredRef.current = false;
                   }}
                 >
-                  <span>{message.sender} · {message.time}</span>
+                  <span>{message.sender} · {formatChatTime(message)}</span>
                   {messageMenuId === message.id && <div className={`message-action-menu ${messageMenuPlacement}${message.own ? " own" : ""}`} role="menu" onPointerDown={(event) => event.stopPropagation()}>
                     {message.own && <button type="button" role="menuitem" onClick={() => void recallMessage(message)}><span aria-hidden="true">↶</span>撤回</button>}
-                    <button type="button" role="menuitem" onClick={() => quoteMessage(message)}><span aria-hidden="true">〝</span>引用</button>
-                    <button type="button" role="menuitem" onClick={() => void copyMessage(message)}><span aria-hidden="true">▣</span>复制</button>
+                    <button type="button" role="menuitem" onClick={() => quoteMessage(message)}><span className="message-action-icon-pink message-quote-icon" aria-hidden="true">“”</span>引用</button>
+                    <button type="button" role="menuitem" onClick={() => void copyMessage(message)}><span className="message-action-icon-pink" aria-hidden="true">▣</span>复制</button>
                   </div>}
                   {message.replyTo && <div className="message-quote"><strong>{message.replyTo.sender}</strong><span>{message.replyTo.body}</span></div>}
                   {message.attachment?.kind === "image" && <a className="message-image-link" href={message.attachment.url} target="_blank" rel="noreferrer" aria-label="查看原图">

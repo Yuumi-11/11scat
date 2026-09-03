@@ -406,6 +406,8 @@ body { overflow: hidden; }
 }
 .message-action-menu button:hover, .message-action-menu button:focus-visible { background: #fff0f6; outline: none; }
 .message-action-menu button > span { width: 17px; color: #1fcf94; font-size: 18px; text-align: center; }
+.message-action-menu button > .message-action-icon-pink { color: #d96898; }
+.message-action-menu button > .message-quote-icon { font-size: 15px; font-weight: 800; letter-spacing: -3px; transform: translateX(-1px); }
 .message-quote {
   width: min(240px, 100%);
   margin-bottom: 4px;
