@@ -10,6 +10,12 @@ deployment archives. Persistent application data remains at
 `/opt/11scat-data:/data`. Secrets remain only in
 `/opt/11scat-web/identity.env`.
 
+The package stays private. GitHub Actions connects with a dedicated SSH key that
+is forced server-side to run only `ci-deploy.sh`. The workflow's short-lived
+`GITHUB_TOKEN` is streamed to that command for the GHCR pull and held in a
+temporary Docker configuration directory, which is deleted when deployment
+finishes. No persistent GHCR credential is stored on the VPS.
+
 ## Deploy
 
 Copy the scripts to `/opt/11scat-web`, then run as root:
