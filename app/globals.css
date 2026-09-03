@@ -571,7 +571,7 @@ body { overflow: hidden; }
 .chat-form .chat-attach-button {
   width: 42px;
   min-width: 42px;
-  height: 42px;
+  height: 58px;
   padding: 0;
   display: grid;
   place-items: center;
