@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2 } from "lucide-react";
+import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -179,12 +179,19 @@ const formatDueDate = (dueDate?: string) => {
   return `${due.getMonth() + 1}月${due.getDate()}日`;
 };
 
-function MediaVideo({ stream, label, className, muted = true }: { stream: MediaStream; label: string; className: string; muted?: boolean }) {
+function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: { stream: MediaStream; label: string; className: string; muted?: boolean; onAudioBlocked?: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (ref.current) ref.current.srcObject = stream;
-  }, [stream]);
+    const video = ref.current;
+    if (!video) return;
+    video.srcObject = stream;
+    video.muted = muted;
+    video.volume = 1;
+    void video.play().catch(() => {
+      if (!muted && stream.getAudioTracks().some((track) => track.readyState === "live")) onAudioBlocked?.();
+    });
+  }, [muted, onAudioBlocked, stream]);
 
   return <video className={className} ref={ref} autoPlay muted={muted} playsInline aria-label={label} />;
 }
@@ -198,6 +205,8 @@ export default function Home() {
   const [shareComputerAudio, setShareComputerAudio] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareStarting, setShareStarting] = useState(false);
+  const [remoteScreenMuted, setRemoteScreenMuted] = useState(false);
+  const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
   const [shareError, setShareError] = useState("");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -282,6 +291,8 @@ export default function Home() {
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
   const notifiedMessageIdsRef = useRef(new Set<string>());
+
+  const markRemoteAudioBlocked = useCallback(() => setRemoteAudioBlocked(true), []);
 
   const broadcastRoomMessage = useCallback((message: object) => {
     void roomRef.current?.localParticipant.publishData(
@@ -1381,7 +1392,7 @@ export default function Home() {
     setShareStarting(true);
     try {
       const detailMode = mode === "detail";
-      const nextStream = await navigator.mediaDevices.getDisplayMedia({
+      const displayOptions = {
         video: {
           displaySurface: "window",
           width: { ideal: detailMode ? 2560 : 1920 },
@@ -1389,7 +1400,11 @@ export default function Home() {
           frameRate: { ideal: detailMode ? 15 : 30, max: detailMode ? 20 : 60 },
         },
         audio: withComputerAudio,
-      });
+        systemAudio: withComputerAudio ? "include" : "exclude",
+        windowAudio: withComputerAudio ? "system" : "exclude",
+        surfaceSwitching: "include",
+      } as DisplayMediaStreamOptions;
+      const nextStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
       const track = nextStream.getVideoTracks()[0];
       if (!track || track.readyState !== "live") throw new Error("No live screen track");
       track.contentHint = detailMode ? "detail" : "motion";
@@ -1403,7 +1418,10 @@ export default function Home() {
       if (roomRef.current) {
         await roomRef.current.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
         const audioTrack = nextStream.getAudioTracks()[0];
-        if (audioTrack) await roomRef.current.localParticipant.publishTrack(audioTrack, { source: Track.Source.ScreenShareAudio });
+        if (audioTrack) {
+          audioTrack.contentHint = "music";
+          await roomRef.current.localParticipant.publishTrack(audioTrack, { source: Track.Source.ScreenShareAudio });
+        }
       }
       stream?.getTracks().forEach((item) => item.stop());
       screenStreamRef.current = nextStream;
@@ -1445,6 +1463,21 @@ export default function Home() {
     screenStreamRef.current = null;
     setStream(null);
     if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => undefined);
+  };
+
+  const toggleRemoteScreenAudio = () => {
+    const video = document.querySelector<HTMLVideoElement>("video.main-media.screen.remote");
+    const hasAudio = Boolean(video?.srcObject && (video.srcObject as MediaStream).getAudioTracks().some((track) => track.readyState === "live"));
+    if (!video || !hasAudio) {
+      setShareError("对方当前的共享流没有电脑音频，请让对方重新共享并勾选“同时共享电脑音频”。");
+      return;
+    }
+    const enableAudio = remoteScreenMuted || remoteAudioBlocked;
+    video.muted = !enableAudio;
+    video.volume = 1;
+    setRemoteScreenMuted(!enableAudio);
+    setRemoteAudioBlocked(false);
+    if (enableAudio) void video.play().catch(() => setShareError("浏览器仍阻止声音播放，请点击页面后再试一次。"));
   };
 
   const openShareDialog = (action: "start" | "quality") => {
@@ -1974,7 +2007,8 @@ export default function Home() {
                 className={`main-media ${activeMedia.kind}${activeMedia.remote ? " remote" : ""}`}
                 stream={activeMedia.stream}
                 label={activeMedia.label}
-                muted={!activeMedia.remote || activeMedia.kind !== "screen"}
+                muted={!activeMedia.remote || activeMedia.kind !== "screen" || remoteScreenMuted}
+                onAudioBlocked={activeMedia.remote && activeMedia.kind === "screen" ? markRemoteAudioBlocked : undefined}
               />
               {mediaItems.length > 1 && <>
                 <button className="media-nav media-prev" type="button" onClick={() => stepMedia(-1)} aria-label="查看上一个画面">‹</button>
@@ -1983,6 +2017,9 @@ export default function Home() {
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
               {activeMedia.kind === "screen" && <div className="media-window-actions">
                 {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
+                {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
+                {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} title={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
+                {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
                 <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}>{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
             </> : (
