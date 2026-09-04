@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation } from "lucide-react";
+import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2 } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -195,6 +195,7 @@ export default function Home() {
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
+  const [shareComputerAudio, setShareComputerAudio] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareStarting, setShareStarting] = useState(false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
@@ -1370,7 +1371,7 @@ export default function Home() {
     setSyncOpen(false);
   };
 
-  const startShare = async (mode: "detail" | "motion") => {
+  const startShare = async (mode: "detail" | "motion", withComputerAudio: boolean) => {
     if (shareStarting) return;
     setShareError("");
     if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -1387,24 +1388,31 @@ export default function Home() {
           height: { ideal: detailMode ? 1440 : 1080 },
           frameRate: { ideal: detailMode ? 15 : 30, max: detailMode ? 20 : 60 },
         },
-        audio: false,
+        audio: withComputerAudio,
       });
       const track = nextStream.getVideoTracks()[0];
       if (!track || track.readyState !== "live") throw new Error("No live screen track");
       track.contentHint = detailMode ? "detail" : "motion";
       track.addEventListener("ended", () => {
-        void roomRef.current?.localParticipant.unpublishTrack(track);
+        nextStream.getTracks().forEach((item) => { void roomRef.current?.localParticipant.unpublishTrack(item); item.stop(); });
         if (screenStreamRef.current === nextStream) {
           screenStreamRef.current = null;
           setStream(null);
         }
       });
-      if (roomRef.current) await roomRef.current.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
+      if (roomRef.current) {
+        await roomRef.current.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
+        const audioTrack = nextStream.getAudioTracks()[0];
+        if (audioTrack) await roomRef.current.localParticipant.publishTrack(audioTrack, { source: Track.Source.ScreenShareAudio });
+      }
       stream?.getTracks().forEach((item) => item.stop());
       screenStreamRef.current = nextStream;
       setStream(nextStream);
       setShareMode(mode);
       setActiveMediaId("self-screen");
+      if (withComputerAudio && nextStream.getAudioTracks().length === 0) {
+        setShareError("画面已开始共享，但当前浏览器或所选窗口没有提供电脑音频。可改选支持音频的标签页或整个屏幕。");
+      }
     } catch (error) {
       if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
     } finally { setShareStarting(false); }
@@ -1415,7 +1423,7 @@ export default function Home() {
     setShareModeOpen(false);
     const track = stream?.getVideoTracks()[0];
     if (shareDialogAction === "start" || !track) {
-      await startShare(mode);
+      await startShare(mode, shareComputerAudio);
       return;
     }
     const detailMode = mode === "detail";
@@ -1966,6 +1974,7 @@ export default function Home() {
                 className={`main-media ${activeMedia.kind}${activeMedia.remote ? " remote" : ""}`}
                 stream={activeMedia.stream}
                 label={activeMedia.label}
+                muted={!activeMedia.remote || activeMedia.kind !== "screen"}
               />
               {mediaItems.length > 1 && <>
                 <button className="media-nav media-prev" type="button" onClick={() => stepMedia(-1)} aria-label="查看上一个画面">‹</button>
@@ -2183,6 +2192,10 @@ export default function Home() {
             <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭">×</button>
             <h2 id="share-mode-title">{shareDialogAction === "start" ? "选择共享模式" : "切换画面模式"}</h2>
             {shareDialogAction === "start" && <p className="share-picker-note">选择模式后，浏览器会让你指定要共享的屏幕、窗口或标签页。</p>}
+            {shareDialogAction === "start" && <label className="share-audio-option">
+              <input type="checkbox" checked={shareComputerAudio} onChange={(event) => setShareComputerAudio(event.target.checked)} />
+              <span><Volume2 aria-hidden="true" /><strong>同时共享电脑音频</strong><small>是否可用取决于浏览器和你选择的共享来源</small></span>
+            </label>}
             <div className="share-mode-options">
               <button type="button" onClick={() => void chooseShareMode("detail")}>
                 <strong>文字 / 代码</strong>
