@@ -21,10 +21,6 @@ function pointDistance(left: BoardPoint, right: BoardPoint) {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-function escapeXml(value: string) {
-  return value.replace(/[<>&"']/g, (character) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[character] || character));
-}
-
 let lastBoardRevisionMs = 0;
 let boardRevisionSequence = 0;
 function makeBoardRevision() {
@@ -169,13 +165,53 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   const saveBoard = async () => {
     setSaving(true);
     try {
-      const paths = board.strokes.map((stroke) => `<path d="${strokePath(stroke.points)}" fill="none" stroke="${stroke.color}" stroke-width="${stroke.width}" stroke-linecap="round" stroke-linejoin="round"/>`).join("");
-      const texts = board.texts.map((text) => `<text x="${text.x}" y="${text.y + text.fontSize}" fill="${text.color}" font-size="${text.fontSize}" font-family="system-ui,sans-serif">${(text.text || " ").split("\n").map((line, index) => `<tspan x="${text.x}" dy="${index ? text.fontSize * 1.25 : 0}">${escapeXml(line || " ")}</tspan>`).join("")}</text>`).join("");
-      const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${BOARD_WIDTH}" height="${BOARD_HEIGHT}" viewBox="0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}"><rect width="100%" height="100%" fill="#fff"/>${paths}${texts}</svg>`;
-      const imageUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml" }));
-      const image = new Image();
-      await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("画板生成失败")); image.src = imageUrl; });
-      const canvas = document.createElement("canvas"); canvas.width = BOARD_WIDTH; canvas.height = BOARD_HEIGHT; canvas.getContext("2d")?.drawImage(image, 0, 0); URL.revokeObjectURL(imageUrl);
+      const rect = paperRef.current?.getBoundingClientRect();
+      const visibleAspect = rect && rect.width > 10 && rect.height > 10 ? rect.width / rect.height : BOARD_WIDTH / BOARD_HEIGHT;
+      const outputWidth = visibleAspect >= 1 ? 1920 : Math.round(1920 * visibleAspect);
+      const outputHeight = visibleAspect >= 1 ? Math.round(1920 / visibleAspect) : 1920;
+      const scaleX = outputWidth / BOARD_WIDTH;
+      const scaleY = outputHeight / BOARD_HEIGHT;
+      const canvas = document.createElement("canvas");
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("画板生成失败");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, outputWidth, outputHeight);
+      context.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+      board.strokes.forEach((stroke) => {
+        if (!stroke.points.length) return;
+        context.beginPath();
+        context.moveTo(stroke.points[0].x, stroke.points[0].y);
+        stroke.points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+        if (stroke.points.length === 1) context.lineTo(stroke.points[0].x + .01, stroke.points[0].y + .01);
+        context.strokeStyle = stroke.color;
+        context.lineWidth = stroke.width;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.stroke();
+      });
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      board.texts.forEach((text) => {
+        const fontSize = text.fontSize * scaleX;
+        const maxWidth = Math.max(1, text.width * scaleX);
+        context.fillStyle = text.color;
+        context.font = `${fontSize}px system-ui, sans-serif`;
+        context.textBaseline = "top";
+        const lines = text.text.split("\n").flatMap((paragraph) => {
+          if (!paragraph) return [""];
+          const wrapped: string[] = [];
+          let line = "";
+          Array.from(paragraph).forEach((character) => {
+            const candidate = line + character;
+            if (line && context.measureText(candidate).width > maxWidth) { wrapped.push(line); line = character; }
+            else line = candidate;
+          });
+          wrapped.push(line);
+          return wrapped;
+        });
+        lines.forEach((line, index) => context.fillText(line, text.x * scaleX, text.y * scaleY + index * fontSize * 1.25, maxWidth));
+      });
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("画板生成失败")), "image/png"));
       const timestamp = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(new Date()).replace(/\D/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
       const response = await fetch("/api/cloud/files?path=board", { method: "POST", headers: { "Content-Type": "image/png", "X-File-Name": encodeURIComponent(`${board.name}-${timestamp}.png`) }, body: blob });
@@ -189,7 +225,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   return (
     <div className={fullscreen ? "whiteboard-shell fullscreen" : "whiteboard-shell"} ref={shellRef}>
       <div className={`whiteboard-paper tool-${tool}`} ref={paperRef}>
-        <svg viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
+        <svg viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} preserveAspectRatio="none" role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
           <rect width="100%" height="100%" fill="#fff" />
           {visibleStrokes.map((stroke) => <path key={stroke.id} d={strokePath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" />)}
         </svg>
