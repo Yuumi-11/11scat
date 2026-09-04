@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
-import { RoomBoard, Whiteboard } from "./Whiteboard";
+import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
 
 type Task = {
   id: string;
@@ -33,24 +34,72 @@ type CloudStatus = { usedBytes: number; limitBytes: number; warningBytes: number
 const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
 const chatImageUrlPattern = /^\/api\/chat\/(?:images|files)\/[0-9a-f-]{36}$/i;
+const INITIAL_BOARD_EPOCH = "0000000000000:initial";
+
+const normalizeBoardStroke = (value: unknown): BoardStroke | null => {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<BoardStroke>;
+  if (typeof item.id !== "string" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)
+    || typeof item.width !== "number" || item.width < 1 || item.width > 120 || !Array.isArray(item.points)) return null;
+  const points = item.points.slice(0, 10000).flatMap((point) => (
+    point && typeof point.x === "number" && typeof point.y === "number" && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? [{ x: Math.max(0, Math.min(1200, point.x)), y: Math.max(0, Math.min(720, point.y)) }]
+      : []
+  ));
+  return {
+    id: item.id.slice(0, 80), color: item.color, width: item.width, points,
+    createdAt: typeof item.createdAt === "number" && Number.isFinite(item.createdAt) ? item.createdAt : 0,
+    revision: typeof item.revision === "string" ? item.revision.slice(0, 120) : `${String(typeof item.createdAt === "number" ? item.createdAt : 0).padStart(13, "0")}:${item.id}`,
+  };
+};
+
+const normalizeBoardText = (value: unknown): BoardText | null => {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<BoardText>;
+  if (typeof item.id !== "string" || typeof item.text !== "string" || typeof item.x !== "number" || typeof item.y !== "number"
+    || typeof item.width !== "number" || typeof item.height !== "number" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)) return null;
+  return {
+    id: item.id.slice(0, 80), text: item.text.slice(0, 4000),
+    x: Math.max(0, Math.min(1200, item.x)), y: Math.max(0, Math.min(720, item.y)),
+    width: Math.max(80, Math.min(1200, item.width)), height: Math.max(40, Math.min(720, item.height)),
+    color: item.color, fontSize: typeof item.fontSize === "number" ? Math.max(10, Math.min(96, item.fontSize)) : 20,
+    confirmed: item.confirmed !== false, updatedAt: typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt) ? item.updatedAt : 0,
+    revision: typeof item.revision === "string" ? item.revision.slice(0, 120) : `${String(typeof item.updatedAt === "number" ? item.updatedAt : 0).padStart(13, "0")}:${item.id}`,
+  };
+};
 
 const normalizeBoard = (value: unknown): RoomBoard | null => {
   if (!value || typeof value !== "object") return null;
   const board = value as Partial<RoomBoard>;
   if (typeof board.id !== "string" || !/^[0-9a-f-]{36}$/i.test(board.id) || typeof board.name !== "string" || !Array.isArray(board.strokes)) return null;
-  const strokes = board.strokes.slice(0, 2000).flatMap((stroke) => {
-    if (!stroke || typeof stroke !== "object") return [];
-    const item = stroke as RoomBoard["strokes"][number];
-    if (typeof item.id !== "string" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)
-      || typeof item.width !== "number" || item.width < 1 || item.width > 120 || !Array.isArray(item.points)) return [];
-    const points = item.points.slice(0, 10000).flatMap((point) => (
-      point && typeof point.x === "number" && typeof point.y === "number" && Number.isFinite(point.x) && Number.isFinite(point.y)
-        ? [{ x: Math.max(0, Math.min(1200, point.x)), y: Math.max(0, Math.min(720, point.y)) }]
-        : []
-    ));
-    return [{ id: item.id.slice(0, 80), color: item.color, width: item.width, points }];
-  });
-  return { id: board.id, name: board.name.trim().slice(0, 40) || "画板", strokes, createdAt: typeof board.createdAt === "number" ? board.createdAt : Date.now() };
+  const strokes = board.strokes.slice(0, 2000).flatMap((stroke) => { const normalized = normalizeBoardStroke(stroke); return normalized ? [normalized] : []; });
+  const texts = Array.isArray(board.texts) ? board.texts.slice(0, 200).flatMap((text) => { const normalized = normalizeBoardText(text); return normalized ? [normalized] : []; }) : [];
+  const deletedStrokeIds = Array.isArray(board.deletedStrokeIds) ? board.deletedStrokeIds.filter((id): id is string => typeof id === "string").slice(-2000) : [];
+  const deletedTextIds = Array.isArray(board.deletedTextIds) ? board.deletedTextIds.filter((id): id is string => typeof id === "string").slice(-500) : [];
+  const deletedStrokes = new Set(deletedStrokeIds);
+  const deletedTexts = new Set(deletedTextIds);
+  return {
+    id: board.id, name: board.name.trim().slice(0, 40) || "画板", strokes: strokes.filter((stroke) => !deletedStrokes.has(stroke.id)), texts: texts.filter((text) => !deletedTexts.has(text.id)),
+    deletedStrokeIds, deletedTextIds,
+    epoch: typeof board.epoch === "string" && /^\d{13}:[0-9a-z-]{1,80}$/i.test(board.epoch) ? board.epoch : INITIAL_BOARD_EPOCH,
+    createdAt: typeof board.createdAt === "number" ? board.createdAt : Date.now(),
+  };
+};
+
+const sortBoardStrokes = (strokes: BoardStroke[]) => [...strokes].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+
+const mergeBoard = (current: RoomBoard, incoming: RoomBoard): RoomBoard => {
+  if (incoming.epoch > current.epoch) return { ...incoming, strokes: sortBoardStrokes(incoming.strokes) };
+  if (incoming.epoch < current.epoch) return current;
+  const strokeMap = new Map(current.strokes.map((stroke) => [stroke.id, stroke]));
+  incoming.strokes.forEach((stroke) => { const previous = strokeMap.get(stroke.id); if (!previous || stroke.revision > previous.revision) strokeMap.set(stroke.id, stroke); });
+  const textMap = new Map(current.texts.map((text) => [text.id, text]));
+  incoming.texts.forEach((text) => { const previous = textMap.get(text.id); if (!previous || text.revision > previous.revision) textMap.set(text.id, text); });
+  const deletedStrokeIds = [...new Set([...current.deletedStrokeIds, ...incoming.deletedStrokeIds])].slice(-2000);
+  const deletedTextIds = [...new Set([...current.deletedTextIds, ...incoming.deletedTextIds])].slice(-500);
+  const deletedStrokes = new Set(deletedStrokeIds);
+  const deletedTexts = new Set(deletedTextIds);
+  return { ...current, name: incoming.name || current.name, strokes: sortBoardStrokes([...strokeMap.values()].filter((stroke) => !deletedStrokes.has(stroke.id))), texts: [...textMap.values()].filter((text) => !deletedTexts.has(text.id)), deletedStrokeIds, deletedTextIds };
 };
 
 const normalizeChatAttachment = (value: unknown): ChatAttachment | undefined => {
@@ -189,7 +238,6 @@ export default function Home() {
   const [activity, setActivity] = useState("");
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
-  const [moreOpen, setMoreOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("pink");
   const [backgroundImage, setBackgroundImage] = useState("");
@@ -244,7 +292,7 @@ export default function Home() {
     });
   }, []);
 
-  const receiveBoardMessage = useCallback((message: { type?: string; boards?: unknown; board?: unknown; id?: unknown }) => {
+  const receiveBoardMessage = useCallback((message: { type?: string; boards?: unknown; board?: unknown; id?: unknown; boardId?: unknown; stroke?: unknown; strokeId?: unknown; text?: unknown; textId?: unknown; epoch?: unknown }) => {
     if (message.type === "board-snapshot" && Array.isArray(message.boards)) {
       const incoming = message.boards.flatMap((item) => {
         const board = normalizeBoard(item);
@@ -252,24 +300,89 @@ export default function Home() {
       }).slice(0, 12);
       setBoards((current) => {
         const merged = new Map(current.map((board) => [board.id, board]));
-        incoming.forEach((board) => merged.set(board.id, board));
+        incoming.forEach((board) => {
+          const existing = merged.get(board.id);
+          merged.set(board.id, existing ? mergeBoard(existing, board) : board);
+        });
         const next = [...merged.values()].sort((left, right) => left.createdAt - right.createdAt).slice(0, 12);
         boardsRef.current = next;
         return next;
       });
       return true;
     }
-    if (message.type === "board-upsert") {
+    if (message.type === "board-create" || message.type === "board-upsert") {
       const board = normalizeBoard(message.board);
       if (!board) return true;
       setBoards((current) => {
         const next = current.some((item) => item.id === board.id)
-          ? current.map((item) => item.id === board.id ? board : item)
+          ? current.map((item) => item.id === board.id ? mergeBoard(item, board) : item)
           : [...current, board].slice(0, 12);
         boardsRef.current = next;
         return next;
       });
       return true;
+    }
+    if (typeof message.boardId === "string" && typeof message.epoch === "string") {
+      if (message.type === "board-clear") {
+        setBoards((current) => {
+          const next = current.map((board) => board.id === message.boardId && message.epoch! > board.epoch
+            ? { ...board, epoch: message.epoch as string, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [] }
+            : board);
+          boardsRef.current = next;
+          return next;
+        });
+        return true;
+      }
+      if (message.type === "board-stroke-add") {
+        const stroke = normalizeBoardStroke(message.stroke);
+        if (!stroke) return true;
+        setBoards((current) => {
+          const next = current.map((board) => {
+            if (board.id !== message.boardId || board.epoch !== message.epoch || board.deletedStrokeIds.includes(stroke.id)) return board;
+            const previous = board.strokes.find((item) => item.id === stroke.id);
+            if (previous && previous.revision >= stroke.revision) return board;
+            return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]).slice(-2000) };
+          });
+          boardsRef.current = next;
+          return next;
+        });
+        return true;
+      }
+      if (message.type === "board-stroke-delete" && typeof message.strokeId === "string") {
+        setBoards((current) => {
+          const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
+            ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== message.strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, message.strokeId as string])].slice(-2000) }
+            : board);
+          boardsRef.current = next;
+          return next;
+        });
+        return true;
+      }
+      if (message.type === "board-text-upsert") {
+        const text = normalizeBoardText(message.text);
+        if (!text) return true;
+        setBoards((current) => {
+          const next = current.map((board) => {
+            if (board.id !== message.boardId || board.epoch !== message.epoch || board.deletedTextIds.includes(text.id)) return board;
+            const previous = board.texts.find((item) => item.id === text.id);
+            if (previous && previous.revision >= text.revision) return board;
+            return { ...board, texts: previous ? board.texts.map((item) => item.id === text.id ? text : item) : [...board.texts, text].slice(-200) };
+          });
+          boardsRef.current = next;
+          return next;
+        });
+        return true;
+      }
+      if (message.type === "board-text-delete" && typeof message.textId === "string") {
+        setBoards((current) => {
+          const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
+            ? { ...board, texts: board.texts.filter((text) => text.id !== message.textId), deletedTextIds: [...new Set([...board.deletedTextIds, message.textId as string])].slice(-500) }
+            : board);
+          boardsRef.current = next;
+          return next;
+        });
+        return true;
+      }
     }
     if (message.type === "board-delete" && typeof message.id === "string") {
       setBoards((current) => {
@@ -1456,20 +1569,58 @@ export default function Home() {
   };
 
   const createBoard = () => {
-    const board: RoomBoard = { id: crypto.randomUUID(), name: `画板 ${boardsRef.current.length + 1}`, strokes: [], createdAt: Date.now() };
+    const board: RoomBoard = { id: crypto.randomUUID(), name: `画板 ${boardsRef.current.length + 1}`, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [], epoch: INITIAL_BOARD_EPOCH, createdAt: Date.now() };
     const next = [...boardsRef.current, board].slice(0, 12);
     boardsRef.current = next;
     setBoards(next);
     setActiveBoardId(board.id);
     setActiveMediaId("");
-    broadcastRoomMessage({ type: "board-upsert", board });
+    broadcastRoomMessage({ type: "board-create", board });
   };
 
-  const updateBoard = (board: RoomBoard) => {
-    const next = boardsRef.current.map((item) => item.id === board.id ? board : item);
-    boardsRef.current = next;
-    setBoards(next);
-    broadcastRoomMessage({ type: "board-upsert", board });
+  const addBoardStroke = (boardId: string, stroke: BoardStroke, epoch: string) => {
+    const next = boardsRef.current.map((board) => {
+      if (board.id !== boardId || board.epoch !== epoch || board.deletedStrokeIds.includes(stroke.id)) return board;
+      const previous = board.strokes.find((item) => item.id === stroke.id);
+      if (previous && previous.revision >= stroke.revision) return board;
+      return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]).slice(-2000) };
+    });
+    boardsRef.current = next; setBoards(next);
+    broadcastRoomMessage({ type: "board-stroke-add", boardId, stroke, epoch });
+  };
+
+  const deleteBoardStroke = (boardId: string, strokeId: string, epoch: string) => {
+    const next = boardsRef.current.map((board) => board.id === boardId && board.epoch === epoch
+      ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, strokeId])].slice(-2000) }
+      : board);
+    boardsRef.current = next; setBoards(next);
+    broadcastRoomMessage({ type: "board-stroke-delete", boardId, strokeId, epoch });
+  };
+
+  const clearBoard = (boardId: string) => {
+    const epoch = `${Date.now().toString().padStart(13, "0")}:${crypto.randomUUID()}`;
+    const next = boardsRef.current.map((board) => board.id === boardId ? { ...board, epoch, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [] } : board);
+    boardsRef.current = next; setBoards(next);
+    broadcastRoomMessage({ type: "board-clear", boardId, epoch });
+  };
+
+  const upsertBoardText = (boardId: string, text: BoardText, epoch: string) => {
+    const next = boardsRef.current.map((board) => {
+      if (board.id !== boardId || board.epoch !== epoch || board.deletedTextIds.includes(text.id)) return board;
+      const previous = board.texts.find((item) => item.id === text.id);
+      if (previous && previous.revision >= text.revision) return board;
+      return { ...board, texts: previous ? board.texts.map((item) => item.id === text.id ? text : item) : [...board.texts, text].slice(-200) };
+    });
+    boardsRef.current = next; setBoards(next);
+    broadcastRoomMessage({ type: "board-text-upsert", boardId, text, epoch });
+  };
+
+  const deleteBoardText = (boardId: string, textId: string, epoch: string) => {
+    const next = boardsRef.current.map((board) => board.id === boardId && board.epoch === epoch
+      ? { ...board, texts: board.texts.filter((text) => text.id !== textId), deletedTextIds: [...new Set([...board.deletedTextIds, textId])].slice(-500) }
+      : board);
+    boardsRef.current = next; setBoards(next);
+    broadcastRoomMessage({ type: "board-text-delete", boardId, textId, epoch });
   };
 
   const deleteBoard = (id: string) => {
@@ -1739,10 +1890,10 @@ export default function Home() {
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.14 9.2 4.65 4.65 0 0 0 7 18.5Z" /><path d="m9 13 3-3 3 3M12 10v6" /></svg>
+            <Cloud aria-hidden="true" />
             云盘
           </button>
-          <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)}>外观设置</button>
+          <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)} title="外观设置"><Palette aria-hidden="true" />外观设置</button>
         </div>
       </header>
 
@@ -1791,7 +1942,7 @@ export default function Home() {
                 aria-label={`查看${board.name}`}
               >
                 <span className="tile-badge board">板</span>
-                <div className="tile-preview board-preview" aria-hidden="true">✎</div>
+                <div className="tile-preview board-preview" aria-hidden="true"><Presentation /></div>
                 <small>{board.name}</small>
                 <button className="board-delete" type="button" onClick={(event) => { event.stopPropagation(); deleteBoard(board.id); }} aria-label={`删除${board.name}`}>×</button>
               </div>
@@ -1806,7 +1957,7 @@ export default function Home() {
           </div>
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas">
-            {activeBoard ? <Whiteboard board={activeBoard} onChange={updateBoard} onSaved={(message, error) => {
+            {activeBoard ? <Whiteboard board={activeBoard} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
@@ -1836,25 +1987,18 @@ export default function Home() {
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
           <div className="room-controls">
             <button className={stream ? "share-on" : ""} disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} data-tooltip={stream ? "结束共享" : "共享屏幕"}>
-              {stream ? <svg className="room-control-icon room-stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx=".5" /></svg> : <svg className="room-control-icon room-share-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="4" y="6" width="16" height="12" rx="2" />
-                  <path d="M12 15V9M9.5 11.5 12 9l2.5 2.5" />
-                </svg>}
+              {stream ? <span className="room-stop-square" aria-hidden="true" /> : <MonitorUp className="room-control-icon" aria-hidden="true" />}
             </button>
             <button onClick={createBoard} aria-label="新建画板" data-tooltip="新建画板">
-              <svg className="room-control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v12H4zM8 21l2-3.5M16 21l-2-3.5M8 9h8M8 12h5" /></svg>
+              <Presentation className="room-control-icon" aria-hidden="true" />
             </button>
             <button aria-label="麦克风" data-tooltip="麦克风">
-              <svg className="room-control-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M9 9.5V6a3 3 0 0 1 6 0v5.5a3 3 0 0 1-.35 1.41" />
-                <path d="M5.5 10.5v1a6.5 6.5 0 0 0 10.64 5.01M18.5 10.5v1a6.47 6.47 0 0 1-.71 2.95M12 18v3M9 21h6M4 4l16 16" />
-              </svg>
+              <MicOff className="room-control-icon" aria-hidden="true" />
             </button>
-            <button aria-label="更多" data-tooltip="更多" onClick={() => setMoreOpen((current) => !current)}>⋮</button>
+            <button className={cameraStream ? "camera-on" : ""} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"} onClick={() => void toggleCamera()}>
+              {cameraStream ? <CameraOff className="room-control-icon" aria-hidden="true" /> : <Camera className="room-control-icon" aria-hidden="true" />}
+            </button>
             <button className="room-leave" onClick={() => { stopShare(); stopCamera(); window.location.assign("/access"); }}>退出房间</button>
-            {moreOpen && <div className="room-more-menu">
-              <button type="button" onClick={() => { setMoreOpen(false); void toggleCamera(); }}>{cameraStream ? "关闭摄像头" : "开启摄像头"}</button>
-            </div>}
           </div>
         </section>
 
