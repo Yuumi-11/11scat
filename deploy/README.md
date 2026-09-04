@@ -10,6 +10,11 @@ deployment archives. Persistent application data remains at
 `/opt/11scat-data:/data`. Secrets remain only in
 `/opt/11scat-web/identity.env`.
 
+Room-drive files live under `/opt/11scat-data/cloud-drive` through the same
+`/data` bind mount. The current 30 GB VPS uses
+`CLOUD_DRIVE_LIMIT_BYTES=5368709120` (5 GiB); application writes stop at 90% so
+Docker and the operating system retain recovery space.
+
 The package stays private. GitHub Actions connects with a dedicated SSH key that
 is forced server-side to run only `ci-deploy.sh`. The workflow's short-lived
 `GITHUB_TOKEN` is streamed to that command for the GHCR pull and held in a

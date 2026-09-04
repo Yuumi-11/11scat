@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
+import { RoomBoard, Whiteboard } from "./Whiteboard";
 
 type Task = {
   id: string;
@@ -26,10 +27,31 @@ type MediaItem = {
   kind: MediaSource;
   remote: boolean;
 };
+type CloudItem = { name: string; path: string; kind: "folder" | "file"; size: number; updatedAt: number };
+type CloudStatus = { usedBytes: number; limitBytes: number; warningBytes: number; warning: boolean; percent: number };
 
 const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
 const chatImageUrlPattern = /^\/api\/chat\/(?:images|files)\/[0-9a-f-]{36}$/i;
+
+const normalizeBoard = (value: unknown): RoomBoard | null => {
+  if (!value || typeof value !== "object") return null;
+  const board = value as Partial<RoomBoard>;
+  if (typeof board.id !== "string" || !/^[0-9a-f-]{36}$/i.test(board.id) || typeof board.name !== "string" || !Array.isArray(board.strokes)) return null;
+  const strokes = board.strokes.slice(0, 2000).flatMap((stroke) => {
+    if (!stroke || typeof stroke !== "object") return [];
+    const item = stroke as RoomBoard["strokes"][number];
+    if (typeof item.id !== "string" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)
+      || typeof item.width !== "number" || item.width < 1 || item.width > 120 || !Array.isArray(item.points)) return [];
+    const points = item.points.slice(0, 10000).flatMap((point) => (
+      point && typeof point.x === "number" && typeof point.y === "number" && Number.isFinite(point.x) && Number.isFinite(point.y)
+        ? [{ x: Math.max(0, Math.min(1200, point.x)), y: Math.max(0, Math.min(720, point.y)) }]
+        : []
+    ));
+    return [{ id: item.id.slice(0, 80), color: item.color, width: item.width, points }];
+  });
+  return { id: board.id, name: board.name.trim().slice(0, 40) || "画板", strokes, createdAt: typeof board.createdAt === "number" ? board.createdAt : Date.now() };
+};
 
 const normalizeChatAttachment = (value: unknown): ChatAttachment | undefined => {
   if (!value || typeof value !== "object") return undefined;
@@ -125,6 +147,8 @@ export default function Home() {
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [shareStarting, setShareStarting] = useState(false);
+  const [pictureInPicture, setPictureInPicture] = useState(false);
   const [shareError, setShareError] = useState("");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
@@ -169,6 +193,18 @@ export default function Home() {
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("pink");
   const [backgroundImage, setBackgroundImage] = useState("");
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const [cloudPath, setCloudPath] = useState("");
+  const [cloudItems, setCloudItems] = useState<CloudItem[]>([]);
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudError, setCloudError] = useState("");
+  const [cloudUploading, setCloudUploading] = useState(false);
+  const [cloudNotice, setCloudNotice] = useState("");
+  const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, "uploading" | "done">>({});
+  const [boards, setBoards] = useState<RoomBoard[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState("");
+  const [boardNotice, setBoardNotice] = useState("");
   const roomRef = useRef<Room | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -186,6 +222,8 @@ export default function Home() {
   const memberNamesRef = useRef<Record<string, string>>({});
   const chatImageInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
+  const cloudInputRef = useRef<HTMLInputElement>(null);
+  const boardsRef = useRef<RoomBoard[]>([]);
   const messageListRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressOriginRef = useRef({ x: 0, y: 0 });
@@ -195,6 +233,55 @@ export default function Home() {
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
   const notifiedMessageIdsRef = useRef(new Set<string>());
+
+  const broadcastRoomMessage = useCallback((message: object) => {
+    void roomRef.current?.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify(message)),
+      { reliable: true },
+    );
+    dataConnectionsRef.current.forEach((connection) => {
+      if (connection.open) connection.send(message);
+    });
+  }, []);
+
+  const receiveBoardMessage = useCallback((message: { type?: string; boards?: unknown; board?: unknown; id?: unknown }) => {
+    if (message.type === "board-snapshot" && Array.isArray(message.boards)) {
+      const incoming = message.boards.flatMap((item) => {
+        const board = normalizeBoard(item);
+        return board ? [board] : [];
+      }).slice(0, 12);
+      setBoards((current) => {
+        const merged = new Map(current.map((board) => [board.id, board]));
+        incoming.forEach((board) => merged.set(board.id, board));
+        const next = [...merged.values()].sort((left, right) => left.createdAt - right.createdAt).slice(0, 12);
+        boardsRef.current = next;
+        return next;
+      });
+      return true;
+    }
+    if (message.type === "board-upsert") {
+      const board = normalizeBoard(message.board);
+      if (!board) return true;
+      setBoards((current) => {
+        const next = current.some((item) => item.id === board.id)
+          ? current.map((item) => item.id === board.id ? board : item)
+          : [...current, board].slice(0, 12);
+        boardsRef.current = next;
+        return next;
+      });
+      return true;
+    }
+    if (message.type === "board-delete" && typeof message.id === "string") {
+      setBoards((current) => {
+        const next = current.filter((item) => item.id !== message.id);
+        boardsRef.current = next;
+        return next;
+      });
+      setActiveBoardId((current) => current === message.id ? "" : current);
+      return true;
+    }
+    return false;
+  }, []);
 
   const playNotificationSound = useCallback((messageId: string) => {
     if (notifiedMessageIdsRef.current.has(messageId)) return;
@@ -292,7 +379,7 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     setSyncing(true);
     setSyncError("");
     try {
@@ -317,7 +404,7 @@ export default function Home() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, [taskView]);
 
   const mergeChatMessages = (incoming: ChatMessage[], current: ChatMessage[]) => {
     const byId = new Map<string, ChatMessage>();
@@ -355,7 +442,10 @@ export default function Home() {
     if (list.scrollTop <= 20 && chatHistoryCursor && !chatHistoryLoading) void loadOlderChatMessages();
   };
 
-  useEffect(() => { void loadTasks(); }, [taskView]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadTasks(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTasks]);
 
   useEffect(() => {
     if (!joined || chatHistoryReady || !identityIdRef.current) return;
@@ -409,7 +499,19 @@ export default function Home() {
     return () => { disposed = true; };
   }, []);
 
+  useEffect(() => {
+    const entered = () => setPictureInPicture(true);
+    const left = () => setPictureInPicture(false);
+    document.addEventListener("enterpictureinpicture", entered, true);
+    document.addEventListener("leavepictureinpicture", left, true);
+    return () => {
+      document.removeEventListener("enterpictureinpicture", entered, true);
+      document.removeEventListener("leavepictureinpicture", left, true);
+    };
+  }, []);
+
   useEffect(() => { activityRef.current = activity.trim().slice(0, 80); }, [activity]);
+  useEffect(() => { boardsRef.current = boards; }, [boards]);
   useEffect(() => {
     tasksRef.current = tasks;
     const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done }));
@@ -440,7 +542,13 @@ export default function Home() {
       const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
       setter((current) => { const next = { ...current }; delete next[identity]; return next; });
     };
-    room.on(RoomEvent.ParticipantConnected, refreshMembers);
+    room.on(RoomEvent.ParticipantConnected, () => {
+      refreshMembers();
+      void room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ type: "board-snapshot", boards: boardsRef.current })),
+        { reliable: true },
+      );
+    });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       removeRemote(participant.identity, "camera");
       removeRemote(participant.identity, "screen");
@@ -476,7 +584,8 @@ export default function Home() {
     });
     room.on(RoomEvent.DataReceived, (payload, participant) => {
       try {
-        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown; activity?: unknown };
+        const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown; activity?: unknown; boards?: unknown; board?: unknown };
+        if (receiveBoardMessage(message)) return;
         if (message.type === "chat-recall" && typeof message.id === "string") {
           setMessages((current) => current.filter((item) => item.id !== message.id));
           return;
@@ -527,7 +636,7 @@ export default function Home() {
     };
     void connect();
     return () => { disposed = true; room.disconnect(); roomRef.current = null; };
-  }, [displayName, joined, playNotificationSound]);
+  }, [displayName, joined, playNotificationSound, receiveBoardMessage]);
 
   useEffect(() => {
     if (!joined || USE_LIVEKIT) return;
@@ -536,11 +645,12 @@ export default function Home() {
     const connections = dataConnectionsRef.current;
     const outgoingCalls = outgoingCallsRef.current;
     const incomingCalls = incomingCallsRef.current;
-    const mediaRetryCounts = new Map<string, number>();
     const peerDeviceIds = new Map<string, string>();
+    const peerRemovalTimers = new Map<string, number>();
     const pendingPeerIds = new Set<string>();
     let localDeviceId = "";
     let reconnectTimer: number | null = null;
+    let recoveryMessageTimer: number | null = null;
     let presenceTimer: number | null = null;
     let reconnectAttempts = 0;
     let initializingRoom = false;
@@ -549,6 +659,12 @@ export default function Home() {
       if (reconnectTimer === null) return;
       window.clearTimeout(reconnectTimer);
       reconnectTimer = null;
+    };
+
+    const clearRecoveryMessageTimer = () => {
+      if (recoveryMessageTimer === null) return;
+      window.clearTimeout(recoveryMessageTimer);
+      recoveryMessageTimer = null;
     };
 
     const recoverRoomConnection = () => {
@@ -572,6 +688,7 @@ export default function Home() {
         return;
       }
       if (peer.open) {
+        clearRecoveryMessageTimer();
         reconnectAttempts = 0;
         setRoomStatus("ready");
         setRoomError("");
@@ -582,8 +699,14 @@ export default function Home() {
 
     const scheduleRoomRecovery = (delay = 700) => {
       if (disposed || reconnectTimer !== null) return;
-      setRoomStatus("connecting");
-      setRoomError(navigator.onLine ? "房间连接正在恢复，请稍候。" : "网络已断开，恢复后会自动重新连接。");
+      if (recoveryMessageTimer === null) {
+        recoveryMessageTimer = window.setTimeout(() => {
+          recoveryMessageTimer = null;
+          if (disposed || localPeer?.open) return;
+          setRoomStatus("connecting");
+          setRoomError(navigator.onLine ? "房间连接正在自动恢复，请稍候。" : "网络已断开，恢复后会自动重新连接。");
+        }, 10_000);
+      }
       reconnectTimer = window.setTimeout(() => {
         reconnectTimer = null;
         recoverRoomConnection();
@@ -614,7 +737,13 @@ export default function Home() {
           && typeof (item as { name?: unknown }).name === "string"
           && typeof (item as { identityId?: unknown }).identityId === "string",
         )).filter((item) => item.peerId !== peer.id && item.deviceId !== localDeviceId);
-        discovered.forEach((item) => { rememberPeerName(item.peerId, item.name); rememberPeerIdentity(item.peerId, item.identityId); });
+        discovered.forEach((item) => {
+          const replacedPeerId = Array.from(peerDeviceIds.entries()).find(([candidate, deviceId]) => candidate !== item.peerId && deviceId === item.deviceId)?.[0];
+          if (replacedPeerId) removePeer(replacedPeerId);
+          peerDeviceIds.set(item.peerId, item.deviceId);
+          rememberPeerName(item.peerId, item.name);
+          rememberPeerIdentity(item.peerId, item.identityId);
+        });
         const roomPeerIds = [peer.id, ...discovered.map((item) => item.peerId)].sort();
         hostPeerIdRef.current = roomPeerIds[0] || peer.id;
         discovered
@@ -682,6 +811,9 @@ export default function Home() {
     };
 
     const removePeer = (peerId: string) => {
+      const removalTimer = peerRemovalTimers.get(peerId);
+      if (removalTimer !== undefined) window.clearTimeout(removalTimer);
+      peerRemovalTimers.delete(peerId);
       connections.delete(peerId);
       peerDeviceIds.delete(peerId);
       pendingPeerIds.delete(peerId);
@@ -721,7 +853,15 @@ export default function Home() {
       refreshMembers();
     };
 
-    const callPeer = (peerId: string, media: MediaStream, source: MediaSource) => {
+    const schedulePeerRemoval = (peerId: string) => {
+      if (peerRemovalTimers.has(peerId)) return;
+      peerRemovalTimers.set(peerId, window.setTimeout(() => {
+        peerRemovalTimers.delete(peerId);
+        if (!connections.get(peerId)?.open) removePeer(peerId);
+      }, 10_000));
+    };
+
+    const callPeer = (peerId: string, media: MediaStream, source: MediaSource, attempt = 0) => {
       if (!localPeer?.open || !connections.get(peerId)?.open) return;
       const key = `${source}:${peerId}`;
       const existing = outgoingCalls.get(key);
@@ -734,11 +874,9 @@ export default function Home() {
         if (disposed || outgoingCalls.get(key) !== call) return;
         outgoingCalls.delete(key);
         call.close();
-        const attempts = mediaRetryCounts.get(key) || 0;
         const currentStream = source === "camera" ? cameraStreamRef.current : screenStreamRef.current;
-        if (!currentStream || attempts >= 3) return;
-        mediaRetryCounts.set(key, attempts + 1);
-        window.setTimeout(() => callPeer(peerId, currentStream, source), 900 * (attempts + 1));
+        if (!currentStream || currentStream !== media || attempt >= 3) return;
+        window.setTimeout(() => callPeer(peerId, currentStream, source, attempt + 1), 900 * (attempt + 1));
       };
       window.setTimeout(() => {
         if (outgoingCalls.get(key) === call && !call.open) retry();
@@ -762,7 +900,8 @@ export default function Home() {
 
     function connectToPeer(peerId: string) {
       const selfId = selfPeerIdRef.current;
-      if (!localPeer?.open || !peerId || peerId === selfId || connections.has(peerId) || pendingPeerIds.has(peerId) || connections.size >= MAX_REMOTE_DEVICES) return;
+      const openConnections = Array.from(connections.values()).filter((item) => item.open).length;
+      if (!localPeer?.open || !peerId || peerId === selfId || connections.get(peerId)?.open || pendingPeerIds.has(peerId) || openConnections >= MAX_REMOTE_DEVICES) return;
       pendingPeerIds.add(peerId);
       try {
         bindConnection(localPeer.connect(peerId, {
@@ -779,6 +918,9 @@ export default function Home() {
 
       const handleOpen = () => {
         if (disposed) return;
+        const graceTimer = peerRemovalTimers.get(peerId);
+        if (graceTimer !== undefined) window.clearTimeout(graceTimer);
+        peerRemovalTimers.delete(peerId);
         pendingPeerIds.delete(peerId);
         const incomingDeviceId = incoming && typeof connection.metadata?.deviceId === "string"
           ? connection.metadata.deviceId.trim().slice(0, 80)
@@ -794,7 +936,8 @@ export default function Home() {
           }
         }
         const existing = connections.get(peerId);
-        if (!existing && connections.size >= MAX_REMOTE_DEVICES) {
+        const openConnections = Array.from(connections.values()).filter((item) => item.open).length;
+        if (!existing?.open && openConnections >= MAX_REMOTE_DEVICES) {
           connection.close();
           return;
         }
@@ -815,6 +958,7 @@ export default function Home() {
           tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
         });
         connection.send({ type: "media-request" });
+        connection.send({ type: "board-snapshot", boards: boardsRef.current });
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
         if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
         if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
@@ -823,7 +967,8 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown; tasks?: unknown; id?: unknown; body?: unknown; imageUrl?: unknown; attachment?: unknown; replyTo?: unknown; identityId?: unknown; time?: unknown; createdAt?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown };
+        const message = payload as { type: string; ids?: unknown; tasks?: unknown; id?: unknown; body?: unknown; imageUrl?: unknown; attachment?: unknown; replyTo?: unknown; identityId?: unknown; time?: unknown; createdAt?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown; boards?: unknown; board?: unknown };
+        if (receiveBoardMessage(message)) return;
         if (message.type === "chat-recall" && typeof message.id === "string") {
           setMessages((current) => current.filter((item) => item.id !== message.id));
           return;
@@ -871,19 +1016,19 @@ export default function Home() {
 
         const selfId = selfPeerIdRef.current;
         message.ids.forEach((candidate) => {
-          if (typeof candidate !== "string" || candidate === selfId || connections.has(candidate)) return;
+          if (typeof candidate !== "string" || candidate === selfId || connections.get(candidate)?.open) return;
           if (candidate === hostPeerIdRef.current || selfId.localeCompare(candidate) < 0) connectToPeer(candidate);
         });
       });
       connection.on("close", () => {
         pendingPeerIds.delete(peerId);
         if (connections.get(peerId) !== connection) return;
-        removePeer(peerId);
+        schedulePeerRemoval(peerId);
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
       });
       connection.on("error", () => {
         pendingPeerIds.delete(peerId);
-        removePeer(peerId);
+        schedulePeerRemoval(peerId);
       });
       if (connection.open) handleOpen();
     }
@@ -939,7 +1084,6 @@ export default function Home() {
             if (disposed) return;
             const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
             setter((current) => ({ ...current, [peerId]: remoteStream }));
-            mediaRetryCounts.delete(key);
             setRoomError("");
             if (source === "screen") setActiveMediaId(`${peerId}-screen`);
             remoteStream.getVideoTracks()[0]?.addEventListener("ended", () => removeRemoteMedia(peerId, source));
@@ -962,6 +1106,7 @@ export default function Home() {
           peer.on("open", (id) => {
             if (disposed) return;
             clearReconnectTimer();
+            clearRecoveryMessageTimer();
             reconnectAttempts = 0;
             selfPeerIdRef.current = id;
             hostPeerIdRef.current = id;
@@ -1024,6 +1169,7 @@ export default function Home() {
     return () => {
       disposed = true;
       clearReconnectTimer();
+      clearRecoveryMessageTimer();
       if (presenceTimer !== null) window.clearInterval(presenceTimer);
       leaveRoomPresence();
       document.removeEventListener("visibilitychange", recoverWhenVisible);
@@ -1038,10 +1184,12 @@ export default function Home() {
       outgoingCalls.clear();
       incomingCalls.clear();
       pendingPeerIds.clear();
+      peerRemovalTimers.forEach((timer) => window.clearTimeout(timer));
+      peerRemovalTimers.clear();
       localPeer?.destroy();
       peerRef.current = null;
     };
-  }, [joined, playNotificationSound]);
+  }, [joined, playNotificationSound, receiveBoardMessage]);
 
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
@@ -1110,11 +1258,13 @@ export default function Home() {
   };
 
   const startShare = async (mode: "detail" | "motion") => {
+    if (shareStarting) return;
     setShareError("");
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setShareError("当前浏览器不支持屏幕共享，请使用最新版 Chrome、Edge 或 Safari。");
       return;
     }
+    setShareStarting(true);
     try {
       const detailMode = mode === "detail";
       const nextStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1127,18 +1277,24 @@ export default function Home() {
         audio: false,
       });
       const track = nextStream.getVideoTracks()[0];
-      if (track) {
-        track.contentHint = detailMode ? "detail" : "motion";
-        track.addEventListener("ended", () => { void roomRef.current?.localParticipant.unpublishTrack(track); setStream(null); });
-        await roomRef.current?.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
-      }
+      if (!track || track.readyState !== "live") throw new Error("No live screen track");
+      track.contentHint = detailMode ? "detail" : "motion";
+      track.addEventListener("ended", () => {
+        void roomRef.current?.localParticipant.unpublishTrack(track);
+        if (screenStreamRef.current === nextStream) {
+          screenStreamRef.current = null;
+          setStream(null);
+        }
+      });
+      if (roomRef.current) await roomRef.current.localParticipant.publishTrack(track, { source: Track.Source.ScreenShare });
       stream?.getTracks().forEach((item) => item.stop());
+      screenStreamRef.current = nextStream;
       setStream(nextStream);
       setShareMode(mode);
       setActiveMediaId("self-screen");
     } catch (error) {
       if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
-    }
+    } finally { setShareStarting(false); }
   };
 
   const chooseShareMode = async (mode: "detail" | "motion") => {
@@ -1163,8 +1319,11 @@ export default function Home() {
   };
 
   const stopShare = () => {
-    stream?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
+    const current = screenStreamRef.current || stream;
+    current?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
+    screenStreamRef.current = null;
     setStream(null);
+    if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => undefined);
   };
 
   const openShareDialog = (action: "start" | "quality") => {
@@ -1196,6 +1355,141 @@ export default function Home() {
     setBackgroundImage("");
     try { window.localStorage.removeItem("11scat-appearance-background"); } catch { /* ignore unavailable storage */ }
   };
+
+  const togglePictureInPicture = async () => {
+    setShareError("");
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setPictureInPicture(false);
+        return;
+      }
+      const video = document.querySelector<HTMLVideoElement>("video.main-media.screen");
+      if (!video) throw new Error("请先选择一个共享画面");
+      await video.play();
+      if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+        await video.requestPictureInPicture();
+        setPictureInPicture(true);
+        return;
+      }
+      const safariVideo = video as HTMLVideoElement & { webkitSupportsPresentationMode?: (mode: string) => boolean; webkitSetPresentationMode?: (mode: string) => void };
+      if (safariVideo.webkitSupportsPresentationMode?.("picture-in-picture") && safariVideo.webkitSetPresentationMode) {
+        safariVideo.webkitSetPresentationMode("picture-in-picture");
+        setPictureInPicture(true);
+        return;
+      }
+      throw new Error("当前浏览器不支持共享画面小窗");
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : "小窗开启失败，请重试");
+    }
+  };
+
+  const loadCloudFolder = async (path = cloudPath) => {
+    setCloudLoading(true);
+    setCloudError("");
+    try {
+      const response = await fetch(`/api/cloud?path=${encodeURIComponent(path)}`, { cache: "no-store" });
+      const result = await response.json().catch(() => null) as { path?: unknown; items?: unknown; status?: unknown; error?: unknown } | null;
+      if (!response.ok || !Array.isArray(result?.items)) throw new Error(typeof result?.error === "string" ? result.error : "云盘加载失败");
+      setCloudPath(typeof result.path === "string" ? result.path : path);
+      setCloudItems(result.items as CloudItem[]);
+      setCloudStatus(result.status as CloudStatus);
+    } catch (error) { setCloudError(error instanceof Error ? error.message : "云盘加载失败"); }
+    finally { setCloudLoading(false); }
+  };
+
+  const openCloud = () => {
+    setCloudOpen(true);
+    setCloudNotice("");
+    void loadCloudFolder("");
+  };
+
+  const createCloudFolder = async () => {
+    const name = window.prompt("新文件夹名称");
+    if (!name?.trim()) return;
+    const response = await fetch("/api/cloud/folders", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: cloudPath, name }),
+    });
+    const result = await response.json().catch(() => null) as { error?: unknown } | null;
+    if (!response.ok) { setCloudError(typeof result?.error === "string" ? result.error : "创建文件夹失败"); return; }
+    setCloudNotice("文件夹已创建");
+    await loadCloudFolder(cloudPath);
+  };
+
+  const uploadCloudFile = async (file?: File) => {
+    if (!file || cloudUploading) return;
+    setCloudUploading(true);
+    setCloudError("");
+    setCloudNotice("");
+    try {
+      const response = await fetch(`/api/cloud/files?path=${encodeURIComponent(cloudPath)}`, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name || "file") },
+        body: file,
+      });
+      const result = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "上传失败，请重试");
+      setCloudNotice(`${file.name} 已上传`);
+      await loadCloudFolder(cloudPath);
+    } catch (error) { setCloudError(error instanceof Error ? error.message : "上传失败，请重试"); }
+    finally { setCloudUploading(false); }
+  };
+
+  const uploadChatImageToCloud = async (attachment: ChatAttachment) => {
+    if (chatCloudUploads[attachment.id]) return;
+    setChatCloudUploads((current) => ({ ...current, [attachment.id]: "uploading" }));
+    setChatImageError("");
+    try {
+      const response = await fetch("/api/cloud/import-chat", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attachmentId: attachment.id }),
+      });
+      const result = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "上传到云盘失败");
+      setChatCloudUploads((current) => ({ ...current, [attachment.id]: "done" }));
+      const statusResponse = await fetch("/api/cloud", { cache: "no-store" });
+      const statusResult = await statusResponse.json().catch(() => null) as { status?: CloudStatus } | null;
+      if (statusResult?.status) setCloudStatus(statusResult.status);
+    } catch (error) {
+      setChatCloudUploads((current) => { const next = { ...current }; delete next[attachment.id]; return next; });
+      setChatImageError(error instanceof Error ? error.message : "上传到云盘失败");
+    }
+  };
+
+  const createBoard = () => {
+    const board: RoomBoard = { id: crypto.randomUUID(), name: `画板 ${boardsRef.current.length + 1}`, strokes: [], createdAt: Date.now() };
+    const next = [...boardsRef.current, board].slice(0, 12);
+    boardsRef.current = next;
+    setBoards(next);
+    setActiveBoardId(board.id);
+    setActiveMediaId("");
+    broadcastRoomMessage({ type: "board-upsert", board });
+  };
+
+  const updateBoard = (board: RoomBoard) => {
+    const next = boardsRef.current.map((item) => item.id === board.id ? board : item);
+    boardsRef.current = next;
+    setBoards(next);
+    broadcastRoomMessage({ type: "board-upsert", board });
+  };
+
+  const deleteBoard = (id: string) => {
+    const next = boardsRef.current.filter((item) => item.id !== id);
+    boardsRef.current = next;
+    setBoards(next);
+    setActiveBoardId((current) => current === id ? "" : current);
+    broadcastRoomMessage({ type: "board-delete", id });
+  };
+
+  useEffect(() => {
+    if (!joined) return;
+    let disposed = false;
+    void fetch("/api/cloud", { cache: "no-store" }).then(async (response) => {
+      if (!response.ok || disposed) return;
+      const result = await response.json() as { status?: CloudStatus };
+      if (!disposed && result.status) setCloudStatus(result.status);
+    }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [joined]);
 
   const stopCamera = () => {
     cameraStream?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
@@ -1284,10 +1578,11 @@ export default function Home() {
       if (event.lengthComputable) setChatUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
     });
     request.addEventListener("load", () => {
-      const result = (() => { try { return JSON.parse(request.responseText) as { attachment?: unknown; error?: unknown }; } catch { return null; } })();
+      const result = (() => { try { return JSON.parse(request.responseText) as { attachment?: unknown; error?: unknown; cloudWarning?: unknown }; } catch { return null; } })();
       const attachment = normalizeChatAttachment(result?.attachment);
       if (request.status >= 200 && request.status < 300 && attachment) {
         setChatUploadProgress(100);
+        if (typeof result?.cloudWarning === "string") setChatImageError(result.cloudWarning);
         resolve(attachment);
       } else reject(new Error(typeof result?.error === "string" ? result.error : "附件上传失败，请重试"));
     });
@@ -1427,16 +1722,8 @@ export default function Home() {
     if (remoteCameras[peerId]) mediaItems.push({ id: `${peerId}-camera`, label: `${memberName} 的摄像头`, stream: remoteCameras[peerId], kind: "camera", remote: true });
   });
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
-  const mediaIds = mediaItems.map((item) => item.id).join("|");
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
-
-  useEffect(() => {
-    if (!mediaItems.length) {
-      if (activeMediaId) setActiveMediaId("");
-      return;
-    }
-    if (!mediaItems.some((item) => item.id === activeMediaId)) setActiveMediaId(mediaItems[0].id);
-  }, [activeMediaId, mediaIds]);
+  const activeBoard = boards.find((board) => board.id === activeBoardId);
 
   const stepMedia = (direction: -1 | 1) => {
     if (mediaItems.length < 2) return;
@@ -1450,7 +1737,13 @@ export default function Home() {
       {backgroundImage && <div className="custom-background" style={{ backgroundImage: `url(${JSON.stringify(backgroundImage).slice(1, -1)})` }} aria-hidden="true" />}
       <header className="topbar">
         <div className="session-status"><span className="pulse" />一一主人专属</div>
-        <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)}>外观设置</button>
+        <div className="topbar-actions">
+          <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.14 9.2 4.65 4.65 0 0 0 7 18.5Z" /><path d="m9 13 3-3 3 3M12 10v6" /></svg>
+            云盘
+          </button>
+          <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)}>外观设置</button>
+        </div>
       </header>
 
       <section className="workspace">
@@ -1459,7 +1752,7 @@ export default function Home() {
             <button
               className="participant-tile active selectable"
               type="button"
-              onClick={() => setActiveMediaId(stream ? "self-screen" : cameraStream ? "self-camera" : "")}
+              onClick={() => { setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : cameraStream ? "self-camera" : ""); }}
               aria-label="查看你的共享画面"
             >
               <span className="tile-badge">你</span>
@@ -1475,7 +1768,7 @@ export default function Home() {
                 className="participant-tile connected selectable"
                 type="button"
                 key={peerId}
-                onClick={() => setActiveMediaId(remoteScreens[peerId] ? `${peerId}-screen` : remoteCameras[peerId] ? `${peerId}-camera` : "")}
+                onClick={() => { setActiveBoardId(""); setActiveMediaId(remoteScreens[peerId] ? `${peerId}-screen` : remoteCameras[peerId] ? `${peerId}-camera` : ""); }}
                 aria-label={`查看 ${memberNames[peerId] || `成员 ${index + 1}`} 的共享画面`}
               >
                 <span className="tile-badge">{(memberNames[peerId] || peerId).slice(0, 1)}</span>
@@ -1487,6 +1780,22 @@ export default function Home() {
                 <small>{memberNames[peerId] || peerId}</small>
               </button>
             ))}
+            {boards.map((board) => (
+              <div
+                className={activeBoardId === board.id ? "participant-tile board-tile active selectable" : "participant-tile board-tile selectable"}
+                role="button"
+                tabIndex={0}
+                key={board.id}
+                onClick={() => { setActiveBoardId(board.id); setActiveMediaId(""); }}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveBoardId(board.id); setActiveMediaId(""); } }}
+                aria-label={`查看${board.name}`}
+              >
+                <span className="tile-badge board">板</span>
+                <div className="tile-preview board-preview" aria-hidden="true">✎</div>
+                <small>{board.name}</small>
+                <button className="board-delete" type="button" onClick={(event) => { event.stopPropagation(); deleteBoard(board.id); }} aria-label={`删除${board.name}`}>×</button>
+              </div>
+            ))}
             {Array.from({ length: emptyMemberSlots }, (_, index) => (
               <button className="participant-tile participant-invite" type="button" onClick={() => void copyInviteLink()} key={`empty-${index}`}>
                 <span className="tile-badge invite">＋</span>
@@ -1497,7 +1806,11 @@ export default function Home() {
           </div>
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas">
-            {activeMedia ? <>
+            {activeBoard ? <Whiteboard board={activeBoard} onChange={updateBoard} onSaved={(message, error) => {
+              setBoardNotice(error ? "" : message);
+              setShareError(error ? message : "");
+              if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
+            }} /> : activeMedia ? <>
               <MediaVideo
                 className={`main-media ${activeMedia.kind}${activeMedia.remote ? " remote" : ""}`}
                 stream={activeMedia.stream}
@@ -1508,7 +1821,10 @@ export default function Home() {
                 <button className="media-nav media-next" type="button" onClick={() => stepMedia(1)} aria-label="查看下一个画面">›</button>
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
-              {stream && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
+              {activeMedia.kind === "screen" && <div className="media-window-actions">
+                {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
+                <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}>{pictureInPicture ? "关闭小窗" : "小窗"}</button>
+              </div>}
             </> : (
               <div className="empty-share">
                 <div className="share-glyph"><span /><span /><span /></div>
@@ -1516,23 +1832,22 @@ export default function Home() {
               </div>
             )}
           </div>
+          {boardNotice && <p className="board-notice" role="status">{boardNotice}</p>}
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
           <div className="room-controls">
-            <button className={stream ? "share-on" : ""} onClick={() => openShareDialog("start")} aria-label="共享屏幕" data-tooltip="共享屏幕">
-              <svg className="room-control-icon room-share-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="4" y="6" width="16" height="12" rx="2" />
-                <path d="M12 15V9M9.5 11.5 12 9l2.5 2.5" />
-              </svg>
+            <button className={stream ? "share-on" : ""} disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} data-tooltip={stream ? "结束共享" : "共享屏幕"}>
+              {stream ? <svg className="room-control-icon room-stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx=".5" /></svg> : <svg className="room-control-icon room-share-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="6" width="16" height="12" rx="2" />
+                  <path d="M12 15V9M9.5 11.5 12 9l2.5 2.5" />
+                </svg>}
+            </button>
+            <button onClick={createBoard} aria-label="新建画板" data-tooltip="新建画板">
+              <svg className="room-control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v12H4zM8 21l2-3.5M16 21l-2-3.5M8 9h8M8 12h5" /></svg>
             </button>
             <button aria-label="麦克风" data-tooltip="麦克风">
               <svg className="room-control-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M9 9.5V6a3 3 0 0 1 6 0v5.5a3 3 0 0 1-.35 1.41" />
                 <path d="M5.5 10.5v1a6.5 6.5 0 0 0 10.64 5.01M18.5 10.5v1a6.47 6.47 0 0 1-.71 2.95M12 18v3M9 21h6M4 4l16 16" />
-              </svg>
-            </button>
-            <button className="room-stop" onClick={stopShare} aria-label="结束共享" data-tooltip="结束共享">
-              <svg className="room-control-icon room-stop-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="7" y="7" width="10" height="10" rx=".5" />
               </svg>
             </button>
             <button aria-label="更多" data-tooltip="更多" onClick={() => setMoreOpen((current) => !current)}>⋮</button>
@@ -1588,16 +1903,24 @@ export default function Home() {
                     <button type="button" role="menuitem" onClick={() => void copyMessage(message)}><span className="message-action-icon-pink" aria-hidden="true">▣</span>复制</button>
                   </div>}
                   {message.replyTo && <div className="message-quote"><strong>{message.replyTo.sender}</strong><span>{message.replyTo.body}</span></div>}
-                  {message.attachment?.kind === "image" && <a className="message-image-link" href={message.attachment.url} target="_blank" rel="noreferrer" aria-label="查看原图">
-                    <img className="message-image" src={message.attachment.url} alt={message.attachment.name} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
-                  </a>}
+                  {message.attachment?.kind === "image" && <div className="message-image-wrap">
+                    <a className="message-image-link" href={message.attachment.url} target="_blank" rel="noreferrer" aria-label="查看原图">
+                      <img className="message-image" src={message.attachment.url} alt={message.attachment.name} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
+                    </a>
+                    <button className="image-cloud-button" type="button" onClick={() => void uploadChatImageToCloud(message.attachment!)} disabled={Boolean(chatCloudUploads[message.attachment.id])}>
+                      {chatCloudUploads[message.attachment.id] === "done" ? "已上传" : chatCloudUploads[message.attachment.id] === "uploading" ? "上传中…" : "上传到云盘"}
+                    </button>
+                  </div>}
                   {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} download={message.attachment.name}>
                     <span className="message-file-icon" aria-hidden="true">↓</span>
                     <span><strong>{message.attachment.name}</strong><small>{formatFileSize(message.attachment.size)}</small></span>
                   </a>}
-                  {message.imageUrl && <a className="message-image-link" href={message.imageUrl} target="_blank" rel="noreferrer" aria-label="查看原图">
-                    <img className="message-image" src={message.imageUrl} alt={`${message.sender} 发送的图片`} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
-                  </a>}
+                  {message.imageUrl && <div className="message-image-wrap">
+                    <a className="message-image-link" href={message.imageUrl} target="_blank" rel="noreferrer" aria-label="查看原图">
+                      <img className="message-image" src={message.imageUrl} alt={`${message.sender} 发送的图片`} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
+                    </a>
+                    {(() => { const id = message.imageUrl!.split("/").pop() || ""; return <button className="image-cloud-button" type="button" onClick={() => void uploadChatImageToCloud({ id, url: message.imageUrl!, name: "聊天图片", size: 0, mimeType: "image/*", kind: "image" })} disabled={Boolean(chatCloudUploads[id])}>{chatCloudUploads[id] === "done" ? "已上传" : chatCloudUploads[id] === "uploading" ? "上传中…" : "上传到云盘"}</button>; })()}
+                  </div>}
                   {message.body && <p>{message.body}</p>}
                 </div>
               ))}
@@ -1726,6 +2049,46 @@ export default function Home() {
                 <span>帧率更高，适合视频和演示</span>
               </button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {cloudOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setCloudOpen(false)}>
+          <section className="cloud-modal" role="dialog" aria-modal="true" aria-labelledby="cloud-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setCloudOpen(false)} aria-label="关闭">×</button>
+            <div className="cloud-heading">
+              <div><span className="eyebrow">ROOM DRIVE</span><h2 id="cloud-title">云盘</h2></div>
+              <div className={cloudStatus?.warning ? "cloud-meter warning" : "cloud-meter"}>
+                <span><i style={{ width: `${cloudStatus?.percent || 0}%` }} /></span>
+                <small>{cloudStatus ? `${formatFileSize(cloudStatus.usedBytes)} / ${formatFileSize(cloudStatus.limitBytes)}` : "正在读取容量…"}</small>
+              </div>
+            </div>
+            {cloudStatus?.warning && <p className="cloud-capacity-warning">云盘已达到容量上限的 90%，新的自动保存和上传已暂停。</p>}
+            <div className="cloud-toolbar">
+              <button type="button" onClick={() => { const parts = cloudPath.split("/").filter(Boolean); parts.pop(); void loadCloudFolder(parts.join("/")); }} disabled={!cloudPath}>← 上一级</button>
+              <strong>/{cloudPath}</strong>
+              <button type="button" onClick={() => void createCloudFolder()}>新建文件夹</button>
+              <button type="button" onClick={() => cloudInputRef.current?.click()} disabled={cloudUploading || cloudStatus?.warning}>上传文件</button>
+              <input ref={cloudInputRef} type="file" className="chat-image-input" onChange={(event) => { void uploadCloudFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+            </div>
+            <div
+              className={cloudUploading ? "cloud-dropzone uploading" : "cloud-dropzone"}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+              onDrop={(event) => { event.preventDefault(); void uploadCloudFile(event.dataTransfer.files[0]); }}
+            >
+              {cloudLoading ? <div className="cloud-empty">正在加载…</div> : cloudItems.length ? cloudItems.map((item) => item.kind === "folder" ? (
+                <button className="cloud-item folder" type="button" key={item.path} onClick={() => void loadCloudFolder(item.path)}>
+                  <span aria-hidden="true">▰</span><strong>{item.name}</strong><small>文件夹</small>
+                </button>
+              ) : (
+                <div className="cloud-item file" key={item.path}>
+                  <span aria-hidden="true">▤</span><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
+                  <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a></div>
+                </div>
+              )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
+            </div>
+            {(cloudError || cloudNotice) && <p className={cloudError ? "cloud-feedback error" : "cloud-feedback"} role="status">{cloudError || cloudNotice}</p>}
           </section>
         </div>
       )}

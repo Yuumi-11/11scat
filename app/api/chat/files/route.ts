@@ -2,6 +2,7 @@ import { mkdir, open, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
+import { autoImportChatFile } from "../../cloud/store";
 
 export const runtime = "nodejs";
 
@@ -40,5 +41,9 @@ export async function POST(request: NextRequest) {
   await rename(temporaryPath, finalPath);
   const kind = mimeType.startsWith("image/") ? "image" : "file";
   await writeFile(path.join(fileDirectory, `${id}.json`), JSON.stringify({ id, name, size, mimeType, kind }), { encoding: "utf8", mode: 0o600 });
-  return NextResponse.json({ attachment: { id, url: `/api/chat/files/${id}`, name, size, mimeType, kind } }, { status: 201 });
+  const cloud = kind === "file" ? await autoImportChatFile(id, finalPath, name, size) : null;
+  return NextResponse.json({
+    attachment: { id, url: `/api/chat/files/${id}`, name, size, mimeType, kind },
+    cloudWarning: cloud?.warning || undefined,
+  }, { status: 201 });
 }
