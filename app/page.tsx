@@ -35,6 +35,10 @@ const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
 const chatImageUrlPattern = /^\/api\/chat\/(?:images|files)\/[0-9a-f-]{36}$/i;
 const INITIAL_BOARD_EPOCH = "0000000000000:initial";
+const MOBILE_BACKGROUND_GRACE_MS = 30 * 60 * 1000;
+
+const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
 const decodeVapidKey = (value: string) => {
   const normalized = `${value}${"=".repeat((4 - value.length % 4) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
@@ -199,7 +203,7 @@ function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: 
     });
   }, [muted, onAudioBlocked, stream]);
 
-  return <video className={className} ref={ref} autoPlay muted={muted} playsInline aria-label={label} />;
+  return <video className={className} ref={ref} autoPlay muted={muted} playsInline disablePictureInPicture={false} aria-label={label} />;
 }
 
 export default function Home() {
@@ -301,6 +305,7 @@ export default function Home() {
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
   const pushDeviceIdRef = useRef("");
+  const intentionalLeaveRef = useRef(false);
   const notifiedMessageIdsRef = useRef(new Set<string>());
 
   const markRemoteAudioBlocked = useCallback(() => setRemoteAudioBlocked(true), []);
@@ -851,6 +856,7 @@ export default function Home() {
     const outgoingCalls = outgoingCallsRef.current;
     const incomingCalls = incomingCallsRef.current;
     const peerDeviceIds = new Map<string, string>();
+    const mobilePeerIds = new Set<string>();
     const peerRemovalTimers = new Map<string, number>();
     const pendingPeerIds = new Set<string>();
     let localDeviceId = "";
@@ -859,6 +865,7 @@ export default function Home() {
     let presenceTimer: number | null = null;
     let reconnectAttempts = 0;
     let initializingRoom = false;
+    const mobileClient = isMobileBrowser();
 
     const clearReconnectTimer = () => {
       if (reconnectTimer === null) return;
@@ -922,15 +929,16 @@ export default function Home() {
       }, delay);
     };
 
-    const syncRoomPresence = async () => {
+    const syncRoomPresence = async (background = false) => {
       const peer = localPeer;
       if (disposed || !peer?.open || !peer.id || !localDeviceId) return;
       try {
         const response = await fetch("/api/room/presence", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ peerId: peer.id, deviceId: localDeviceId, name: displayNameRef.current }),
+          body: JSON.stringify({ peerId: peer.id, deviceId: localDeviceId, name: displayNameRef.current, mobile: mobileClient, background }),
           cache: "no-store",
+          keepalive: mobileClient && background,
         });
         if (!response.ok) throw new Error("presence unavailable");
         const data = await response.json() as { participants?: unknown };
@@ -1021,6 +1029,7 @@ export default function Home() {
       peerRemovalTimers.delete(peerId);
       connections.delete(peerId);
       peerDeviceIds.delete(peerId);
+      mobilePeerIds.delete(peerId);
       pendingPeerIds.delete(peerId);
       closePeerCalls(peerId);
       setRoomStatus("ready");
@@ -1063,7 +1072,7 @@ export default function Home() {
       peerRemovalTimers.set(peerId, window.setTimeout(() => {
         peerRemovalTimers.delete(peerId);
         if (!connections.get(peerId)?.open) removePeer(peerId);
-      }, 10_000));
+      }, mobilePeerIds.has(peerId) ? MOBILE_BACKGROUND_GRACE_MS : 10_000));
     };
 
     const callPeer = (peerId: string, media: MediaStream, source: MediaSource, attempt = 0) => {
@@ -1111,7 +1120,7 @@ export default function Home() {
       try {
         bindConnection(localPeer.connect(peerId, {
           reliable: true,
-          metadata: { room: "11scat-global-room", name: displayNameRef.current, deviceId: localDeviceId, identityId: identityIdRef.current },
+          metadata: { room: "11scat-global-room", name: displayNameRef.current, deviceId: localDeviceId, identityId: identityIdRef.current, mobile: mobileClient },
         }));
       } catch {
         pendingPeerIds.delete(peerId);
@@ -1130,6 +1139,7 @@ export default function Home() {
         const incomingDeviceId = incoming && typeof connection.metadata?.deviceId === "string"
           ? connection.metadata.deviceId.trim().slice(0, 80)
           : "";
+        if (incoming && connection.metadata?.mobile === true) mobilePeerIds.add(peerId);
         if (incomingDeviceId) {
           const replacedPeerId = Array.from(connections.keys()).find((candidate) => (
             candidate !== peerId && peerDeviceIds.get(candidate) === incomingDeviceId
@@ -1157,7 +1167,7 @@ export default function Home() {
         rememberPeerIdentity(peerId, connection.metadata?.identityId);
         setRoomError("");
         refreshMembers();
-        connection.send({ type: "presence", name: displayNameRef.current, identityId: identityIdRef.current, deviceId: localDeviceId, activity: activityRef.current });
+        connection.send({ type: "presence", name: displayNameRef.current, identityId: identityIdRef.current, deviceId: localDeviceId, activity: activityRef.current, mobile: mobileClient });
         connection.send({
           type: "task-snapshot",
           tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
@@ -1172,7 +1182,7 @@ export default function Home() {
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
-        const message = payload as { type: string; ids?: unknown; tasks?: unknown; id?: unknown; body?: unknown; imageUrl?: unknown; attachment?: unknown; replyTo?: unknown; identityId?: unknown; time?: unknown; createdAt?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown; boards?: unknown; board?: unknown };
+        const message = payload as { type: string; ids?: unknown; tasks?: unknown; id?: unknown; body?: unknown; imageUrl?: unknown; attachment?: unknown; replyTo?: unknown; identityId?: unknown; time?: unknown; createdAt?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown; mobile?: unknown; boards?: unknown; board?: unknown };
         if (receiveBoardMessage(message)) return;
         if (message.type === "chat-recall" && typeof message.id === "string") {
           setMessages((current) => current.filter((item) => item.id !== message.id));
@@ -1181,6 +1191,7 @@ export default function Home() {
         if (message.type === "presence") {
           rememberPeerName(peerId, message.name);
           rememberPeerIdentity(peerId, message.identityId);
+          if (message.mobile === true) mobilePeerIds.add(peerId);
           if (typeof message.activity === "string") {
             const nextActivity = message.activity.trim().slice(0, 80);
             setMemberActivities((current) => ({ ...current, [peerId]: nextActivity }));
@@ -1354,8 +1365,11 @@ export default function Home() {
       }
     };
 
-    const recoverWhenVisible = () => {
-      if (document.visibilityState !== "visible") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        if (mobileClient) void syncRoomPresence(true);
+        return;
+      }
       clearReconnectTimer();
       recoverRoomConnection();
       void syncRoomPresence();
@@ -1365,7 +1379,7 @@ export default function Home() {
       recoverRoomConnection();
       void syncRoomPresence();
     };
-    document.addEventListener("visibilitychange", recoverWhenVisible);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", recoverWhenActive);
     window.addEventListener("online", recoverWhenActive);
     window.addEventListener("pageshow", recoverWhenActive);
@@ -1376,8 +1390,8 @@ export default function Home() {
       clearReconnectTimer();
       clearRecoveryMessageTimer();
       if (presenceTimer !== null) window.clearInterval(presenceTimer);
-      leaveRoomPresence();
-      document.removeEventListener("visibilitychange", recoverWhenVisible);
+      if (!mobileClient || intentionalLeaveRef.current) leaveRoomPresence();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", recoverWhenActive);
       window.removeEventListener("online", recoverWhenActive);
       window.removeEventListener("pageshow", recoverWhenActive);
@@ -1593,26 +1607,43 @@ export default function Home() {
   const togglePictureInPicture = async () => {
     setShareError("");
     try {
+      const video = document.querySelector<HTMLVideoElement>("video.main-media.screen");
+      if (!video) throw new Error("请先选择一个共享画面");
+      const safariVideo = video as HTMLVideoElement & {
+        webkitSupportsPresentationMode?: (mode: string) => boolean;
+        webkitSetPresentationMode?: (mode: string) => void;
+        webkitPresentationMode?: string;
+      };
+      if (safariVideo.webkitPresentationMode === "picture-in-picture" && safariVideo.webkitSetPresentationMode) {
+        safariVideo.webkitSetPresentationMode("inline");
+        setPictureInPicture(false);
+        return;
+      }
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
         setPictureInPicture(false);
         return;
       }
-      const video = document.querySelector<HTMLVideoElement>("video.main-media.screen");
-      if (!video) throw new Error("请先选择一个共享画面");
-      await video.play();
-      if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
-        await video.requestPictureInPicture();
-        setPictureInPicture(true);
-        return;
-      }
-      const safariVideo = video as HTMLVideoElement & { webkitSupportsPresentationMode?: (mode: string) => boolean; webkitSetPresentationMode?: (mode: string) => void };
       if (safariVideo.webkitSupportsPresentationMode?.("picture-in-picture") && safariVideo.webkitSetPresentationMode) {
+        const syncSafariState = () => {
+          const active = safariVideo.webkitPresentationMode === "picture-in-picture";
+          setPictureInPicture(active);
+          if (!active) video.removeEventListener("webkitpresentationmodechanged", syncSafariState);
+        };
+        video.addEventListener("webkitpresentationmodechanged", syncSafariState);
+        void video.play().catch(() => undefined);
         safariVideo.webkitSetPresentationMode("picture-in-picture");
         setPictureInPicture(true);
         return;
       }
-      throw new Error("当前浏览器不支持共享画面小窗");
+      await video.play();
+      if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+        await video.requestPictureInPicture();
+        setPictureInPicture(true);
+        video.addEventListener("leavepictureinpicture", () => setPictureInPicture(false), { once: true });
+        return;
+      }
+      throw new Error(isMobileBrowser() ? "请在 iPhone 设置 → 通用 → 画中画中开启“自动开启画中画”" : "当前浏览器不支持共享画面小窗");
     } catch (error) {
       setShareError(error instanceof Error ? error.message : "小窗开启失败，请重试");
     }
@@ -2125,7 +2156,7 @@ export default function Home() {
             <button className={cameraStream ? "camera-on" : ""} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"} onClick={() => void toggleCamera()}>
               {cameraStream ? <CameraOff className="room-control-icon" aria-hidden="true" /> : <Camera className="room-control-icon" aria-hidden="true" />}
             </button>
-            <button className="room-leave" onClick={() => { stopShare(); stopCamera(); window.location.assign("/access"); }}>退出房间</button>
+            <button className="room-leave" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}>退出房间</button>
           </div>
         </section>
 
