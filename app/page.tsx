@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
+import { Bell, Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -35,6 +35,12 @@ const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
 const chatImageUrlPattern = /^\/api\/chat\/(?:images|files)\/[0-9a-f-]{36}$/i;
 const INITIAL_BOARD_EPOCH = "0000000000000:initial";
+
+const decodeVapidKey = (value: string) => {
+  const normalized = `${value}${"=".repeat((4 - value.length % 4) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(normalized);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+};
 
 const normalizeBoardStroke = (value: unknown): BoardStroke | null => {
   if (!value || typeof value !== "object") return null;
@@ -249,6 +255,10 @@ export default function Home() {
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState("");
   const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("pink");
   const [backgroundImage, setBackgroundImage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
@@ -290,6 +300,7 @@ export default function Home() {
   const chatSavedScrollTopRef = useRef(0);
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
+  const pushDeviceIdRef = useRef("");
   const notifiedMessageIdsRef = useRef(new Set<string>());
 
   const markRemoteAudioBlocked = useCallback(() => setRemoteAudioBlocked(true), []);
@@ -459,6 +470,75 @@ export default function Home() {
   useEffect(() => () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    let disposed = false;
+    const initializePush = async () => {
+      try {
+        pushDeviceIdRef.current = window.localStorage.getItem("11scat-push-device-id") || crypto.randomUUID();
+        window.localStorage.setItem("11scat-push-device-id", pushDeviceIdRef.current);
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        const subscription = await registration.pushManager.getSubscription();
+        if (!disposed) setPushEnabled(Boolean(subscription));
+      } catch { /* Message notifications remain opt-in when unsupported. */ }
+    };
+    void initializePush();
+    return () => { disposed = true; };
+  }, []);
+
+  const enablePushNotifications = async () => {
+    setPushBusy(true);
+    setPushMessage("");
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("当前浏览器不支持网页消息提醒");
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      if (isIos && !isStandalone) throw new Error("请先在 Safari 点“分享”→“添加到主屏幕”，再从主屏幕打开 11scat 开启提醒");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("需要允许通知，iPhone 和 Apple Watch 才能收到提醒");
+      const keyResponse = await fetch("/api/push/public-key", { cache: "no-store" });
+      const keyData = await keyResponse.json().catch(() => ({})) as { publicKey?: string; error?: string };
+      if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || "推送服务尚未配置");
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapidKey(keyData.publicKey) });
+      if (!pushDeviceIdRef.current) {
+        pushDeviceIdRef.current = window.localStorage.getItem("11scat-push-device-id") || crypto.randomUUID();
+        window.localStorage.setItem("11scat-push-device-id", pushDeviceIdRef.current);
+      }
+      const response = await fetch("/api/push/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: subscription.toJSON(), deviceId: pushDeviceIdRef.current }),
+      });
+      if (!response.ok) throw new Error("通知订阅保存失败");
+      setPushEnabled(true);
+      setPushMessage("消息提醒已开启。Apple Watch 开启 iPhone 通知镜像后也会收到提醒。");
+    } catch (error) {
+      setPushMessage(error instanceof Error ? error.message : "开启消息提醒失败");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const disablePushNotifications = async () => {
+    setPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await fetch("/api/push/subscriptions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: subscription.endpoint }) });
+        await subscription.unsubscribe();
+      }
+      setPushEnabled(false);
+      setPushMessage("此设备的消息提醒已关闭。");
+    } catch {
+      setPushMessage("关闭失败，请在系统通知设置中关闭 11scat。");
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!messageMenuId) return;
@@ -1858,7 +1938,7 @@ export default function Home() {
       const id = crypto.randomUUID();
       const response = await fetch("/api/chat/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-device-id": pushDeviceIdRef.current },
         body: JSON.stringify({ id, body, attachment, replyTo: chatQuote || undefined }),
       });
       const result = await response.json().catch(() => null) as { message?: unknown; error?: unknown } | null;
@@ -1934,6 +2014,7 @@ export default function Home() {
             <Cloud aria-hidden="true" />
             云盘
           </button>
+          <button className={pushEnabled ? "push-button enabled" : "push-button"} type="button" onClick={() => setPushOpen(true)} title="手机与手表消息提醒"><Bell aria-hidden="true" />{pushEnabled ? "提醒已开启" : "消息提醒"}</button>
           <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)} title="外观设置"><Palette aria-hidden="true" />外观设置</button>
         </div>
       </header>
@@ -2283,6 +2364,20 @@ export default function Home() {
               )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
             </div>
             {(cloudError || cloudNotice) && <p className={cloudError ? "cloud-feedback error" : "cloud-feedback"} role="status">{cloudError || cloudNotice}</p>}
+          </section>
+        </div>
+      )}
+
+      {pushOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPushOpen(false)}>
+          <section className="push-modal" role="dialog" aria-modal="true" aria-labelledby="push-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="modal-close" type="button" onClick={() => setPushOpen(false)} aria-label="关闭消息提醒设置">×</button>
+            <span className="eyebrow">消息提醒</span>
+            <h2 id="push-title">手机与手表消息提醒</h2>
+            <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
+            <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
+            {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
+            <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
           </section>
         </div>
       )}

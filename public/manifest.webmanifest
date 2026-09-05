@@ -1,0 +1,13 @@
+{
+  "name": "11scat 自习室",
+  "short_name": "11scat",
+  "description": "固定房间自习、任务与消息提醒",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff7fb",
+  "theme_color": "#d96898",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
