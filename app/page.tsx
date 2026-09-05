@@ -496,10 +496,10 @@ export default function Home() {
     setPushBusy(true);
     setPushMessage("");
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("当前浏览器不支持网页消息提醒");
       const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-      if (isIos && !isStandalone) throw new Error("请先在 Safari 点“分享”→“添加到主屏幕”，再从主屏幕打开 11scat 开启提醒");
+      if (isIos && !isStandalone) throw new Error("iPhone 的 Safari 和 Edge 普通标签页都不能开启网页通知。请点“分享”→“添加到主屏幕”，关闭当前页面，再从手机桌面的 11scat 图标打开并开启提醒。");
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("当前浏览器或系统版本不支持网页消息提醒");
       const permission = await Notification.requestPermission();
       if (permission !== "granted") throw new Error("需要允许通知，iPhone 和 Apple Watch 才能收到提醒");
       const keyResponse = await fetch("/api/push/public-key", { cache: "no-store" });

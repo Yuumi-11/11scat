@@ -22,6 +22,11 @@ test("ships an installable PWA with authenticated Web Push", async () => {
   assert.match(layout, /appleWebApp:\s*\{\s*capable:\s*true/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"\)/);
   assert.match(page, /Notification\.requestPermission\(\)/);
+  const enablePush = page.slice(page.indexOf("const enablePushNotifications"), page.indexOf("const disablePushNotifications"));
+  assert.ok(
+    enablePush.indexOf("if (isIos && !isStandalone)") < enablePush.indexOf('if (!("serviceWorker" in navigator)'),
+    "iPhone install guidance must be shown before the generic unsupported-browser message",
+  );
   assert.match(serviceWorker, /addEventListener\("push"/);
   assert.match(serviceWorker, /showNotification/);
   assert.match(serviceWorker, /addEventListener\("notificationclick"/);
