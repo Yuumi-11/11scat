@@ -1116,6 +1116,9 @@ button:focus-visible { outline: 3px solid color-mix(in srgb, var(--theme-accent)
 .room-controls button:not(.room-leave):hover { color: var(--theme-accent-dark); border-color: var(--theme-accent); background: var(--theme-soft); transform: translateY(-1px); }
 .room-controls .room-control-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .room-stop-square { width: 11px; height: 11px; display: block; border-radius: 2px; background: currentColor; }
+.room-controls button.share-on:not(.room-leave) { color: var(--theme-accent-dark); border-color: var(--theme-accent); background: var(--theme-soft); }
+.media-nav { display: grid; place-items: center; padding: 0; }
+.media-nav svg { display: block; width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.5; }
 .room-controls .camera-on { color: #fff !important; border-color: var(--theme-accent) !important; background: var(--theme-accent) !important; }
 .room-controls .room-leave { min-width: 88px; box-shadow: 0 7px 18px color-mix(in srgb, var(--theme-accent) 24%, transparent); }
 

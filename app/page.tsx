@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
+import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -2122,8 +2122,8 @@ export default function Home() {
                 onAudioBlocked={activeMedia.remote && activeMedia.kind === "screen" ? markRemoteAudioBlocked : undefined}
               />
               {mediaItems.length > 1 && <>
-                <button className="media-nav media-prev" type="button" onClick={() => stepMedia(-1)} aria-label="查看上一个画面">‹</button>
-                <button className="media-nav media-next" type="button" onClick={() => stepMedia(1)} aria-label="查看下一个画面">›</button>
+                <button className="media-nav media-prev" type="button" onClick={() => stepMedia(-1)} aria-label="查看上一个画面"><ChevronLeft aria-hidden="true" /></button>
+                <button className="media-nav media-next" type="button" onClick={() => stepMedia(1)} aria-label="查看下一个画面"><ChevronRight aria-hidden="true" /></button>
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
               {activeMedia.kind === "screen" && <div className="media-window-actions">
