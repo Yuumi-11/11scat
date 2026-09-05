@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bell, Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
+import { Camera, CameraOff, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -2045,7 +2045,6 @@ export default function Home() {
             <Cloud aria-hidden="true" />
             云盘
           </button>
-          <button className={pushEnabled ? "push-button enabled" : "push-button"} type="button" onClick={() => setPushOpen(true)} title="手机与手表消息提醒"><Bell aria-hidden="true" />{pushEnabled ? "提醒已开启" : "消息提醒"}</button>
           <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)} title="外观设置"><Palette aria-hidden="true" />外观设置</button>
         </div>
       </header>
@@ -2418,6 +2417,7 @@ export default function Home() {
           <section className="appearance-modal" role="dialog" aria-modal="true" aria-labelledby="appearance-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setAppearanceOpen(false)} aria-label="关闭">×</button>
             <h2 id="appearance-title">外观设置</h2>
+            <button className="push-button" type="button" onClick={() => { setAppearanceOpen(false); setPushOpen(true); }}>消息提醒设置</button>
             <p>选择统一强调色，或导入一张经过模糊和淡化处理的背景。</p>
             <div className="theme-options" aria-label="主题颜色">
               {(["pink", "blue", "green", "purple"] as const).map((theme) => (
