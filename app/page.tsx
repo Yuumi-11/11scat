@@ -638,7 +638,7 @@ export default function Home() {
       let cursor = chatSyncCursorRef.current;
       for (let page = 0; page < 4; page += 1) {
         const since = page === 0 ? Math.max(0, cursor - 1000) : cursor;
-        const response = await fetch(`/api/chat/messages?since=${since}&limit=200`, { cache: "no-store" });
+        const response = await fetch(`/api/chat/messages?since=${since}&limit=200`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
         if (!response.ok) throw new Error("消息同步失败");
         const data = await response.json() as { messages?: unknown; recalledIds?: unknown; cursor?: unknown; hasMore?: unknown };
         const incoming = Array.isArray(data.messages)
@@ -927,6 +927,8 @@ export default function Home() {
     const mobilePeerIds = new Set<string>();
     const peerRemovalTimers = new Map<string, number>();
     const pendingPeerIds = new Set<string>();
+    const connectionTimers = new Set<number>();
+    let reconnectStartedAt = 0;
     let localDeviceId = "";
     let reconnectTimer: number | null = null;
     let recoveryMessageTimer: number | null = null;
@@ -960,6 +962,15 @@ export default function Home() {
         return;
       }
       if (peer.disconnected) {
+        if (!reconnectStartedAt) reconnectStartedAt = Date.now();
+        if (Date.now() - reconnectStartedAt > 20_000) {
+          peer.destroy();
+          localPeer = null;
+          reconnectStartedAt = 0;
+          pendingPeerIds.clear();
+          void initializeRoom();
+          return;
+        }
         try { peer.reconnect(); } catch {
           peer.destroy();
           if (localPeer === peer) localPeer = null;
@@ -968,12 +979,13 @@ export default function Home() {
         return;
       }
       if (peer.open) {
+        reconnectStartedAt = 0;
         clearRecoveryMessageTimer();
         reconnectAttempts = 0;
         setRoomStatus("ready");
         setRoomError("");
         const hostId = hostPeerIdRef.current;
-        if (hostId && hostId !== peer.id && !connections.has(hostId)) connectToPeer(hostId);
+        if (hostId && hostId !== peer.id && !connections.get(hostId)?.open) connectToPeer(hostId);
       }
     };
 
@@ -997,7 +1009,7 @@ export default function Home() {
       }, delay);
     };
 
-    const syncRoomPresence = async (background = false) => {
+    const syncRoomPresence = async (background = document.visibilityState !== "visible") => {
       const peer = localPeer;
       if (disposed || !peer?.open || !peer.id || !localDeviceId) return;
       try {
@@ -1006,8 +1018,10 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ peerId: peer.id, deviceId: localDeviceId, name: displayNameRef.current, mobile: mobileClient, background }),
           cache: "no-store",
-          keepalive: mobileClient && background,
+          keepalive: background,
+          signal: AbortSignal.timeout(10_000),
         });
+        if (disposed || localPeer !== peer) return;
         if (!response.ok) throw new Error("presence unavailable");
         const data = await response.json() as { participants?: unknown };
         if (!Array.isArray(data.participants)) return;
@@ -1041,7 +1055,14 @@ export default function Home() {
     const startPresenceHeartbeat = () => {
       if (presenceTimer !== null) window.clearInterval(presenceTimer);
       void syncRoomPresence();
-      presenceTimer = window.setInterval(() => void syncRoomPresence(), 5000);
+      presenceTimer = window.setInterval(() => {
+        recoverRoomConnection();
+        connections.forEach((connection) => {
+          const state = connection.peerConnection?.connectionState;
+          if (state === "failed" || state === "closed") connection.close();
+        });
+        void syncRoomPresence();
+      }, 5000);
     };
 
     const leaveRoomPresence = () => {
@@ -1197,8 +1218,18 @@ export default function Home() {
 
     function bindConnection(connection: DataConnection, incoming = false) {
       const peerId = connection.peer;
+      const openTimer = window.setTimeout(() => {
+        connectionTimers.delete(openTimer);
+        if (disposed || connection.open) return;
+        pendingPeerIds.delete(peerId);
+        connection.close();
+        void syncRoomPresence();
+      }, 12_000);
+      connectionTimers.add(openTimer);
+      const clearOpenTimer = () => { window.clearTimeout(openTimer); connectionTimers.delete(openTimer); };
 
       const handleOpen = () => {
+        clearOpenTimer();
         if (disposed) return;
         const graceTimer = peerRemovalTimers.get(peerId);
         if (graceTimer !== undefined) window.clearTimeout(graceTimer);
@@ -1305,13 +1336,18 @@ export default function Home() {
         });
       });
       connection.on("close", () => {
+        clearOpenTimer();
         pendingPeerIds.delete(peerId);
         if (connections.get(peerId) !== connection) return;
         schedulePeerRemoval(peerId);
+        if (!disposed) void syncRoomPresence();
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
       });
       connection.on("error", () => {
+        clearOpenTimer();
         pendingPeerIds.delete(peerId);
+        if (connections.get(peerId) !== connection) return;
+        connection.close();
         schedulePeerRemoval(peerId);
       });
       if (connection.open) handleOpen();
@@ -1435,7 +1471,7 @@ export default function Home() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
-        if (mobileClient) void syncRoomPresence(true);
+        void syncRoomPresence(true);
         return;
       }
       clearReconnectTimer();
@@ -1471,6 +1507,8 @@ export default function Home() {
       outgoingCalls.clear();
       incomingCalls.clear();
       pendingPeerIds.clear();
+      connectionTimers.forEach((timer) => window.clearTimeout(timer));
+      connectionTimers.clear();
       peerRemovalTimers.forEach((timer) => window.clearTimeout(timer));
       peerRemovalTimers.clear();
       localPeer?.destroy();

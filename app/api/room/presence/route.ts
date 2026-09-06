@@ -42,6 +42,7 @@ export async function POST(request: Request) {
   const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim() : "";
   const name = typeof body.name === "string" ? body.name.trim().slice(0, 24) : "成员";
   const mobile = body.mobile === true;
+  const background = body.background === true;
   if (!peerPattern.test(peerId) || !devicePattern.test(deviceId)) {
     return new NextResponse("Invalid presence", { status: 400 });
   }
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     name: name || "成员",
     identityId,
     seenAt: now,
-    expiresAt: now + (mobile ? mobilePresenceLifetime : desktopPresenceLifetime),
+    expiresAt: now + (background ? mobilePresenceLifetime : (mobile ? mobilePresenceLifetime : desktopPresenceLifetime)),
   });
   return NextResponse.json({ participants: activeParticipants() }, {
     headers: { "Cache-Control": "private, no-store" },
