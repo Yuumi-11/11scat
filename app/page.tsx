@@ -204,9 +204,32 @@ function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: 
     video.srcObject = stream;
     video.muted = muted;
     video.volume = 1;
-    void video.play().catch(() => {
-      if (!muted && stream.getAudioTracks().some((track) => track.readyState === "live")) onAudioBlocked?.();
-    });
+    let disposed = false;
+    const play = async () => {
+      try { await video.play(); }
+      catch (error) {
+        if (disposed || video.srcObject !== stream) return;
+        if ((error as DOMException).name === "NotAllowedError" && !video.muted) {
+          // Autoplay restrictions must not prevent the video frames from appearing.
+          video.muted = true;
+          if (!muted) onAudioBlocked?.();
+          await video.play().catch(() => undefined);
+        }
+      }
+    };
+    const resume = () => { if (document.visibilityState === "visible" && video.paused) void play(); };
+    const onReady = () => { if (video.paused) void play(); };
+    video.addEventListener("loadedmetadata", onReady);
+    video.addEventListener("canplay", onReady);
+    document.addEventListener("visibilitychange", resume);
+    void play();
+    return () => {
+      disposed = true;
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("canplay", onReady);
+      document.removeEventListener("visibilitychange", resume);
+      if (video.srcObject === stream) video.srcObject = null;
+    };
   }, [muted, onAudioBlocked, stream]);
 
   return <video className={className} ref={ref} autoPlay muted={muted} playsInline disablePictureInPicture={false} aria-label={label} />;
