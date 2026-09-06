@@ -511,6 +511,8 @@ body { overflow: hidden; }
 .message-quote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .message-image-link {
   display: block;
+  padding: 0;
+  cursor: zoom-in;
   max-width: 100%;
   overflow: hidden;
   border: 1px solid #e8c8d6;
@@ -520,6 +522,52 @@ body { overflow: hidden; }
 }
 .message:not(.own) .message-image-link { border-radius: 12px 12px 12px 4px; }
 .message-image-link + p { margin-top: 4px; }
+.chat-image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 76px 24px 24px;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.chat-image-viewer::backdrop { background: rgba(19, 23, 32, .76); }
+.chat-image-viewer-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 50%;
+  color: #fff;
+  background: #252a35;
+  font: 32px/1 Arial, sans-serif;
+  cursor: pointer;
+}
+.chat-image-viewer-close:hover { background: #424a5a; }
+.chat-image-viewer-close:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.chat-image-viewer-content {
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.chat-image-viewer-content img { display: block; min-height: 0; width: 100%; height: calc(100% - 56px); object-fit: contain; }
+.chat-image-viewer-content figcaption { max-width: 100%; max-height: 40px; overflow: auto; overflow-wrap: anywhere; font-size: 14px; line-height: 20px; text-align: center; }
+@media (max-width: 640px) {
+  .chat-image-viewer { padding: 76px 12px max(20px, env(safe-area-inset-bottom)); }
+}
 .message-image {
   display: block;
   width: auto;
@@ -556,10 +604,26 @@ body { overflow: hidden; }
 }
 .chat-input-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
 }
+.chat-input-row > textarea { grid-column: 3; grid-row: 1; }
+.chat-input-row > .chat-send-button { grid-column: 4; grid-row: 1; }
+.chat-voice-button { grid-column: 2; grid-row: 1; width: 36px; height: 58px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--theme-soft); color: var(--theme-accent-dark); cursor: pointer; }
+.voice-recording { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 10px; color: #a22d42; font-size: 13px; }
+.voice-recording button { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: white; color: inherit; cursor: pointer; }
+.message-audio { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
+.message-audio audio { display: block; width: 260px; max-width: 100%; height: 44px; }
+.image-cloud-button.cloud-save-icon { display: inline-grid; place-items: center; width: 32px; height: 32px; min-width: 32px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--theme-accent-dark); cursor: pointer; }
+.cloud-save-icon.done { color: #27724c; background: #edf8f0; }
+.cloud-save-icon.failed { color: #ad3248; background: #fff0f3; }
+.cloud-save-icon.uploading svg { animation: cloud-save-spin 1s linear infinite; }
+@keyframes cloud-save-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cloud-save-icon.uploading svg { animation: none; } }
+.cloud-item.file { grid-template-rows: auto auto auto auto; }
+.cloud-thumbnail { display: grid; place-items: center; width: 100%; height: 112px; padding: 0; border: 0; border-radius: 9px; overflow: hidden; background: #f4f4f6; cursor: zoom-in; }
+.cloud-thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .chat-image-input { display: none; }
 .chat-image-preview {
   position: relative;
@@ -1093,9 +1157,13 @@ button:focus-visible { outline: 3px solid color-mix(in srgb, var(--theme-accent)
 .board-text-layer { position: absolute; inset: 0; z-index: 2; container-type: size; pointer-events: none; }
 .board-text-box { position: absolute; min-width: 7%; min-height: 7.5%; white-space: pre-wrap; pointer-events: none; }
 .tool-text .board-text-box, .board-text-box.editing { pointer-events: auto; }
-.board-text-box.editing { min-width: 10%; min-height: 8%; resize: both; overflow: hidden; border: 2px dashed var(--theme-accent); border-radius: 5px; background: rgba(255,255,255,.74); box-shadow: 0 5px 18px rgba(87,52,70,.09); }
+.board-text-box.editing { min-width: 10%; min-height: 8%; resize: both; overflow: hidden; outline: 2px dashed var(--theme-accent); border-radius: 5px; background: rgba(255,255,255,.74); box-shadow: 0 5px 18px rgba(87,52,70,.09); }
 .board-text-box textarea, .board-text-content { width: 100%; height: 100%; margin: 0; padding: .8em .6em .35em; border: 0; outline: 0; color: inherit; background: transparent; font: inherit; line-height: 1.25; text-align: left; white-space: pre-wrap; resize: none; }
+.board-text-box { font-family: system-ui, sans-serif; }
+.board-text-box textarea, .board-text-content { overflow: hidden; word-break: break-all; tab-size: 4; }
 .board-text-content { display: block; pointer-events: none; cursor: text; }
+.message-delivery { display: flex; justify-content: flex-end; gap: 8px; margin-top: 5px; font-size: 12px; color: var(--muted); }
+.message-delivery button { border: 0; background: transparent; color: var(--theme-accent-dark); cursor: pointer; }
 .tool-text .board-text-content { pointer-events: auto; }
 .board-text-drag, .board-text-delete { position: absolute; z-index: 3; top: 2px; width: 22px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: #fff; background: var(--theme-accent); cursor: grab; }
 .board-text-drag { left: 2px; font-size: 9px; letter-spacing: -2px; touch-action: none; }

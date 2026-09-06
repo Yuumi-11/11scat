@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 export type StoredAttachment = {
   id: string;
@@ -7,7 +8,7 @@ export type StoredAttachment = {
   name: string;
   size: number;
   mimeType: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "audio";
 };
 
 export type StoredQuote = { id: string; sender: string; body: string };
@@ -46,7 +47,22 @@ async function writeStore(store: ChatStore) {
   await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
   const temporaryPath = `${storePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(store)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(temporaryPath, storePath);
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rename(temporaryPath, storePath);
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        // Windows readers and file scanners can briefly hold the destination.
+        // Keep the old file intact and retry the same atomic replacement.
+        if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(code || "") || attempt >= 5) throw error;
+        await delay(25 * 2 ** attempt);
+      }
+    }
+  } finally {
+    await unlink(temporaryPath).catch(() => undefined);
+  }
 }
 
 async function mutate<T>(operation: (store: ChatStore) => Promise<T> | T): Promise<T> {
@@ -67,11 +83,18 @@ async function mutate<T>(operation: (store: ChatStore) => Promise<T> | T): Promi
   return result;
 }
 
-export async function saveMessage(message: StoredMessage): Promise<StoredMessage> {
+export async function saveMessage(message: StoredMessage, onCreated?: () => void): Promise<StoredMessage> {
   return mutate((store) => {
     const existing = store.messages.find((item) => item.id === message.id);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.identityId !== message.identityId) throw new Error("Message id belongs to another identity");
+      return existing;
+    }
+    // Assign a strictly increasing server timestamp inside the serialized write.
+    // Pagination must not skip messages created in the same millisecond.
+    message.createdAt = store.messages.reduce((latest, item) => Math.max(latest, item.createdAt + 1, (item.recalledAt || 0) + 1), Date.now());
     store.messages.push(message);
+    onCreated?.();
     return message;
   });
 }
@@ -81,12 +104,13 @@ export async function recallMessage(id: string, identityId: string): Promise<boo
     const message = store.messages.find((item) => item.id === id && item.identityId === identityId);
     if (!message || message.recalled) return false;
     message.recalled = true;
-    message.recalledAt = Date.now();
+    message.recalledAt = store.messages.reduce((latest, item) => Math.max(latest, item.createdAt + 1, (item.recalledAt || 0) + 1), Date.now());
     return true;
   });
 }
 
 export async function listMessageChanges(since: number, limit: number) {
+  await mutationQueue;
   const store = await readStore();
   const changes = store.messages
     .filter((message) => message.createdAt > since || (message.recalledAt || 0) > since)
@@ -95,7 +119,9 @@ export async function listMessageChanges(since: number, limit: number) {
       const rightChangedAt = Math.max(right.createdAt, right.recalledAt || 0);
       return leftChangedAt - rightChangedAt || left.id.localeCompare(right.id);
     });
-  const page = changes.slice(0, limit);
+  const boundary = changes[limit - 1];
+  const boundaryTime = boundary ? Math.max(boundary.createdAt, boundary.recalledAt || 0) : Infinity;
+  const page = changes.filter((message) => Math.max(message.createdAt, message.recalledAt || 0) <= boundaryTime);
   const cursor = page.reduce((latest, message) => Math.max(latest, message.createdAt, message.recalledAt || 0), since);
   return {
     messages: page.filter((message) => !message.recalled),
@@ -106,11 +132,13 @@ export async function listMessageChanges(since: number, limit: number) {
 }
 
 export async function listMessages(before: number | null, limit: number) {
+  await mutationQueue;
   const store = await readStore();
   const visible = store.messages
     .filter((message) => !message.recalled && (before === null || message.createdAt < before))
     .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
   const start = Math.max(0, visible.length - limit);
-  const messages = visible.slice(start);
+  const boundaryTime = visible[start]?.createdAt || 0;
+  const messages = visible.filter((message) => message.createdAt >= boundaryTime);
   return { messages, nextCursor: start > 0 && messages[0] ? String(messages[0].createdAt) : null };
 }

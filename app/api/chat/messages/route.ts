@@ -13,7 +13,7 @@ function normalizeAttachment(value: unknown): StoredAttachment | undefined {
   const item = value as Partial<StoredAttachment>;
   if (typeof item.id !== "string" || !idPattern.test(item.id) || typeof item.url !== "string" || item.url !== `/api/chat/files/${item.id}`
     || typeof item.name !== "string" || typeof item.size !== "number" || !Number.isFinite(item.size) || item.size < 0
-    || typeof item.mimeType !== "string" || (item.kind !== "image" && item.kind !== "file")) return undefined;
+    || typeof item.mimeType !== "string" || (item.kind !== "image" && item.kind !== "file" && item.kind !== "audio")) return undefined;
   return { id: item.id, url: item.url, name: item.name.slice(0, 255), size: item.size, mimeType: item.mimeType.slice(0, 255), kind: item.kind };
 }
 
@@ -25,6 +25,7 @@ function normalizeQuote(value: unknown): StoredQuote | undefined {
 }
 
 export async function GET(request: NextRequest) {
+  if (!(await currentIdentityId())) return new NextResponse("Unauthorized", { status: 401 });
   const sinceText = request.nextUrl.searchParams.get("since");
   const since = sinceText && /^\d+$/.test(sinceText) ? Number(sinceText) : null;
   const beforeText = request.nextUrl.searchParams.get("before");
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
   if (!text && !attachment) return NextResponse.json({ error: "消息不能为空" }, { status: 400 });
   const user = await getUser(identityId);
   const now = Date.now();
+  let created = false;
   const message = await saveMessage({
     id,
     body: text,
@@ -59,8 +61,8 @@ export async function POST(request: NextRequest) {
       hourCycle: "h23",
     }),
     createdAt: now,
-  });
+  }, () => { created = true; });
   const senderDeviceId = (request.headers.get("x-device-id") || "").trim().slice(0, 80);
-  after(() => sendChatPush(message, senderDeviceId).catch(() => undefined));
+  if (created) after(() => sendChatPush(message, senderDeviceId).catch(() => undefined));
   return NextResponse.json({ message }, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

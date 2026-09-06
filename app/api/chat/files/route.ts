@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   }
   await handle.close();
   await rename(temporaryPath, finalPath);
-  const kind = mimeType.startsWith("image/") ? "image" : "file";
+  const kind = mimeType.startsWith("image/") ? "image" : mimeType.startsWith("audio/") ? "audio" : "file";
   await writeFile(path.join(fileDirectory, `${id}.json`), JSON.stringify({ id, name, size, mimeType, kind }), { encoding: "utf8", mode: 0o600 });
   const cloud = kind === "file" ? await autoImportChatFile(id, finalPath, name, size) : null;
   return NextResponse.json({

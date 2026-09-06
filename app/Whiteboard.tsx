@@ -23,15 +23,15 @@ function pointDistance(left: BoardPoint, right: BoardPoint) {
 
 let lastBoardRevisionMs = 0;
 let boardRevisionSequence = 0;
-function makeBoardRevision() {
-  const now = Date.now();
+function makeBoardRevision(observed = "") {
+  const now = Math.max(Date.now(), lastBoardRevisionMs, (Number(observed.split(":")[0]) || 0) + 1);
   boardRevisionSequence = now === lastBoardRevisionMs ? boardRevisionSequence + 1 : 0;
   lastBoardRevisionMs = now;
   return `${now.toString().padStart(13, "0")}:${boardRevisionSequence.toString().padStart(4, "0")}:${crypto.randomUUID()}`;
 }
 
 function makeBoardTextUpdate(current: BoardText, patch: Partial<BoardText>): BoardText {
-  return { ...current, ...patch, updatedAt: Date.now(), revision: makeBoardRevision() };
+  return { ...current, ...patch, updatedAt: Date.now(), revision: makeBoardRevision(current.revision) };
 }
 
 export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpsertText, onDeleteText, onSaved }: {
@@ -47,12 +47,14 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   const [color, setColor] = useState("#1c1b1d");
   const [width, setWidth] = useState(6);
   const [draft, setDraft] = useState<BoardStroke | null>(null);
+  const [draftEpoch, setDraftEpoch] = useState(board.epoch);
   const [editingTextId, setEditingTextId] = useState("");
   const [saving, setSaving] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<BoardStroke | null>(null);
+  const draftEpochRef = useRef(board.epoch);
   const lastStrokeBroadcastRef = useRef(0);
   const erasedDuringGestureRef = useRef(new Set<string>());
   const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number } | null>(null);
@@ -63,7 +65,22 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     return () => document.removeEventListener("fullscreenchange", update);
   }, []);
 
-  const visibleStrokes = useMemo(() => draft ? [...board.strokes.filter((stroke) => stroke.id !== draft.id), draft] : board.strokes, [board.strokes, draft]);
+  const visibleStrokes = useMemo(() => draft && draftEpoch === board.epoch && !board.deletedStrokeIds.includes(draft.id) ? [...board.strokes.filter((stroke) => stroke.id !== draft.id), draft] : board.strokes, [board.strokes, board.epoch, board.deletedStrokeIds, draft, draftEpoch]);
+
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+    const adjustFont = (event: WheelEvent) => {
+      const box = (event.target as Element | null)?.closest<HTMLElement>(".board-text-box.editing");
+      const text = board.texts.find((item) => item.id === box?.dataset.textId);
+      if (!text || !event.deltaY || event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onUpsertText(makeBoardTextUpdate(text, { fontSize: Math.max(10, Math.min(96, text.fontSize + (event.deltaY < 0 ? 2 : -2))) }), board.epoch);
+    };
+    paper.addEventListener("wheel", adjustFont, { passive: false });
+    return () => paper.removeEventListener("wheel", adjustFont);
+  }, [board.texts, board.epoch, onUpsertText]);
 
   const pointerPoint = (event: React.PointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -85,7 +102,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     if (event.button !== 0 && event.pointerType === "mouse") return;
     const point = pointerPoint(event);
     if (tool === "text") {
-      const text: BoardText = { id: crypto.randomUUID(), text: "", x: point.x, y: point.y, width: 280, height: 92, color, fontSize: Math.max(36, width * 6), confirmed: false, updatedAt: Date.now(), revision: makeBoardRevision() };
+      const text: BoardText = { id: crypto.randomUUID(), text: "", x: point.x, y: point.y, width: 280, height: 92, color, fontSize: Math.min(96, Math.max(36, width * 6)), confirmed: false, updatedAt: Date.now(), revision: makeBoardRevision() };
       setEditingTextId(text.id);
       onUpsertText(text, board.epoch);
       return;
@@ -95,6 +112,8 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     if (tool === "erase-stroke") { eraseWholeStroke(point); return; }
     const stroke: BoardStroke = { id: crypto.randomUUID(), color: tool === "erase-area" ? "#ffffff" : color, width: tool === "erase-area" ? Math.max(24, width * 4) : width, points: [point], createdAt: Date.now(), revision: makeBoardRevision() };
     draftRef.current = stroke;
+    draftEpochRef.current = board.epoch;
+    setDraftEpoch(board.epoch);
     setDraft(stroke);
     onAddStroke(stroke, board.epoch);
     lastStrokeBroadcastRef.current = event.timeStamp;
@@ -105,6 +124,11 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     const point = pointerPoint(event);
     if (tool === "erase-stroke") { eraseWholeStroke(point); return; }
     const current = draftRef.current;
+    if (draftEpochRef.current !== board.epoch || (current && board.deletedStrokeIds.includes(current.id))) {
+      draftRef.current = null;
+      setDraft(null);
+      return;
+    }
     if (!current || pointDistance(current.points[current.points.length - 1], point) < 1.5) return;
     const next = { ...current, points: [...current.points, point], revision: makeBoardRevision() };
     draftRef.current = next;
@@ -120,7 +144,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     erasedDuringGestureRef.current.clear();
     const finished = draftRef.current;
     if (!finished) return;
-    onAddStroke(finished, board.epoch);
+    if (draftEpochRef.current === board.epoch && !board.deletedStrokeIds.includes(finished.id)) onAddStroke(finished, draftEpochRef.current);
     draftRef.current = null;
     setDraft(null);
   };
@@ -152,8 +176,9 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   const syncTextSize = (element: HTMLDivElement, text: BoardText) => {
     const rect = paperRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const nextWidth = Math.max(120, Math.min(BOARD_WIDTH - text.x, (element.offsetWidth / rect.width) * BOARD_WIDTH));
-    const nextHeight = Math.max(54, Math.min(BOARD_HEIGHT - text.y, (element.offsetHeight / rect.height) * BOARD_HEIGHT));
+    const boxRect = element.getBoundingClientRect();
+    const nextWidth = Math.max(120, Math.min(BOARD_WIDTH - text.x, (boxRect.width / rect.width) * BOARD_WIDTH));
+    const nextHeight = Math.max(54, Math.min(BOARD_HEIGHT - text.y, (boxRect.height / rect.height) * BOARD_HEIGHT));
     if (Math.abs(nextWidth - text.width) > 1 || Math.abs(nextHeight - text.height) > 1) updateText(text, { width: nextWidth, height: nextHeight });
   };
 
@@ -194,10 +219,20 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
       context.setTransform(1, 0, 0, 1, 0, 0);
       board.texts.forEach((text) => {
         const fontSize = text.fontSize * scaleX;
-        const maxWidth = Math.max(1, text.width * scaleX);
+        const paddingX = fontSize * .6;
+        const paddingTop = fontSize * .8;
+        const maxWidth = Math.max(1, text.width * scaleX - paddingX * 2);
+        context.save();
+        context.beginPath();
+        context.rect(text.x * scaleX, text.y * scaleY, text.width * scaleX, text.height * scaleY);
+        context.clip();
         context.fillStyle = text.color;
         context.font = `${fontSize}px system-ui, sans-serif`;
-        context.textBaseline = "top";
+        context.textBaseline = "alphabetic";
+        const metrics = context.measureText("Mg");
+        const ascent = metrics.fontBoundingBoxAscent;
+        const descent = metrics.fontBoundingBoxDescent;
+        const baselineOffset = (fontSize * 1.25 - ascent - descent) / 2 + ascent;
         const lines = text.text.split("\n").flatMap((paragraph) => {
           if (!paragraph) return [""];
           const wrapped: string[] = [];
@@ -210,7 +245,8 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
           wrapped.push(line);
           return wrapped;
         });
-        lines.forEach((line, index) => context.fillText(line, text.x * scaleX, text.y * scaleY + index * fontSize * 1.25, maxWidth));
+        lines.forEach((line, index) => context.fillText(line, text.x * scaleX + paddingX, text.y * scaleY + paddingTop + baselineOffset + index * fontSize * 1.25));
+        context.restore();
       });
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("画板生成失败")), "image/png"));
       const timestamp = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(new Date()).replace(/\D/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -232,11 +268,11 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
         <div className="board-text-layer">
           {board.texts.map((text) => {
             const editing = editingTextId === text.id || !text.confirmed;
-            return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: text.color, fontSize: `${text.fontSize / 12}cqw` }} onPointerUp={(event) => editing && syncTextSize(event.currentTarget, text)}>
+            return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: text.color, fontSize: `${text.fontSize / 12}cqw` }} onPointerUp={(event) => editing && syncTextSize(event.currentTarget, text)}>
               {editing ? <>
                 <button className="board-text-drag" type="button" aria-label="拖动文本框" title="拖动文本框" onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}>⋮⋮</button>
                 <button className="board-text-delete" type="button" aria-label="删除文本框" title="删除文本框" onClick={() => onDeleteText(text.id, board.epoch)}><Trash2 aria-hidden="true" /></button>
-                <textarea value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
+                <textarea value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
               </> : <button className="board-text-content" type="button" onClick={() => { if (tool === "text") { setEditingTextId(text.id); updateText(text, { confirmed: false }); } }}>{text.text}</button>}
             </div>;
           })}

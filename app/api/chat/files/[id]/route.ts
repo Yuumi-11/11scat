@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { parseByteRange } from "../../../../byte-range";
 import { currentIdentityId } from "../../../identity/session";
 
 export const runtime = "nodejs";
@@ -22,10 +23,14 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const name = typeof metadata.name === "string" ? metadata.name : "file";
     const mimeType = typeof metadata.mimeType === "string" ? metadata.mimeType : "application/octet-stream";
     const encodedName = encodeURIComponent(name).replace(/['()]/g, escape);
-    const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
-    return new NextResponse(stream, { headers: {
+    const range = parseByteRange(_request.headers.get("range"), fileStat.size);
+    if (range === "invalid") return new NextResponse(null, { status: 416, headers: { "Content-Range": `bytes */${fileStat.size}` } });
+    const stream = Readable.toWeb(createReadStream(filePath, range || undefined)) as ReadableStream;
+    return new NextResponse(stream, { status: range ? 206 : 200, headers: {
       "Content-Type": mimeType,
-      "Content-Length": String(fileStat.size),
+      "Content-Length": String(range ? range.end - range.start + 1 : fileStat.size),
+      "Accept-Ranges": "bytes",
+      ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${fileStat.size}` } : {}),
       "Content-Disposition": `inline; filename*=UTF-8''${encodedName}`,
       "Cache-Control": "private, max-age=31536000, immutable",
       "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",

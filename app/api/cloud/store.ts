@@ -129,7 +129,7 @@ async function availableDestination(directory: string, fileName: string) {
   return path.join(directory, `${crypto.randomUUID()}-${fileName}`);
 }
 
-export async function importChatAttachment(id: string, sourcePath: string, name: string, size: number, target: "chat" | "chat/pics") {
+export async function importChatAttachment(id: string, sourcePath: string, name: string, size: number, target: "chat" | "chat/pics" | "video") {
   await ensureCloudFolders();
   const destinationDirectory = path.join(cloudRoot, ...target.split("/"));
   await mkdir(destinationDirectory, { recursive: true, mode: 0o700 });
@@ -161,10 +161,10 @@ export async function readChatAttachmentMetadata(id: string) {
   const metadata = JSON.parse(await readFile(path.join(directory, `${id}.json`), "utf8")) as {
     name?: unknown; size?: unknown; mimeType?: unknown; kind?: unknown;
   };
-  if (metadata.kind !== "image" || typeof metadata.name !== "string" || typeof metadata.size !== "number") {
-    throw new Error("只能将聊天图片上传到 chat/pics");
+  if ((metadata.kind !== "image" && metadata.kind !== "audio") || typeof metadata.name !== "string" || typeof metadata.size !== "number") {
+    throw new Error("仅支持手动保存聊天图片或语音");
   }
-  return { sourcePath: path.join(directory, `${id}.bin`), name: metadata.name, size: metadata.size };
+  return { sourcePath: path.join(directory, `${id}.bin`), name: metadata.name, size: metadata.size, kind: metadata.kind };
 }
 
 export { availableDestination };

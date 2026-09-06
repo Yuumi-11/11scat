@@ -5,6 +5,11 @@ import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp,
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
+import { INITIAL_BOARD_EPOCH, normalizeBoardStroke, normalizeBoardText, normalizeBoard, sortBoardStrokes, mergeBoard } from "./board-state";
+import { encodeRoomPackets, createPacketReceiver } from "./room-packets";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { CloudSaveButton, type CloudSaveState } from "./CloudSaveButton";
+import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
 
 type Task = {
   id: string;
@@ -17,8 +22,9 @@ type Task = {
 };
 
 type ChatQuote = { id: string; sender: string; body: string };
-type ChatAttachment = { id: string; url: string; name: string; size: number; mimeType: string; kind: "image" | "file" };
-type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean };
+type ChatAttachment = { id: string; url: string; name: string; size: number; mimeType: string; kind: "image" | "file" | "audio" };
+type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean; delivery?: "sending" | "failed"; error?: string };
+type OutgoingChat = { message: ChatMessage; file?: File; attachment?: ChatAttachment };
 type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done">;
 type MediaSource = "camera" | "screen";
 type MediaItem = {
@@ -34,7 +40,7 @@ type CloudStatus = { usedBytes: number; limitBytes: number; warningBytes: number
 const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
 const chatImageUrlPattern = /^\/api\/chat\/(?:images|files)\/[0-9a-f-]{36}$/i;
-const INITIAL_BOARD_EPOCH = "0000000000000:initial";
+
 const MOBILE_BACKGROUND_GRACE_MS = 30 * 60 * 1000;
 
 const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
@@ -46,78 +52,12 @@ const decodeVapidKey = (value: string) => {
   return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 };
 
-const normalizeBoardStroke = (value: unknown): BoardStroke | null => {
-  if (!value || typeof value !== "object") return null;
-  const item = value as Partial<BoardStroke>;
-  if (typeof item.id !== "string" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)
-    || typeof item.width !== "number" || item.width < 1 || item.width > 120 || !Array.isArray(item.points)) return null;
-  const points = item.points.slice(0, 10000).flatMap((point) => (
-    point && typeof point.x === "number" && typeof point.y === "number" && Number.isFinite(point.x) && Number.isFinite(point.y)
-      ? [{ x: Math.max(0, Math.min(1200, point.x)), y: Math.max(0, Math.min(720, point.y)) }]
-      : []
-  ));
-  return {
-    id: item.id.slice(0, 80), color: item.color, width: item.width, points,
-    createdAt: typeof item.createdAt === "number" && Number.isFinite(item.createdAt) ? item.createdAt : 0,
-    revision: typeof item.revision === "string" ? item.revision.slice(0, 120) : `${String(typeof item.createdAt === "number" ? item.createdAt : 0).padStart(13, "0")}:${item.id}`,
-  };
-};
-
-const normalizeBoardText = (value: unknown): BoardText | null => {
-  if (!value || typeof value !== "object") return null;
-  const item = value as Partial<BoardText>;
-  if (typeof item.id !== "string" || typeof item.text !== "string" || typeof item.x !== "number" || typeof item.y !== "number"
-    || typeof item.width !== "number" || typeof item.height !== "number" || typeof item.color !== "string" || !/^#[0-9a-f]{6}$/i.test(item.color)) return null;
-  return {
-    id: item.id.slice(0, 80), text: item.text.slice(0, 4000),
-    x: Math.max(0, Math.min(1200, item.x)), y: Math.max(0, Math.min(720, item.y)),
-    width: Math.max(80, Math.min(1200, item.width)), height: Math.max(40, Math.min(720, item.height)),
-    color: item.color, fontSize: typeof item.fontSize === "number" ? Math.max(10, Math.min(96, item.fontSize)) : 20,
-    confirmed: item.confirmed !== false, updatedAt: typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt) ? item.updatedAt : 0,
-    revision: typeof item.revision === "string" ? item.revision.slice(0, 120) : `${String(typeof item.updatedAt === "number" ? item.updatedAt : 0).padStart(13, "0")}:${item.id}`,
-  };
-};
-
-const normalizeBoard = (value: unknown): RoomBoard | null => {
-  if (!value || typeof value !== "object") return null;
-  const board = value as Partial<RoomBoard>;
-  if (typeof board.id !== "string" || !/^[0-9a-f-]{36}$/i.test(board.id) || typeof board.name !== "string" || !Array.isArray(board.strokes)) return null;
-  const strokes = board.strokes.slice(0, 2000).flatMap((stroke) => { const normalized = normalizeBoardStroke(stroke); return normalized ? [normalized] : []; });
-  const texts = Array.isArray(board.texts) ? board.texts.slice(0, 200).flatMap((text) => { const normalized = normalizeBoardText(text); return normalized ? [normalized] : []; }) : [];
-  const deletedStrokeIds = Array.isArray(board.deletedStrokeIds) ? board.deletedStrokeIds.filter((id): id is string => typeof id === "string").slice(-2000) : [];
-  const deletedTextIds = Array.isArray(board.deletedTextIds) ? board.deletedTextIds.filter((id): id is string => typeof id === "string").slice(-500) : [];
-  const deletedStrokes = new Set(deletedStrokeIds);
-  const deletedTexts = new Set(deletedTextIds);
-  return {
-    id: board.id, name: board.name.trim().slice(0, 40) || "画板", strokes: strokes.filter((stroke) => !deletedStrokes.has(stroke.id)), texts: texts.filter((text) => !deletedTexts.has(text.id)),
-    deletedStrokeIds, deletedTextIds,
-    epoch: typeof board.epoch === "string" && /^\d{13}:[0-9a-z-]{1,80}$/i.test(board.epoch) ? board.epoch : INITIAL_BOARD_EPOCH,
-    createdAt: typeof board.createdAt === "number" ? board.createdAt : Date.now(),
-  };
-};
-
-const sortBoardStrokes = (strokes: BoardStroke[]) => [...strokes].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
-
-const mergeBoard = (current: RoomBoard, incoming: RoomBoard): RoomBoard => {
-  if (incoming.epoch > current.epoch) return { ...incoming, strokes: sortBoardStrokes(incoming.strokes) };
-  if (incoming.epoch < current.epoch) return current;
-  const strokeMap = new Map(current.strokes.map((stroke) => [stroke.id, stroke]));
-  incoming.strokes.forEach((stroke) => { const previous = strokeMap.get(stroke.id); if (!previous || stroke.revision > previous.revision) strokeMap.set(stroke.id, stroke); });
-  const textMap = new Map(current.texts.map((text) => [text.id, text]));
-  incoming.texts.forEach((text) => { const previous = textMap.get(text.id); if (!previous || text.revision > previous.revision) textMap.set(text.id, text); });
-  const deletedStrokeIds = [...new Set([...current.deletedStrokeIds, ...incoming.deletedStrokeIds])].slice(-2000);
-  const deletedTextIds = [...new Set([...current.deletedTextIds, ...incoming.deletedTextIds])].slice(-500);
-  const deletedStrokes = new Set(deletedStrokeIds);
-  const deletedTexts = new Set(deletedTextIds);
-  return { ...current, name: incoming.name || current.name, strokes: sortBoardStrokes([...strokeMap.values()].filter((stroke) => !deletedStrokes.has(stroke.id))), texts: [...textMap.values()].filter((text) => !deletedTexts.has(text.id)), deletedStrokeIds, deletedTextIds };
-};
-
 const normalizeChatAttachment = (value: unknown): ChatAttachment | undefined => {
   if (!value || typeof value !== "object") return undefined;
   const item = value as Partial<ChatAttachment>;
   if (typeof item.id !== "string" || typeof item.url !== "string" || item.url !== `/api/chat/files/${item.id}`
     || typeof item.name !== "string" || typeof item.size !== "number" || typeof item.mimeType !== "string"
-    || (item.kind !== "image" && item.kind !== "file")) return undefined;
+    || (item.kind !== "image" && item.kind !== "file" && item.kind !== "audio")) return undefined;
   return { id: item.id, url: item.url, name: item.name, size: item.size, mimeType: item.mimeType, kind: item.kind };
 };
 
@@ -177,7 +117,7 @@ const normalizeIncomingMessage = (value: unknown, currentIdentityId: string): Ch
 
 const mergeChatMessages = (incoming: ChatMessage[], current: ChatMessage[]) => {
   const byId = new Map<string, ChatMessage>();
-  [...incoming, ...current].forEach((message) => byId.set(message.id, message));
+  [...current, ...incoming].forEach((message) => byId.set(message.id, message));
   return [...byId.values()].sort((left, right) => (left.createdAt || 0) - (right.createdAt || 0) || left.id.localeCompare(right.id));
 };
 
@@ -284,8 +224,9 @@ export default function Home() {
   const [chatDraft, setChatDraft] = useState("");
   const [chatImage, setChatImage] = useState<File | null>(null);
   const [chatImagePreview, setChatImagePreview] = useState("");
+  const [viewedChatImage, setViewedChatImage] = useState<ViewedChatImage | null>(null);
   const [chatImageError, setChatImageError] = useState("");
-  const [chatSending, setChatSending] = useState(false);
+  const [, setChatSending] = useState(false);
   const [chatUploadProgress, setChatUploadProgress] = useState<number | null>(null);
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
   const [chatHistoryCursor, setChatHistoryCursor] = useState<string | null>(null);
@@ -313,7 +254,7 @@ export default function Home() {
   const [cloudError, setCloudError] = useState("");
   const [cloudUploading, setCloudUploading] = useState(false);
   const [cloudNotice, setCloudNotice] = useState("");
-  const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, "uploading" | "done">>({});
+  const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, CloudSaveState>>({});
   const [boards, setBoards] = useState<RoomBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState("");
   const [boardNotice, setBoardNotice] = useState("");
@@ -336,6 +277,8 @@ export default function Home() {
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const cloudInputRef = useRef<HTMLInputElement>(null);
   const boardsRef = useRef<RoomBoard[]>([]);
+  const packetReceiverRef = useRef(createPacketReceiver());
+  const deletedBoardIdsRef = useRef(new Set<string>());
   const messageListRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressOriginRef = useRef({ x: 0, y: 0 });
@@ -343,6 +286,7 @@ export default function Home() {
   const chatAtBottomRef = useRef(true);
   const scrollAfterSendRef = useRef(false);
   const chatSavedScrollTopRef = useRef(0);
+  const chatImageViewerOpenRef = useRef(false);
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
   const pushDeviceIdRef = useRef("");
@@ -350,28 +294,44 @@ export default function Home() {
   const notifiedMessageIdsRef = useRef(new Set<string>());
   const chatSyncCursorRef = useRef(0);
   const chatSyncInFlightRef = useRef(false);
+  const outgoingChatRef = useRef(new Map<string, OutgoingChat>());
+  const sendingChatIdsRef = useRef(new Set<string>());
 
   const markRemoteAudioBlocked = useCallback(() => setRemoteAudioBlocked(true), []);
 
   const broadcastRoomMessage = useCallback((message: object) => {
-    void roomRef.current?.localParticipant.publishData(
-      new TextEncoder().encode(JSON.stringify(message)),
-      { reliable: true },
-    );
-    dataConnectionsRef.current.forEach((connection) => {
-      if (connection.open) connection.send(message);
-    });
+    try {
+      for (const packet of encodeRoomPackets(message)) {
+        void roomRef.current?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(packet)), { reliable: true }).catch(() => undefined);
+        dataConnectionsRef.current.forEach((connection) => {
+          try { if (connection.open) connection.send(packet); } catch { /* Reconcile after reconnect. */ }
+        });
+      }
+    } catch { setRoomError("画板同步数据过大，请保存后新建画板。"); }
   }, []);
 
-  const receiveBoardMessage = useCallback((message: { type?: string; boards?: unknown; board?: unknown; id?: unknown; boardId?: unknown; stroke?: unknown; strokeId?: unknown; text?: unknown; textId?: unknown; epoch?: unknown }) => {
+  const updateBoards = useCallback((update: (current: RoomBoard[]) => RoomBoard[]) => {
+    const next = update(boardsRef.current);
+    boardsRef.current = next;
+    setBoards(next);
+  }, []);
+
+  const receiveBoardMessage = useCallback(function receiveBoardMessage(message: { type?: string; boards?: unknown; deletedBoardIds?: unknown; board?: unknown; id?: unknown; boardId?: unknown; stroke?: unknown; strokeId?: unknown; text?: unknown; textId?: unknown; epoch?: unknown }) {
+    if (message.type === "board-chunk") {
+      const assembled = packetReceiverRef.current(message);
+      if (assembled) receiveBoardMessage(assembled);
+      return true;
+    }
     if (message.type === "board-snapshot" && Array.isArray(message.boards)) {
+      if (Array.isArray(message.deletedBoardIds)) message.deletedBoardIds.forEach((id) => { if (typeof id === "string") deletedBoardIdsRef.current.add(id); });
       const incoming = message.boards.flatMap((item) => {
         const board = normalizeBoard(item);
         return board ? [board] : [];
       }).slice(0, 12);
-      setBoards((current) => {
-        const merged = new Map(current.map((board) => [board.id, board]));
+      updateBoards((current) => {
+        const merged = new Map(current.filter((board) => !deletedBoardIdsRef.current.has(board.id)).map((board) => [board.id, board]));
         incoming.forEach((board) => {
+          if (deletedBoardIdsRef.current.has(board.id)) return;
           const existing = merged.get(board.id);
           merged.set(board.id, existing ? mergeBoard(existing, board) : board);
         });
@@ -383,8 +343,8 @@ export default function Home() {
     }
     if (message.type === "board-create" || message.type === "board-upsert") {
       const board = normalizeBoard(message.board);
-      if (!board) return true;
-      setBoards((current) => {
+      if (!board || deletedBoardIdsRef.current.has(board.id)) return true;
+      updateBoards((current) => {
         const next = current.some((item) => item.id === board.id)
           ? current.map((item) => item.id === board.id ? mergeBoard(item, board) : item)
           : [...current, board].slice(0, 12);
@@ -395,7 +355,7 @@ export default function Home() {
     }
     if (typeof message.boardId === "string" && typeof message.epoch === "string") {
       if (message.type === "board-clear") {
-        setBoards((current) => {
+        updateBoards((current) => {
           const next = current.map((board) => board.id === message.boardId && message.epoch! > board.epoch
             ? { ...board, epoch: message.epoch as string, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [] }
             : board);
@@ -407,12 +367,12 @@ export default function Home() {
       if (message.type === "board-stroke-add") {
         const stroke = normalizeBoardStroke(message.stroke);
         if (!stroke) return true;
-        setBoards((current) => {
+        updateBoards((current) => {
           const next = current.map((board) => {
             if (board.id !== message.boardId || board.epoch !== message.epoch || board.deletedStrokeIds.includes(stroke.id)) return board;
             const previous = board.strokes.find((item) => item.id === stroke.id);
             if (previous && previous.revision >= stroke.revision) return board;
-            return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]).slice(-2000) };
+            return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]) };
           });
           boardsRef.current = next;
           return next;
@@ -420,9 +380,9 @@ export default function Home() {
         return true;
       }
       if (message.type === "board-stroke-delete" && typeof message.strokeId === "string") {
-        setBoards((current) => {
+        updateBoards((current) => {
           const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
-            ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== message.strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, message.strokeId as string])].slice(-2000) }
+            ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== message.strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, message.strokeId as string])] }
             : board);
           boardsRef.current = next;
           return next;
@@ -432,7 +392,7 @@ export default function Home() {
       if (message.type === "board-text-upsert") {
         const text = normalizeBoardText(message.text);
         if (!text) return true;
-        setBoards((current) => {
+        updateBoards((current) => {
           const next = current.map((board) => {
             if (board.id !== message.boardId || board.epoch !== message.epoch || board.deletedTextIds.includes(text.id)) return board;
             const previous = board.texts.find((item) => item.id === text.id);
@@ -445,9 +405,9 @@ export default function Home() {
         return true;
       }
       if (message.type === "board-text-delete" && typeof message.textId === "string") {
-        setBoards((current) => {
+        updateBoards((current) => {
           const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
-            ? { ...board, texts: board.texts.filter((text) => text.id !== message.textId), deletedTextIds: [...new Set([...board.deletedTextIds, message.textId as string])].slice(-500) }
+            ? { ...board, texts: board.texts.filter((text) => text.id !== message.textId), deletedTextIds: [...new Set([...board.deletedTextIds, message.textId as string])] }
             : board);
           boardsRef.current = next;
           return next;
@@ -456,7 +416,8 @@ export default function Home() {
       }
     }
     if (message.type === "board-delete" && typeof message.id === "string") {
-      setBoards((current) => {
+      deletedBoardIdsRef.current.add(message.id);
+      updateBoards((current) => {
         const next = current.filter((item) => item.id !== message.id);
         boardsRef.current = next;
         return next;
@@ -465,7 +426,18 @@ export default function Home() {
       return true;
     }
     return false;
-  }, []);
+  }, [updateBoards]);
+
+  useEffect(() => {
+    if (!joined) return;
+    const reconcile = () => {
+      if (document.visibilityState === "visible" && (boardsRef.current.length || deletedBoardIdsRef.current.size)) broadcastRoomMessage({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] });
+    };
+    const timer = window.setInterval(reconcile, 10_000);
+    window.addEventListener("online", reconcile);
+    document.addEventListener("visibilitychange", reconcile);
+    return () => { window.clearInterval(timer); window.removeEventListener("online", reconcile); document.removeEventListener("visibilitychange", reconcile); };
+  }, [joined, broadcastRoomMessage]);
 
   const playNotificationSound = useCallback((messageId: string) => {
     if (notifiedMessageIdsRef.current.has(messageId)) return;
@@ -598,6 +570,7 @@ export default function Home() {
   }, [messageMenuId]);
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    if (chatImageViewerOpenRef.current) return;
     const list = messageListRef.current;
     if (list) {
       list.scrollTo({ top: list.scrollHeight, behavior });
@@ -605,6 +578,28 @@ export default function Home() {
       chatAtBottomRef.current = true;
     }
   }, []);
+
+  const openChatImage = (image: ViewedChatImage) => {
+    const list = messageListRef.current;
+    if (list) {
+      // Stop an in-flight smooth scroll before recording the reading position.
+      list.scrollTo({ top: list.scrollTop, behavior: "instant" });
+      chatSavedScrollTopRef.current = list.scrollTop;
+    }
+    chatAtBottomRef.current = false;
+    chatImageViewerOpenRef.current = true;
+    setViewedChatImage(image);
+  };
+
+  const closeChatImage = () => {
+    const list = messageListRef.current;
+    if (list) {
+      list.scrollTo({ top: chatSavedScrollTopRef.current, behavior: "instant" });
+      chatAtBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 24;
+    }
+    chatImageViewerOpenRef.current = false;
+    setViewedChatImage(null);
+  };
 
   useLayoutEffect(() => {
     if (sideView !== "chat") return;
@@ -823,7 +818,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => { activityRef.current = activity.trim().slice(0, 80); }, [activity]);
-  useEffect(() => { boardsRef.current = boards; }, [boards]);
+
   useEffect(() => {
     tasksRef.current = tasks;
     const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done }));
@@ -856,10 +851,7 @@ export default function Home() {
     };
     room.on(RoomEvent.ParticipantConnected, () => {
       refreshMembers();
-      void room.localParticipant.publishData(
-        new TextEncoder().encode(JSON.stringify({ type: "board-snapshot", boards: boardsRef.current })),
-        { reliable: true },
-      );
+      broadcastRoomMessage({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] });
     });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
       removeRemote(participant.identity, "camera");
@@ -948,7 +940,7 @@ export default function Home() {
     };
     void connect();
     return () => { disposed = true; room.disconnect(); roomRef.current = null; };
-  }, [displayName, joined, playNotificationSound, receiveBoardMessage]);
+  }, [displayName, joined, playNotificationSound, receiveBoardMessage, broadcastRoomMessage]);
 
   useEffect(() => {
     if (!joined || USE_LIVEKIT) return;
@@ -1335,7 +1327,7 @@ export default function Home() {
           tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
         });
         connection.send({ type: "media-request" });
-        connection.send({ type: "board-snapshot", boards: boardsRef.current });
+        encodeRoomPackets({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] }).forEach((packet) => connection.send(packet));
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
         if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
         if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
@@ -1903,7 +1895,7 @@ export default function Home() {
   };
 
   const uploadChatImageToCloud = async (attachment: ChatAttachment) => {
-    if (chatCloudUploads[attachment.id]) return;
+    if (chatCloudUploads[attachment.id] === "uploading" || chatCloudUploads[attachment.id] === "done") return;
     setChatCloudUploads((current) => ({ ...current, [attachment.id]: "uploading" }));
     setChatImageError("");
     try {
@@ -1917,7 +1909,7 @@ export default function Home() {
       const statusResult = await statusResponse.json().catch(() => null) as { status?: CloudStatus } | null;
       if (statusResult?.status) setCloudStatus(statusResult.status);
     } catch (error) {
-      setChatCloudUploads((current) => { const next = { ...current }; delete next[attachment.id]; return next; });
+      setChatCloudUploads((current) => ({ ...current, [attachment.id]: "failed" }));
       setChatImageError(error instanceof Error ? error.message : "上传到云盘失败");
     }
   };
@@ -1937,7 +1929,7 @@ export default function Home() {
       if (board.id !== boardId || board.epoch !== epoch || board.deletedStrokeIds.includes(stroke.id)) return board;
       const previous = board.strokes.find((item) => item.id === stroke.id);
       if (previous && previous.revision >= stroke.revision) return board;
-      return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]).slice(-2000) };
+      return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]) };
     });
     boardsRef.current = next; setBoards(next);
     broadcastRoomMessage({ type: "board-stroke-add", boardId, stroke, epoch });
@@ -1945,14 +1937,15 @@ export default function Home() {
 
   const deleteBoardStroke = (boardId: string, strokeId: string, epoch: string) => {
     const next = boardsRef.current.map((board) => board.id === boardId && board.epoch === epoch
-      ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, strokeId])].slice(-2000) }
+      ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, strokeId])] }
       : board);
     boardsRef.current = next; setBoards(next);
     broadcastRoomMessage({ type: "board-stroke-delete", boardId, strokeId, epoch });
   };
 
   const clearBoard = (boardId: string) => {
-    const epoch = `${Date.now().toString().padStart(13, "0")}:${crypto.randomUUID()}`;
+    const observed = Number(boardsRef.current.find((board) => board.id === boardId)?.epoch.split(":")[0]) || 0;
+    const epoch = `${Math.max(Date.now(), observed + 1).toString().padStart(13, "0")}:${crypto.randomUUID()}`;
     const next = boardsRef.current.map((board) => board.id === boardId ? { ...board, epoch, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [] } : board);
     boardsRef.current = next; setBoards(next);
     broadcastRoomMessage({ type: "board-clear", boardId, epoch });
@@ -1971,13 +1964,14 @@ export default function Home() {
 
   const deleteBoardText = (boardId: string, textId: string, epoch: string) => {
     const next = boardsRef.current.map((board) => board.id === boardId && board.epoch === epoch
-      ? { ...board, texts: board.texts.filter((text) => text.id !== textId), deletedTextIds: [...new Set([...board.deletedTextIds, textId])].slice(-500) }
+      ? { ...board, texts: board.texts.filter((text) => text.id !== textId), deletedTextIds: [...new Set([...board.deletedTextIds, textId])] }
       : board);
     boardsRef.current = next; setBoards(next);
     broadcastRoomMessage({ type: "board-text-delete", boardId, textId, epoch });
   };
 
   const deleteBoard = (id: string) => {
+    deletedBoardIdsRef.current.add(id);
     const next = boardsRef.current.filter((item) => item.id !== id);
     boardsRef.current = next;
     setBoards(next);
@@ -2093,6 +2087,8 @@ export default function Home() {
     });
     request.addEventListener("error", () => reject(new Error("附件上传失败，请检查网络后重试")));
     request.addEventListener("abort", () => reject(new Error("附件上传已中断")));
+    request.timeout = 120_000;
+    request.addEventListener("timeout", () => reject(new Error("附件上传超时，请重试")));
     request.send(file);
   });
 
@@ -2143,7 +2139,7 @@ export default function Home() {
   };
 
   const quoteMessage = (message: ChatMessage) => {
-    const attachmentLabel = message.attachment ? `[${message.attachment.kind === "image" ? "图片" : `文件：${message.attachment.name}`}]` : "[图片]";
+    const attachmentLabel = message.attachment ? `[${message.attachment.kind === "image" ? "图片" : message.attachment.kind === "audio" ? "语音" : `文件：${message.attachment.name}`}]` : "[图片]";
     setChatQuote({ id: message.id, sender: message.sender, body: (message.body || attachmentLabel).slice(0, 160) });
     setMessageMenuId("");
   };
@@ -2159,45 +2155,59 @@ export default function Home() {
     setMessageMenuId("");
   };
 
-  const sendMessage = async (event: FormEvent) => {
-    event.preventDefault();
-    const body = chatDraft.trim();
-    if ((!body && !chatImage) || chatSending) return;
+  const deliverChat = async (item: OutgoingChat) => {
+    const { id } = item.message;
+    if (sendingChatIdsRef.current.has(id)) return;
+    sendingChatIdsRef.current.add(id);
     setChatSending(true);
-    setChatImageError("");
-
+    setMessages((current) => current.map((message) => message.id === id ? { ...message, delivery: "sending", error: undefined } : message));
     try {
-      const attachment = chatImage ? await uploadChatFile(chatImage) : undefined;
-      const id = crypto.randomUUID();
+      if (!item.attachment && item.file) item.attachment = await uploadChatFile(item.file);
       const response = await fetch("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-device-id": pushDeviceIdRef.current },
-        body: JSON.stringify({ id, body, attachment, replyTo: chatQuote || undefined }),
+        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({ id, body: item.message.body, attachment: item.attachment, replyTo: item.message.replyTo }),
       });
       const result = await response.json().catch(() => null) as { message?: unknown; error?: unknown } | null;
-      const normalized = normalizeIncomingMessage(result?.message, identityIdRef.current);
-      if (!response.ok || !normalized) throw new Error(typeof result?.error === "string" ? result.error : "消息发送失败，请重试");
-      const message: ChatMessage = { ...normalized, own: true };
-      chatAtBottomRef.current = true;
-      scrollAfterSendRef.current = true;
-      pendingHistoryScrollRef.current = null;
+      const message = normalizeIncomingMessage(result?.message, identityIdRef.current);
+      if (!response.ok || !message) throw new Error(typeof result?.error === "string" ? result.error : "发送未确认，请重试");
       setMessages((current) => mergeChatMessages([message], current));
-      void roomRef.current?.localParticipant.publishData(
-        new TextEncoder().encode(JSON.stringify({ ...message, type: "chat" })),
-        { reliable: true },
-      );
+      outgoingChatRef.current.delete(id);
+      // Delivery is already durable. A disconnected peer must not turn success into failure.
+      void roomRef.current?.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ ...message, type: "chat" })), { reliable: true }).catch(() => undefined);
       dataConnectionsRef.current.forEach((connection) => {
-        if (connection.open) connection.send({ ...message, type: "chat", sender: displayNameRef.current || displayName });
+        try { if (connection.open) connection.send({ ...message, type: "chat" }); } catch { /* Server reconciliation retries delivery. */ }
       });
-      setChatDraft("");
-      setChatQuote(null);
-      clearChatImage();
     } catch (error) {
-      setChatImageError(error instanceof Error ? error.message : "消息发送失败，请重试");
+      const reason = error instanceof Error ? error.message : "发送未确认，请重试";
+      setMessages((current) => current.map((message) => message.id === id && message.delivery ? { ...message, delivery: "failed", error: reason } : message));
     } finally {
-      setChatSending(false);
-      setChatUploadProgress(null);
+      sendingChatIdsRef.current.delete(id);
+      setChatSending(sendingChatIdsRef.current.size > 0);
+      if (!sendingChatIdsRef.current.size) setChatUploadProgress(null);
     }
+  };
+
+  const sendMessage = (event: FormEvent) => {
+    event.preventDefault();
+    const body = chatDraft.trim();
+    if (!body && !chatImage) return;
+    const now = Date.now();
+    const message: ChatMessage = {
+      id: crypto.randomUUID(), body, replyTo: chatQuote || undefined,
+      identityId: identityIdRef.current, sender: displayNameRef.current || displayName,
+      time: beijingTimeFormatter.format(now), createdAt: now, own: true, delivery: "sending",
+    };
+    const item: OutgoingChat = { message, file: chatImage || undefined };
+    outgoingChatRef.current.set(message.id, item);
+    setChatDraft("");
+    setChatQuote(null);
+    clearChatImage();
+    setChatImageError("");
+    scrollAfterSendRef.current = true;
+    setMessages((current) => mergeChatMessages([message], current));
+    void deliverChat(item);
   };
 
   const visibleTasks = tasks.filter((task) => !task.done);
@@ -2410,24 +2420,30 @@ export default function Home() {
                   </div>}
                   {message.replyTo && <div className="message-quote"><strong>{message.replyTo.sender}</strong><span>{message.replyTo.body}</span></div>}
                   {message.attachment?.kind === "image" && <div className="message-image-wrap">
-                    <a className="message-image-link" href={message.attachment.url} target="_blank" rel="noreferrer" aria-label="查看原图">
+                    <button className="message-image-link" type="button" onClick={() => openChatImage({ url: message.attachment!.url, name: message.attachment!.name })} aria-label="查看原图" aria-haspopup="dialog">
                       <img className="message-image" src={message.attachment.url} alt={message.attachment.name} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
-                    </a>
-                    <button className="image-cloud-button" type="button" onClick={() => void uploadChatImageToCloud(message.attachment!)} disabled={Boolean(chatCloudUploads[message.attachment.id])}>
-                      {chatCloudUploads[message.attachment.id] === "done" ? "已上传" : chatCloudUploads[message.attachment.id] === "uploading" ? "上传中…" : "上传到云盘"}
                     </button>
+                    <CloudSaveButton state={chatCloudUploads[message.attachment.id]} onClick={() => void uploadChatImageToCloud(message.attachment!)} />
+                  </div>}
+                  {message.attachment?.kind === "audio" && <div className="message-audio">
+                    <audio controls preload="metadata" src={message.attachment.url} aria-label={message.attachment.name}>当前浏览器无法播放这条语音。</audio>
+                    <CloudSaveButton state={chatCloudUploads[message.attachment.id]} onClick={() => void uploadChatImageToCloud(message.attachment!)} />
                   </div>}
                   {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} download={message.attachment.name}>
                     <span className="message-file-icon" aria-hidden="true">↓</span>
                     <span><strong>{message.attachment.name}</strong><small>{formatFileSize(message.attachment.size)}</small></span>
                   </a>}
                   {message.imageUrl && <div className="message-image-wrap">
-                    <a className="message-image-link" href={message.imageUrl} target="_blank" rel="noreferrer" aria-label="查看原图">
+                    <button className="message-image-link" type="button" onClick={() => openChatImage({ url: message.imageUrl!, name: `${message.sender} 发送的图片` })} aria-label="查看原图" aria-haspopup="dialog">
                       <img className="message-image" src={message.imageUrl} alt={`${message.sender} 发送的图片`} loading="lazy" onLoad={() => { if (chatAtBottomRef.current) scrollChatToBottom("auto"); }} />
-                    </a>
-                    {(() => { const id = message.imageUrl!.split("/").pop() || ""; return <button className="image-cloud-button" type="button" onClick={() => void uploadChatImageToCloud({ id, url: message.imageUrl!, name: "聊天图片", size: 0, mimeType: "image/*", kind: "image" })} disabled={Boolean(chatCloudUploads[id])}>{chatCloudUploads[id] === "done" ? "已上传" : chatCloudUploads[id] === "uploading" ? "上传中…" : "上传到云盘"}</button>; })()}
+                    </button>
+                    {(() => { const id = message.imageUrl!.split("/").pop() || ""; return <CloudSaveButton state={chatCloudUploads[id]} onClick={() => void uploadChatImageToCloud({ id, url: message.imageUrl!, name: "聊天图片", size: 0, mimeType: "image/*", kind: "image" })} />; })()}
                   </div>}
                   {message.body && <p>{message.body}</p>}
+                  {message.delivery && <div className="message-delivery" role="status">
+                    <span>{message.delivery === "sending" ? "发送中…" : "发送未确认"}{!message.body && outgoingChatRef.current.get(message.id)?.file ? " · " + outgoingChatRef.current.get(message.id)?.file?.name : ""}</span>
+                    {message.delivery === "failed" && <button type="button" title={message.error} onClick={() => { const item = outgoingChatRef.current.get(message.id); if (item) void deliverChat(item); }}>重试</button>}
+                  </div>}
                 </div>
               ))}
             </div>
@@ -2456,6 +2472,7 @@ export default function Home() {
                 <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" title="发送图片或文件">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
+                <VoiceRecorder onRecorded={selectChatImage} onError={setChatImageError} />
                 <textarea
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value)}
@@ -2473,7 +2490,7 @@ export default function Home() {
                   aria-label="输入房间消息"
                   rows={2}
                 />
-                <button className="primary-button chat-send-button" type="submit" disabled={chatSending || (!chatDraft.trim() && !chatImage)}>{chatSending ? "发送中" : "发送"}</button>
+                <button className="primary-button chat-send-button" type="submit" disabled={!chatDraft.trim() && !chatImage}>发送</button>
               </div>
               {chatUploadProgress !== null && <div className="chat-upload-progress" role="status"><span style={{ width: `${chatUploadProgress}%` }} /><small>{chatUploadProgress < 100 ? `正在上传 ${chatUploadProgress}%` : "上传完成，正在发送…"}</small></div>}
               {chatImageError && <p className="chat-image-error" role="alert">{chatImageError}</p>}
@@ -2593,7 +2610,7 @@ export default function Home() {
                 </button>
               ) : (
                 <div className="cloud-item file" key={item.path}>
-                  <span aria-hidden="true">▤</span><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
+                  <>{/\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name) ? <button className="cloud-thumbnail" type="button" aria-label={"查看图片：" + item.name} onClick={() => openChatImage({ url: "/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/"), name: item.name })}><img src={"/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/")} alt={item.name} loading="lazy" /></button> : <span aria-hidden="true">▤</span>}</><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
                   <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a></div>
                 </div>
               )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
@@ -2634,6 +2651,8 @@ export default function Home() {
           </section>
         </div>
       )}
+
+      {viewedChatImage && <ChatImageViewer image={viewedChatImage} onClose={closeChatImage} />}
 
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
