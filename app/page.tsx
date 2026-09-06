@@ -1069,6 +1069,13 @@ export default function Home() {
           .sort()
           .forEach((peerId) => {
             if (peer.id.localeCompare(peerId) < 0) connectToPeer(peerId);
+            else if (!connections.get(peerId)?.open && !pendingPeerIds.has(peerId)) {
+              const timer = window.setTimeout(() => {
+                connectionTimers.delete(timer);
+                if (!disposed && localPeer === peer) connectToPeer(peerId);
+              }, 2000);
+              connectionTimers.add(timer);
+            }
           });
       } catch {
         if (!disposed && document.visibilityState === "visible") scheduleRoomRecovery(1200);
