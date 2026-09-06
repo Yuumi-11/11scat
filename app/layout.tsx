@@ -1,25 +1,26 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "./room-theme.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "11scat｜最近7天、高清投屏与房间聊天",
-  description: "左侧同步滴答清单最近7天任务，中间高清投屏，右侧常驻自习室聊天。",
+  title: "11scat｜一起专注的自习空间",
+  description: "共享画面与协作画板，和房间成员交流、同步滴答待办。",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "11scat", statusBarStyle: "default" },
   openGraph: {
     title: "11scat",
-    description: "最近7天滴答任务 · 高清投屏 · 右侧常驻聊天",
+    description: "共享画面与协作画板，和房间成员交流、同步滴答待办。",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "11scat",
-    description: "最近7天滴答任务 · 高清投屏 · 右侧常驻聊天",
+    description: "共享画面与协作画板，和房间成员交流、同步滴答待办。",
   },
 };
 

@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 
 export type ViewedChatImage = { url: string; name: string };
 
@@ -33,7 +34,7 @@ export function ChatImageViewer({ image, onClose }: { image: ViewedChatImage; on
       aria-modal="true"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
     >
-      <button ref={closeRef} className="chat-image-viewer-close" type="button" aria-label="关闭图片" onClick={onClose}>×</button>
+      <button ref={closeRef} className="chat-image-viewer-close" type="button" aria-label="关闭图片" title="关闭图片" onClick={onClose}><X size={26} aria-hidden="true" /></button>
       <figure className="chat-image-viewer-content">
         {failed ? <p role="alert">图片加载失败，请关闭后重试。</p> : <img src={image.url} alt={image.name} onError={() => setFailed(true)} />}
         <figcaption>{image.name}</figcaption>

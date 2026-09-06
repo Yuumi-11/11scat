@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eraser, Expand, Minimize2, PenLine, Save, Trash2, Type } from "lucide-react";
+import { Eraser, Expand, Minimize2, PenLine, Save, Trash2, Type, GripHorizontal, Pipette } from "lucide-react";
 
 export type BoardPoint = { x: number; y: number };
 export type BoardStroke = { id: string; color: string; width: number; points: BoardPoint[]; createdAt: number; revision: string };
@@ -270,7 +270,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
             const editing = editingTextId === text.id || !text.confirmed;
             return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: text.color, fontSize: `${text.fontSize / 12}cqw` }} onPointerUp={(event) => editing && syncTextSize(event.currentTarget, text)}>
               {editing ? <>
-                <button className="board-text-drag" type="button" aria-label="拖动文本框" title="拖动文本框" onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}>⋮⋮</button>
+                <button className="board-text-drag" type="button" aria-label="拖动文本框" title="拖动文本框" onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}><GripHorizontal size={15} aria-hidden="true" /></button>
                 <button className="board-text-delete" type="button" aria-label="删除文本框" title="删除文本框" onClick={() => onDeleteText(text.id, board.epoch)}><Trash2 aria-hidden="true" /></button>
                 <textarea value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
               </> : <button className="board-text-content" type="button" onClick={() => { if (tool === "text") { setEditingTextId(text.id); updateText(text, { confirmed: false }); } }}>{text.text}</button>}
@@ -284,7 +284,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
         <button className={tool === "text" ? "active" : ""} type="button" onClick={() => setTool("text")} title="文本" aria-label="文本"><Type aria-hidden="true" /></button>
         <div className="board-colors" aria-label="画笔颜色">
           {["#1c1b1d", "#3478d4", "#df4a55"].map((item) => <button className={color === item ? "color active" : "color"} style={{ background: item }} type="button" onClick={() => { setColor(item); if (tool !== "text") setTool("pen"); }} key={item} aria-label={`选择颜色 ${item}`} />)}
-          <label className="custom-color" title="自定义颜色"><input type="color" value={color} onChange={(event) => { setColor(event.target.value); if (tool !== "text") setTool("pen"); }} /><span>＋</span></label>
+          <label className="custom-color" title="自定义颜色"><input type="color" value={color} onChange={(event) => { setColor(event.target.value); if (tool !== "text") setTool("pen"); }} /><span><Pipette size={14} aria-hidden="true" /></span></label>
         </div>
         <label className="board-width" title="画笔粗细"><span>{width}px</span><input type="range" min="2" max="28" value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label>
         <button type="button" onClick={onClear} title="清屏" aria-label="清屏"><Trash2 aria-hidden="true" /></button>

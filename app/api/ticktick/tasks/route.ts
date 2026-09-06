@@ -1,67 +1,7 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "../store";
 
-type TickProject = { id: string; name: string; closed?: boolean };
-type TickTask = {
-  id: string;
-  projectId: string;
-  title: string;
-  status?: number;
-  dueDate?: string;
-  startDate?: string;
-};
-type TickV2Snapshot = {
-  inboxId?: string;
-  syncTaskBean?: {
-    add?: TickTask[];
-    update?: TickTask[];
-  };
-};
-
-async function tickFetch(path: string, token: string, init?: RequestInit) {
-  return fetch(`https://api.dida365.com/open/v1${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers || {}) },
-    cache: "no-store",
-  });
-}
-
-async function tickV2Snapshot(token: string): Promise<TickV2Snapshot | null> {
-  try {
-    const response = await fetch("https://api.dida365.com/api/v2/batch/check/0", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Cookie: `t=${token}`,
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36",
-        "x-device": JSON.stringify({
-          platform: "web",
-          os: "Windows",
-          device: "Chrome 128",
-          name: "11scat study room",
-          version: 4531,
-          id: "11scat-study-room",
-          channel: "website",
-          campaign: "",
-          websocket: "",
-        }),
-      },
-      cache: "no-store",
-    });
-    if (!response.ok) return null;
-    const data = await response.json().catch(() => null);
-    return data && typeof data === "object" ? data as TickV2Snapshot : null;
-  } catch {
-    return null;
-  }
-}
-
-const shanghaiDateKey = (value: Date | number) => new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Shanghai",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-}).format(value);
+import { tickFetch, tickV2Snapshot, filterTasksByView, type TickProject, type TickTask, type TaskView } from "../client";
 
 export async function GET(request: Request) {
   const token = await accessToken();
@@ -98,18 +38,9 @@ export async function GET(request: Request) {
   for (const task of [...datasetResponses.flatMap((dataset) => dataset.tasks), ...inboxFallbackTasks]) {
     if (task && typeof task.id === "string") uniqueTasks.set(task.id, task);
   }
-  const view = new URL(request.url).searchParams.get("view") === "today" ? "today" : "week";
-  const todayKey = shanghaiDateKey(Date.now());
-  const finalDateKey = view === "today" ? todayKey : shanghaiDateKey(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const tasks = [...uniqueTasks.values()]
-    .filter((task) => {
-      const taskDate = task.dueDate || task.startDate;
-      if (task.status || !taskDate) return false;
-      const dueDateKey = taskDate.slice(0, 10);
-      return /^\d{4}-\d{2}-\d{2}$/.test(dueDateKey) && dueDateKey <= finalDateKey;
-    })
-    .sort((a, b) => Date.parse(a.dueDate || a.startDate || "") - Date.parse(b.dueDate || b.startDate || ""))
-    .slice(0, 50)
+  const requestedView = new URL(request.url).searchParams.get("view");
+  const view: TaskView = requestedView === "today" ? "today" : requestedView === "undated" ? "undated" : "week";
+  const tasks = filterTasksByView([...uniqueTasks.values()], view)
     .map((task) => ({
       id: task.id,
       projectId: task.projectId,

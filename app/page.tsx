@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX } from "lucide-react";
+import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, Folder, File, ArrowUp, Upload, FolderPlus, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -10,6 +10,7 @@ import { encodeRoomPackets, createPacketReceiver } from "./room-packets";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CloudSaveButton, type CloudSaveState } from "./CloudSaveButton";
 import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
+import { AddMemberTask, NewMemberTasks } from "./MemberTasks";
 
 type Task = {
   id: string;
@@ -188,7 +189,7 @@ function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: 
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [taskView, setTaskView] = useState<"today" | "week">("today");
+  const [taskView, setTaskView] = useState<"today" | "week" | "undated">("today");
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
@@ -244,7 +245,7 @@ export default function Home() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
-  const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("pink");
+  const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("blue");
   const [backgroundImage, setBackgroundImage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloudPath, setCloudPath] = useState("");
@@ -633,11 +634,14 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  const taskLoadVersionRef = useRef(0);
   const loadTasks = useCallback(async () => {
+    const version = ++taskLoadVersionRef.current;
     setSyncing(true);
     setSyncError("");
     try {
-      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store" });
+      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+      if (version !== taskLoadVersionRef.current) return false;
       if (response.status === 401) {
         setConnected(false);
         setTasks((current) => current.filter((task) => task.source === "local"));
@@ -645,18 +649,20 @@ export default function Home() {
       }
       if (!response.ok) throw new Error("暂时无法读取滴答清单");
       const data = await response.json();
+      if (version !== taskLoadVersionRef.current) return false;
       if (!Array.isArray(data.tasks) || !Array.isArray(data.projects)) throw new Error("滴答返回的数据格式异常");
       const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
       setConnected(true);
       setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
       return true;
     } catch (error) {
+      if (version !== taskLoadVersionRef.current) return false;
       setConnected(false);
       setTasks((current) => current.filter((task) => task.source === "local"));
       setSyncError(error instanceof Error ? error.message : "同步失败");
       return false;
     } finally {
-      setSyncing(false);
+      if (version === taskLoadVersionRef.current) setSyncing(false);
     }
   }, [taskView]);
 
@@ -2273,7 +2279,7 @@ export default function Home() {
               onClick={() => { setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : cameraStream ? "self-camera" : ""); }}
               aria-label="查看你的共享画面"
             >
-              <span className="tile-badge">你</span>
+              <span className="tile-badge" title="你"><UserRound size={14} aria-hidden="true" /></span>
               {stream
                 ? <MediaVideo className="tile-preview-media" stream={stream} label="你的屏幕预览" />
                 : cameraStream
@@ -2308,15 +2314,15 @@ export default function Home() {
                 onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveBoardId(board.id); setActiveMediaId(""); } }}
                 aria-label={`查看${board.name}`}
               >
-                <span className="tile-badge board">板</span>
+                <span className="tile-badge board"><Presentation size={14} aria-hidden="true" /></span>
                 <div className="tile-preview board-preview" aria-hidden="true"><Presentation /></div>
                 <small>{board.name}</small>
-                <button className="board-delete" type="button" onClick={(event) => { event.stopPropagation(); deleteBoard(board.id); }} aria-label={`删除${board.name}`}>×</button>
+                <button className="board-delete" type="button" onClick={(event) => { event.stopPropagation(); deleteBoard(board.id); }} aria-label={`删除${board.name}`} title={`删除${board.name}`}><X size={18} aria-hidden="true" /></button>
               </div>
             ))}
             {Array.from({ length: emptyMemberSlots }, (_, index) => (
               <button className="participant-tile participant-invite" type="button" onClick={() => void copyInviteLink()} key={`empty-${index}`}>
-                <span className="tile-badge invite">＋</span>
+                <span className="tile-badge invite"><Plus size={14} aria-hidden="true" /></span>
                 <span className="tile-preview invite-preview" aria-hidden="true" />
                 <small>{roomStatus === "error" ? "连接异常" : inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</small>
               </button>
@@ -2346,11 +2352,11 @@ export default function Home() {
                 {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} title={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
-                <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}>{pictureInPicture ? "关闭小窗" : "小窗"}</button>
+                <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
             </> : (
               <div className="empty-share">
-                <div className="share-glyph"><span /><span /><span /></div>
+                <div className="share-glyph"><Monitor size={36} strokeWidth={1.6} aria-hidden="true" /></div><h2>一起专注，自在交流</h2><p>共享画面或打开画板，让想法在这里继续。</p>
                 <button className="primary-button" onClick={() => openShareDialog("start")}>开始共享</button>
               </div>
             )}
@@ -2359,7 +2365,7 @@ export default function Home() {
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
           <div className="room-controls">
             <button className={stream ? "share-on" : ""} disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} data-tooltip={stream ? "结束共享" : "共享屏幕"}>
-              {stream ? <span className="room-stop-square" aria-hidden="true" /> : <MonitorUp className="room-control-icon" aria-hidden="true" />}
+              {stream ? <Square className="room-control-icon" aria-hidden="true" /> : <MonitorUp className="room-control-icon" aria-hidden="true" />}
             </button>
             <button onClick={createBoard} aria-label="新建画板" data-tooltip="新建画板">
               <Presentation className="room-control-icon" aria-hidden="true" />
@@ -2370,14 +2376,14 @@ export default function Home() {
             <button className={cameraStream ? "camera-on" : ""} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"} onClick={() => void toggleCamera()}>
               {cameraStream ? <CameraOff className="room-control-icon" aria-hidden="true" /> : <Camera className="room-control-icon" aria-hidden="true" />}
             </button>
-            <button className="room-leave" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}>退出房间</button>
+            <button className="room-leave" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}><LogOut size={18} aria-hidden="true" /><span>退出</span></button>
           </div>
         </section>
 
         <aside className="side-panel panel">
           <div className="side-tabs" aria-label="侧栏内容">
-            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}>聊天室</button>
-            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}>任务板</button>
+            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />聊天室</button>
+            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />任务板</button>
           </div>
 
           {sideView === "chat" ? <div className="chat-view">
@@ -2414,9 +2420,9 @@ export default function Home() {
                 >
                   <span>{message.sender} · {formatChatTime(message)}</span>
                   {messageMenuId === message.id && <div className={`message-action-menu ${messageMenuPlacement}${message.own ? " own" : ""}`} role="menu" onPointerDown={(event) => event.stopPropagation()}>
-                    {message.own && <button type="button" role="menuitem" onClick={() => void recallMessage(message)}><span aria-hidden="true">↶</span>撤回</button>}
-                    <button type="button" role="menuitem" onClick={() => quoteMessage(message)}><span className="message-action-icon-pink message-quote-icon" aria-hidden="true">“”</span>引用</button>
-                    <button type="button" role="menuitem" onClick={() => void copyMessage(message)}><span className="message-action-icon-pink" aria-hidden="true">▣</span>复制</button>
+                    {message.own && <button type="button" role="menuitem" onClick={() => void recallMessage(message)}><Undo2 size={18} aria-hidden="true" />撤回</button>}
+                    <button type="button" role="menuitem" onClick={() => quoteMessage(message)}><Quote size={18} aria-hidden="true" />引用</button>
+                    <button type="button" role="menuitem" onClick={() => void copyMessage(message)}><Copy size={18} aria-hidden="true" />复制</button>
                   </div>}
                   {message.replyTo && <div className="message-quote"><strong>{message.replyTo.sender}</strong><span>{message.replyTo.body}</span></div>}
                   {message.attachment?.kind === "image" && <div className="message-image-wrap">
@@ -2430,7 +2436,7 @@ export default function Home() {
                     <CloudSaveButton state={chatCloudUploads[message.attachment.id]} onClick={() => void uploadChatImageToCloud(message.attachment!)} />
                   </div>}
                   {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} download={message.attachment.name}>
-                    <span className="message-file-icon" aria-hidden="true">↓</span>
+                    <Download className="message-file-icon" size={20} aria-hidden="true" />
                     <span><strong>{message.attachment.name}</strong><small>{formatFileSize(message.attachment.size)}</small></span>
                   </a>}
                   {message.imageUrl && <div className="message-image-wrap">
@@ -2450,14 +2456,14 @@ export default function Home() {
             <form className="chat-form" onSubmit={sendMessage}>
               {chatQuote && <div className="chat-quote-preview">
                 <span><strong>回复 {chatQuote.sender}</strong>{chatQuote.body}</span>
-                <button type="button" onClick={() => setChatQuote(null)} aria-label="取消引用">×</button>
+                <button type="button" onClick={() => setChatQuote(null)} aria-label="取消引用" title="取消引用"><X size={18} aria-hidden="true" /></button>
               </div>}
               {chatImagePreview && <div className="chat-image-preview">
                 <img src={chatImagePreview} alt="待发送图片预览" />
                 <span>{chatImage?.name}</span>
-                <button type="button" onClick={clearChatImage} aria-label="移除待发送附件">×</button>
+                <button type="button" onClick={clearChatImage} aria-label="移除待发送附件" title="移除待发送附件"><X size={18} aria-hidden="true" /></button>
               </div>}
-              {chatImage && !chatImagePreview && <div className="chat-file-preview"><span aria-hidden="true">↧</span><div><strong>{chatImage.name}</strong><small>{formatFileSize(chatImage.size)}</small></div><button type="button" onClick={clearChatImage} aria-label="移除待发送附件">×</button></div>}
+              {chatImage && !chatImagePreview && <div className="chat-file-preview"><File size={24} aria-hidden="true" /><div><strong>{chatImage.name}</strong><small>{formatFileSize(chatImage.size)}</small></div><button type="button" onClick={clearChatImage} aria-label="移除待发送附件" title="移除待发送附件"><X size={18} aria-hidden="true" /></button></div>}
               <div className="chat-input-row">
                 <input
                   ref={chatImageInputRef}
@@ -2470,7 +2476,7 @@ export default function Home() {
                   tabIndex={-1}
                 />
                 <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" title="发送图片或文件">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  <Paperclip size={20} aria-hidden="true" />
                 </button>
                 <VoiceRecorder onRecorded={selectChatImage} onError={setChatImageError} />
                 <textarea
@@ -2499,28 +2505,30 @@ export default function Home() {
             <button
               className="task-range-switch"
               type="button"
-              onClick={() => setTaskView((current) => current === "today" ? "week" : "today")}
-              aria-label={`当前显示${taskView === "today" ? "今天" : "最近 7 天"}，点击切换到${taskView === "today" ? "最近 7 天" : "今天"}`}
+              onClick={() => setTaskView((current) => current === "today" ? "week" : current === "week" ? "undated" : "today")}
+              aria-label={`当前显示${taskView === "today" ? "今天" : taskView === "week" ? "最近 7 天" : "无日期"}，点击切换到${taskView === "today" ? "最近 7 天" : taskView === "week" ? "无日期" : "今天"}`}
+              title="切换任务日期范围"
             >
-              <svg viewBox="0 0 28 34" aria-hidden="true"><path d="M7 3h14M9 6h10M14 7v5M7 13c1.5 4 2 8 2 14h10c0-6 .5-10 2-14M5 27h18" /></svg>
-              <span>{taskView === "today" ? "今天" : "七天"}</span>
+              {taskView === "undated" ? <CalendarOff size={18} aria-hidden="true" /> : <CalendarDays size={18} aria-hidden="true" />}
+              <span>{taskView === "today" ? "今天" : taskView === "week" ? "七天" : "无日期"}</span>
             </button>
             {syncError && <p className="error-message" role="alert">{syncError}</p>}
 
             <div className="task-scroll">
               <section className="task-person-card self-task-card" aria-label="我的任务">
-                <form className="activity-box" onSubmit={submitActivity}>
+                <div className="activity-heading"><form className="activity-box" onSubmit={submitActivity}>
                   <label htmlFor="activity-input">我正在</label>
                   <input id="activity-input" value={activity} onChange={(event) => setActivity(event.target.value)} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 同步" />
-                </form>
+                </form><NewMemberTasks identityId={identityId} onChanged={loadTasks} /></div>
                 <div className="task-person-list">
                   {!syncing && !connected ? (
                     <div className="ticktick-connect-empty"><button className="primary-button" type="button" onClick={() => setSyncOpen(true)}>连接滴答</button></div>
                   ) : (
                     <div className="task-list" aria-live="polite">
+                      {!syncing && connected && !visibleTasks.length && <p className="task-empty">{taskView === "undated" ? "暂无无日期待办" : "当前范围内没有待办"}</p>}
                       {visibleTasks.map((task) => (
                       <div className="task-row" key={task.id}>
-                        <button className="custom-check" type="button" onClick={(event) => { event.stopPropagation(); void toggleTask(task); }} aria-label={`完成任务：${task.title}`}>✓</button>
+                        <button className="custom-check" type="button" onClick={(event) => { event.stopPropagation(); void toggleTask(task); }} aria-label={`完成任务：${task.title}`}><Check size={14} aria-hidden="true" /></button>
                         <span className="task-due">{formatDueDate(task.dueDate)}</span>
                         <span className="task-copy"><strong>{task.title}</strong></span>
                       </div>
@@ -2534,7 +2542,7 @@ export default function Home() {
                 const { nickname, tasks: sharedTasks, activity: memberActivity } = group;
                 return (
                   <section className="task-person-card" aria-label={`${nickname}的任务`} key={group.identityKey}>
-                    <div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div>
+                    <div className="activity-heading"><div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div><AddMemberTask recipientId={group.identityKey} name={nickname} /></div>
                     <div className="task-person-list">
                       <div className="task-list">
                         {sharedTasks.map((task) => (
@@ -2559,7 +2567,7 @@ export default function Home() {
       {shareModeOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setShareModeOpen(false)}>
           <section className="share-mode-modal" role="dialog" aria-modal="true" aria-labelledby="share-mode-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭">×</button>
+            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
             <h2 id="share-mode-title">{shareDialogAction === "start" ? "选择共享模式" : "切换画面模式"}</h2>
             {shareDialogAction === "start" && <p className="share-picker-note">选择模式后，浏览器会让你指定要共享的屏幕、窗口或标签页。</p>}
             {shareDialogAction === "start" && <label className="share-audio-option">
@@ -2583,7 +2591,7 @@ export default function Home() {
       {cloudOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setCloudOpen(false)}>
           <section className="cloud-modal" role="dialog" aria-modal="true" aria-labelledby="cloud-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setCloudOpen(false)} aria-label="关闭">×</button>
+            <button className="modal-close" onClick={() => setCloudOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
             <div className="cloud-heading">
               <div><span className="eyebrow">ROOM DRIVE</span><h2 id="cloud-title">云盘</h2></div>
               <div className={cloudStatus?.warning ? "cloud-meter warning" : "cloud-meter"}>
@@ -2593,10 +2601,10 @@ export default function Home() {
             </div>
             {cloudStatus?.warning && <p className="cloud-capacity-warning">云盘已达到容量上限的 90%，新的自动保存和上传已暂停。</p>}
             <div className="cloud-toolbar">
-              <button type="button" onClick={() => { const parts = cloudPath.split("/").filter(Boolean); parts.pop(); void loadCloudFolder(parts.join("/")); }} disabled={!cloudPath}>← 上一级</button>
+              <button type="button" onClick={() => { const parts = cloudPath.split("/").filter(Boolean); parts.pop(); void loadCloudFolder(parts.join("/")); }} disabled={!cloudPath}><ArrowUp size={16} aria-hidden="true" />上一级</button>
               <strong>/{cloudPath}</strong>
-              <button type="button" onClick={() => void createCloudFolder()}>新建文件夹</button>
-              <button type="button" onClick={() => cloudInputRef.current?.click()} disabled={cloudUploading || cloudStatus?.warning}>上传文件</button>
+              <button type="button" onClick={() => void createCloudFolder()}><FolderPlus size={16} aria-hidden="true" />新建文件夹</button>
+              <button type="button" onClick={() => cloudInputRef.current?.click()} disabled={cloudUploading || cloudStatus?.warning}><Upload size={16} aria-hidden="true" />上传文件</button>
               <input ref={cloudInputRef} type="file" className="chat-image-input" onChange={(event) => { void uploadCloudFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
             </div>
             <div
@@ -2606,11 +2614,11 @@ export default function Home() {
             >
               {cloudLoading ? <div className="cloud-empty">正在加载…</div> : cloudItems.length ? cloudItems.map((item) => item.kind === "folder" ? (
                 <button className="cloud-item folder" type="button" key={item.path} onClick={() => void loadCloudFolder(item.path)}>
-                  <span aria-hidden="true">▰</span><strong>{item.name}</strong><small>文件夹</small>
+                  <Folder size={26} aria-hidden="true" /><strong>{item.name}</strong><small>文件夹</small>
                 </button>
               ) : (
                 <div className="cloud-item file" key={item.path}>
-                  <>{/\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name) ? <button className="cloud-thumbnail" type="button" aria-label={"查看图片：" + item.name} onClick={() => openChatImage({ url: "/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/"), name: item.name })}><img src={"/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/")} alt={item.name} loading="lazy" /></button> : <span aria-hidden="true">▤</span>}</><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
+                  <>{/\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name) ? <button className="cloud-thumbnail" type="button" aria-label={"查看图片：" + item.name} onClick={() => openChatImage({ url: "/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/"), name: item.name })}><img src={"/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/")} alt={item.name} loading="lazy" /></button> : <File size={26} aria-hidden="true" />}</><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
                   <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a></div>
                 </div>
               )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
@@ -2623,7 +2631,7 @@ export default function Home() {
       {pushOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setPushOpen(false)}>
           <section className="push-modal" role="dialog" aria-modal="true" aria-labelledby="push-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" type="button" onClick={() => setPushOpen(false)} aria-label="关闭消息提醒设置">×</button>
+            <button className="modal-close" type="button" onClick={() => setPushOpen(false)} aria-label="关闭消息提醒设置" title="关闭消息提醒设置"><X size={18} aria-hidden="true" /></button>
             <span className="eyebrow">消息提醒</span>
             <h2 id="push-title">手机与手表消息提醒</h2>
             <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
@@ -2637,17 +2645,17 @@ export default function Home() {
       {appearanceOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setAppearanceOpen(false)}>
           <section className="appearance-modal" role="dialog" aria-modal="true" aria-labelledby="appearance-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setAppearanceOpen(false)} aria-label="关闭">×</button>
+            <button className="modal-close" onClick={() => setAppearanceOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
             <h2 id="appearance-title">外观设置</h2>
-            <button className="push-button" type="button" onClick={() => { setAppearanceOpen(false); setPushOpen(true); }}>消息提醒设置</button>
+            <button className="push-button" type="button" onClick={() => { setAppearanceOpen(false); setPushOpen(true); }}><Bell size={18} aria-hidden="true" />消息提醒设置</button>
             <p>选择统一强调色，或导入一张经过模糊和淡化处理的背景。</p>
             <div className="theme-options" aria-label="主题颜色">
               {(["pink", "blue", "green", "purple"] as const).map((theme) => (
-                <button className={appearanceTheme === theme ? `theme-swatch ${theme} active` : `theme-swatch ${theme}`} type="button" onClick={() => chooseAppearanceTheme(theme)} key={theme} aria-label={`${theme}主题`} />
+                <button className={appearanceTheme === theme ? `theme-swatch ${theme} active` : `theme-swatch ${theme}`} type="button" onClick={() => chooseAppearanceTheme(theme)} key={theme} aria-label={`${({ pink: "玫瑰", blue: "雾蓝", green: "青绿", purple: "暮紫" })[theme]}主题`} title={`${({ pink: "玫瑰", blue: "雾蓝", green: "青绿", purple: "暮紫" })[theme]}主题`} aria-pressed={appearanceTheme === theme} />
               ))}
             </div>
             <input ref={backgroundInputRef} className="chat-image-input" type="file" accept="image/*" onChange={(event) => { importBackground(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-            <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}>导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
+            <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}><ImagePlus size={18} aria-hidden="true" />导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
           </section>
         </div>
       )}
@@ -2657,8 +2665,8 @@ export default function Home() {
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
           <section className="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭">×</button>
-            <span className="ticktick-mark">✓</span><span className="eyebrow">REAL TICKTICK CONNECTION</span>
+            <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
+            <span className="ticktick-mark"><Check size={24} aria-hidden="true" /></span><span className="eyebrow">REAL TICKTICK CONNECTION</span>
             <h2 id="sync-title">连接你的滴答清单</h2>
             <p>Token 会按身份加密保存在服务器中，用于读取任务和同步完成状态。以后使用同一身份识别码时会自动恢复。</p>
             {connected ? (
