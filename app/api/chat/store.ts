@@ -22,6 +22,7 @@ export type StoredMessage = {
   time: string;
   createdAt: number;
   recalled?: boolean;
+  recalledAt?: number;
 };
 
 type ChatStore = { version: 1; messages: StoredMessage[] };
@@ -80,8 +81,28 @@ export async function recallMessage(id: string, identityId: string): Promise<boo
     const message = store.messages.find((item) => item.id === id && item.identityId === identityId);
     if (!message || message.recalled) return false;
     message.recalled = true;
+    message.recalledAt = Date.now();
     return true;
   });
+}
+
+export async function listMessageChanges(since: number, limit: number) {
+  const store = await readStore();
+  const changes = store.messages
+    .filter((message) => message.createdAt > since || (message.recalledAt || 0) > since)
+    .sort((left, right) => {
+      const leftChangedAt = Math.max(left.createdAt, left.recalledAt || 0);
+      const rightChangedAt = Math.max(right.createdAt, right.recalledAt || 0);
+      return leftChangedAt - rightChangedAt || left.id.localeCompare(right.id);
+    });
+  const page = changes.slice(0, limit);
+  const cursor = page.reduce((latest, message) => Math.max(latest, message.createdAt, message.recalledAt || 0), since);
+  return {
+    messages: page.filter((message) => !message.recalled),
+    recalledIds: page.filter((message) => message.recalled).map((message) => message.id),
+    cursor,
+    hasMore: changes.length > page.length,
+  };
 }
 
 export async function listMessages(before: number | null, limit: number) {

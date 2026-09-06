@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser } from "../../identity/store";
-import { listMessages, saveMessage, type StoredAttachment, type StoredQuote } from "../store";
+import { listMessageChanges, listMessages, saveMessage, type StoredAttachment, type StoredQuote } from "../store";
 import { sendChatPush } from "../../push/store";
 
 export const runtime = "nodejs";
@@ -25,11 +25,14 @@ function normalizeQuote(value: unknown): StoredQuote | undefined {
 }
 
 export async function GET(request: NextRequest) {
+  const sinceText = request.nextUrl.searchParams.get("since");
+  const since = sinceText && /^\d+$/.test(sinceText) ? Number(sinceText) : null;
   const beforeText = request.nextUrl.searchParams.get("before");
   const before = beforeText && /^\d+$/.test(beforeText) ? Number(beforeText) : null;
   const requestedLimit = Number(request.nextUrl.searchParams.get("limit") || 30);
-  const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, Math.floor(requestedLimit))) : 30;
-  return NextResponse.json(await listMessages(before, limit), { headers: { "Cache-Control": "private, no-store" } });
+  const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, Math.floor(requestedLimit))) : 30;
+  const result = since === null ? await listMessages(before, limit) : await listMessageChanges(since, limit);
+  return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(request: NextRequest) {

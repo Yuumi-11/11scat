@@ -175,6 +175,12 @@ const normalizeIncomingMessage = (value: unknown, currentIdentityId: string): Ch
   };
 };
 
+const mergeChatMessages = (incoming: ChatMessage[], current: ChatMessage[]) => {
+  const byId = new Map<string, ChatMessage>();
+  [...incoming, ...current].forEach((message) => byId.set(message.id, message));
+  return [...byId.values()].sort((left, right) => (left.createdAt || 0) - (right.createdAt || 0) || left.id.localeCompare(right.id));
+};
+
 const formatDueDate = (dueDate?: string) => {
   if (!dueDate) return "";
   const due = new Date(dueDate);
@@ -307,6 +313,8 @@ export default function Home() {
   const pushDeviceIdRef = useRef("");
   const intentionalLeaveRef = useRef(false);
   const notifiedMessageIdsRef = useRef(new Set<string>());
+  const chatSyncCursorRef = useRef(0);
+  const chatSyncInFlightRef = useRef(false);
 
   const markRemoteAudioBlocked = useCallback(() => setRemoteAudioBlocked(true), []);
 
@@ -616,11 +624,44 @@ export default function Home() {
     }
   }, [taskView]);
 
-  const mergeChatMessages = (incoming: ChatMessage[], current: ChatMessage[]) => {
-    const byId = new Map<string, ChatMessage>();
-    [...incoming, ...current].forEach((message) => byId.set(message.id, message));
-    return [...byId.values()].sort((left, right) => (left.createdAt || 0) - (right.createdAt || 0) || left.id.localeCompare(right.id));
-  };
+  const syncLatestChatMessages = useCallback(async () => {
+    if (chatSyncInFlightRef.current || !identityIdRef.current) return;
+    chatSyncInFlightRef.current = true;
+    try {
+      let cursor = chatSyncCursorRef.current;
+      for (let page = 0; page < 4; page += 1) {
+        const since = page === 0 ? Math.max(0, cursor - 1000) : cursor;
+        const response = await fetch(`/api/chat/messages?since=${since}&limit=200`, { cache: "no-store" });
+        if (!response.ok) throw new Error("消息同步失败");
+        const data = await response.json() as { messages?: unknown; recalledIds?: unknown; cursor?: unknown; hasMore?: unknown };
+        const incoming = Array.isArray(data.messages)
+          ? data.messages.map((item) => normalizeIncomingMessage(item, identityIdRef.current)).filter((item): item is ChatMessage => Boolean(item))
+          : [];
+        const recalledIds = new Set(Array.isArray(data.recalledIds)
+          ? data.recalledIds.filter((id): id is string => typeof id === "string")
+          : []);
+        if (incoming.length || recalledIds.size) {
+          setMessages((current) => {
+            const remaining = recalledIds.size ? current.filter((message) => !recalledIds.has(message.id)) : current;
+            const existingIds = new Set(remaining.map((message) => message.id));
+            incoming.forEach((message) => {
+              if (!message.own && !existingIds.has(message.id)) playNotificationSound(message.id);
+            });
+            return mergeChatMessages(incoming, remaining);
+          });
+          setChatQuote((current) => current && recalledIds.has(current.id) ? null : current);
+        }
+        const nextCursor = typeof data.cursor === "number" && Number.isFinite(data.cursor) ? data.cursor : cursor;
+        cursor = Math.max(cursor, nextCursor);
+        chatSyncCursorRef.current = cursor;
+        if (data.hasMore !== true || nextCursor <= since) break;
+      }
+    } catch {
+      // The peer data channel remains active; the next poll or focus event will retry server reconciliation.
+    } finally {
+      chatSyncInFlightRef.current = false;
+    }
+  }, [playNotificationSound]);
 
   const loadOlderChatMessages = async () => {
     if (chatHistoryLoading || !chatHistoryCursor) return;
@@ -670,6 +711,7 @@ export default function Home() {
         const incoming = Array.isArray(data.messages)
           ? data.messages.map((item) => normalizeIncomingMessage(item, identityIdRef.current)).filter((item): item is ChatMessage => Boolean(item))
           : [];
+        chatSyncCursorRef.current = incoming.reduce((latest, message) => Math.max(latest, message.createdAt || 0), chatSyncCursorRef.current);
         chatAtBottomRef.current = true;
         setMessages((current) => mergeChatMessages(incoming, current));
         setChatHistoryCursor(typeof data.nextCursor === "string" ? data.nextCursor : null);
@@ -682,6 +724,25 @@ export default function Home() {
     void loadInitialChat();
     return () => { disposed = true; };
   }, [joined, chatHistoryReady]);
+
+  useEffect(() => {
+    if (!joined || !chatHistoryReady) return;
+    const syncNow = () => { void syncLatestChatMessages(); };
+    const syncWhenVisible = () => { if (document.visibilityState === "visible") syncNow(); };
+    syncNow();
+    const timer = window.setInterval(syncNow, 1500);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    window.addEventListener("focus", syncNow);
+    window.addEventListener("online", syncNow);
+    window.addEventListener("pageshow", syncNow);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+      window.removeEventListener("focus", syncNow);
+      window.removeEventListener("online", syncNow);
+      window.removeEventListener("pageshow", syncNow);
+    };
+  }, [chatHistoryReady, joined, syncLatestChatMessages]);
 
   useEffect(() => {
     let disposed = false;
