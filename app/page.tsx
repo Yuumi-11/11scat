@@ -961,7 +961,7 @@ export default function Home() {
         void initializeRoom();
         return;
       }
-      if (peer.disconnected) {
+      if (!peer.open) {
         if (!reconnectStartedAt) reconnectStartedAt = Date.now();
         if (Date.now() - reconnectStartedAt > 20_000) {
           peer.destroy();
@@ -971,7 +971,7 @@ export default function Home() {
           void initializeRoom();
           return;
         }
-        try { peer.reconnect(); } catch {
+        try { if (peer.disconnected) peer.reconnect(); } catch {
           peer.destroy();
           if (localPeer === peer) localPeer = null;
           void initializeRoom();
