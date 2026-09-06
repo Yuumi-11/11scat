@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser } from "../../identity/store";
 import { listMessageChanges, listMessages, saveMessage, type StoredAttachment, type StoredQuote } from "../store";
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     }),
     createdAt: now,
   });
-  await sendChatPush(message, (request.headers.get("x-device-id") || "").trim().slice(0, 80)).catch(() => undefined);
+  const senderDeviceId = (request.headers.get("x-device-id") || "").trim().slice(0, 80);
+  after(() => sendChatPush(message, senderDeviceId).catch(() => undefined));
   return NextResponse.json({ message }, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

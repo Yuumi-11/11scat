@@ -72,7 +72,7 @@ export async function sendChatPush(message: { sender: string; body: string; atta
   const expired = new Set<string>();
   await Promise.allSettled(store.subscriptions.filter((item) => item.deviceId !== senderDeviceId).map(async (item) => {
     try {
-      await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: 60 * 60, urgency: "high" });
+      await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: 60 * 60, urgency: "high", timeout: 10_000 });
     } catch (error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 404 || statusCode === 410) expired.add(item.endpoint);

@@ -307,6 +307,7 @@ export default function Home() {
   const longPressOriginRef = useRef({ x: 0, y: 0 });
   const longPressTriggeredRef = useRef(false);
   const chatAtBottomRef = useRef(true);
+  const scrollAfterSendRef = useRef(false);
   const chatSavedScrollTopRef = useRef(0);
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
   const notificationAudioContextRef = useRef<AudioContext | null>(null);
@@ -575,6 +576,12 @@ export default function Home() {
     if (sideView !== "chat") return;
     const list = messageListRef.current;
     if (!list) return;
+    if (scrollAfterSendRef.current) {
+      scrollAfterSendRef.current = false;
+      pendingHistoryScrollRef.current = null;
+      scrollChatToBottom("auto");
+      return;
+    }
     const pending = pendingHistoryScrollRef.current;
     if (pending) {
       list.scrollTop = pending.top + (list.scrollHeight - pending.height);
@@ -2037,7 +2044,10 @@ export default function Home() {
       const normalized = normalizeIncomingMessage(result?.message, identityIdRef.current);
       if (!response.ok || !normalized) throw new Error(typeof result?.error === "string" ? result.error : "消息发送失败，请重试");
       const message: ChatMessage = { ...normalized, own: true };
-      setMessages((current) => [...current, message]);
+      chatAtBottomRef.current = true;
+      scrollAfterSendRef.current = true;
+      pendingHistoryScrollRef.current = null;
+      setMessages((current) => mergeChatMessages([message], current));
       void roomRef.current?.localParticipant.publishData(
         new TextEncoder().encode(JSON.stringify({ ...message, type: "chat" })),
         { reliable: true },
