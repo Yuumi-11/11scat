@@ -217,7 +217,18 @@ function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: 
         }
       }
     };
-    const resume = () => { if (document.visibilityState === "visible" && video.paused) void play(); };
+    let hiddenAt = 0;
+    const resume = () => {
+      if (document.visibilityState !== "visible") { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 3000 && document.pictureInPictureElement !== video) {
+        // A suspended decoder can remain black while paused is false. Reattach it.
+        video.pause();
+        video.srcObject = null;
+        video.srcObject = stream;
+      }
+      hiddenAt = 0;
+      void play();
+    };
     const onReady = () => { if (video.paused) void play(); };
     video.addEventListener("loadedmetadata", onReady);
     video.addEventListener("canplay", onReady);
@@ -950,7 +961,7 @@ export default function Home() {
     const mobilePeerIds = new Set<string>();
     const peerRemovalTimers = new Map<string, number>();
     const pendingPeerIds = new Set<string>();
-    const mediaProgress = new Map<MediaConnection, { bytes: number; changedAt: number; checking: boolean }>();
+    const mediaProgress = new Map<MediaConnection, { frames: number; changedAt: number; checking: boolean }>();
     const mediaRepairAt = new Map<string, number>();
     const connectionTimers = new Set<number>();
     let reconnectStartedAt = 0;
@@ -1094,15 +1105,15 @@ export default function Home() {
           if (state === "failed" || state === "closed") connection.close();
         });
         incomingCalls.forEach((call, key) => {
-          const progress = mediaProgress.get(call) || { bytes: -1, changedAt: Date.now(), checking: false };
+          const progress = mediaProgress.get(call) || { frames: -1, changedAt: Date.now(), checking: false };
           mediaProgress.set(call, progress);
           if (progress.checking || !call.peerConnection) return;
           progress.checking = true;
           void call.peerConnection.getStats().then((stats) => {
             if (disposed || incomingCalls.get(key) !== call) return;
-            let bytes = 0;
-            stats.forEach((report) => { if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) bytes += report.bytesReceived || 0; });
-            if (bytes > progress.bytes) { progress.bytes = bytes; progress.changedAt = Date.now(); }
+            let frames = 0;
+            stats.forEach((report) => { if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) frames += report.framesDecoded || 0; });
+            if (frames > progress.frames) { progress.frames = frames; progress.changedAt = Date.now(); }
             const failed = ["failed", "closed"].includes(call.peerConnection.connectionState);
             if (failed || Date.now() - progress.changedAt > 20_000) {
               const connection = connections.get(call.peer);
@@ -1536,19 +1547,37 @@ export default function Home() {
       }
     };
 
+    let hiddenSince = 0;
+    let lastMediaResume = 0;
+    const resumeMedia = () => {
+      if (document.visibilityState !== "visible" || !hiddenSince) return;
+      const duration = Date.now() - hiddenSince;
+      hiddenSince = 0;
+      if (duration < 3000 || Date.now() - lastMediaResume < 5000) return;
+      lastMediaResume = Date.now();
+      // Re-request even when the old MediaConnection still reports open.
+      connections.forEach((connection) => {
+        if (!connection.open) return;
+        connection.send({ type: "media-request", repair: true, source: "screen" });
+        connection.send({ type: "media-request", repair: true, source: "camera" });
+      });
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
+        hiddenSince = Date.now();
         void syncRoomPresence(true);
         return;
       }
       clearReconnectTimer();
       recoverRoomConnection();
       void syncRoomPresence();
+      resumeMedia();
     };
     const recoverWhenActive = () => {
       clearReconnectTimer();
       recoverRoomConnection();
       void syncRoomPresence();
+      resumeMedia();
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", recoverWhenActive);
