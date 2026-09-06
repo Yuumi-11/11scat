@@ -49,8 +49,9 @@ test("uses native iPhone PiP and mobile-only background presence grace", async (
   assert.match(page, /disablePictureInPicture=\{false\}/);
   assert.match(page, /webkitSupportsPresentationMode\?\.\("picture-in-picture"\)/);
   assert.match(page, /webkitSetPresentationMode\("picture-in-picture"\)/);
+  const pipHandler = page.slice(page.indexOf("const togglePictureInPicture ="));
   assert.ok(
-    page.indexOf('webkitSetPresentationMode("picture-in-picture")') < page.indexOf("await video.play();"),
+    pipHandler.indexOf('webkitSetPresentationMode("picture-in-picture")') < pipHandler.indexOf("await video.play();"),
     "Safari PiP must be requested before an awaited operation consumes the tap gesture",
   );
   assert.match(presenceRoute, /mobilePresenceLifetime\s*=\s*30\s*\*\s*60_000/);
