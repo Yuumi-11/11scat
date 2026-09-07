@@ -2381,9 +2381,19 @@ export default function Home() {
         </section>
 
         <aside className="side-panel panel">
-          <div className="side-tabs" aria-label="侧栏内容">
+          <div className={sideView === "tasks" ? "side-tabs has-task-range" : "side-tabs"} aria-label="侧栏内容">
             <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />聊天室</button>
             <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />任务板</button>
+            {sideView === "tasks" && <button
+              className="task-range-switch"
+              type="button"
+              onClick={() => setTaskView((current) => current === "today" ? "week" : current === "week" ? "undated" : "today")}
+              aria-label={`当前显示${taskView === "today" ? "今天" : taskView === "week" ? "最近 7 天" : "无日期"}，点击切换到${taskView === "today" ? "最近 7 天" : taskView === "week" ? "无日期" : "今天"}`}
+              title="切换任务日期范围"
+            >
+              {taskView === "undated" ? <CalendarOff size={18} aria-hidden="true" /> : <CalendarDays size={18} aria-hidden="true" />}
+              <span>{taskView === "today" ? "今天" : taskView === "week" ? "七天" : "无日期"}</span>
+            </button>}
           </div>
 
           {sideView === "chat" ? <div className="chat-view">
@@ -2502,16 +2512,6 @@ export default function Home() {
               {chatImageError && <p className="chat-image-error" role="alert">{chatImageError}</p>}
             </form>
           </div> : <div className="task-view">
-            <button
-              className="task-range-switch"
-              type="button"
-              onClick={() => setTaskView((current) => current === "today" ? "week" : current === "week" ? "undated" : "today")}
-              aria-label={`当前显示${taskView === "today" ? "今天" : taskView === "week" ? "最近 7 天" : "无日期"}，点击切换到${taskView === "today" ? "最近 7 天" : taskView === "week" ? "无日期" : "今天"}`}
-              title="切换任务日期范围"
-            >
-              {taskView === "undated" ? <CalendarOff size={18} aria-hidden="true" /> : <CalendarDays size={18} aria-hidden="true" />}
-              <span>{taskView === "today" ? "今天" : taskView === "week" ? "七天" : "无日期"}</span>
-            </button>
             {syncError && <p className="error-message" role="alert">{syncError}</p>}
 
             <div className="task-scroll">

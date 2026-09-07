@@ -101,18 +101,19 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .image-cloud-button.cloud-save-icon.failed { color: var(--danger); background: #fff0f2; }
 .chat-history-status, .empty-chat span { color: var(--muted); font-size: 12px; }
 .task-view { padding-top: 0; }
-.task-range-switch, .app-shell .task-range-switch { position: static; align-self: flex-end; flex: 0 0 auto; flex-direction: row; gap: 7px; width: auto; min-height: 34px; margin: 0 0 12px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--theme-accent-dark); box-shadow: none; }
-.task-range-switch svg { width: 18px; height: 18px; }
+.side-tabs.has-task-range { position: relative; z-index: 3; margin-bottom: 34px; }
+.task-range-switch, .app-shell .task-range-switch { position: absolute; top: calc(100% - 4px); right: 25%; bottom: auto; left: auto; transform: translateX(50%); display: flex; flex-direction: row; gap: 6px; width: auto; min-height: 28px; margin: 0; padding: 4px 10px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; background: var(--panel); color: var(--theme-accent-dark); box-shadow: 0 2px 4px rgb(31 47 69 / 4%); }
+.task-range-switch svg { width: 16px; height: 16px; }
 .task-range-switch span { font-size: 12px; }
-.task-view .task-scroll { display: flex; flex-direction: column; gap: 16px; padding: 0 0 4px; overflow-y: auto; scrollbar-width: thin; }
-.task-person-card { position: relative; flex: 0 0 auto; min-height: 180px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.task-view .task-scroll { display: flex; flex-direction: column; gap: 12px; padding: 0 0 4px; overflow-y: auto; scrollbar-width: thin; }
+.task-person-card { position: relative; flex: 1 0 calc((100% - 12px) / 2); min-height: 180px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .task-person-card:focus-within { z-index: 2; }
-.activity-heading { position: relative; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.activity-heading { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
 .activity-box, .app-shell .activity-box { flex: 1; min-width: 0; min-height: 46px; padding: 4px 0 10px; margin: 0; border: 0; border-radius: 0; background: transparent; gap: 8px; }
 .activity-box label, .activity-box strong, .app-shell .activity-box label, .app-shell .activity-box strong { color: var(--ink); font-size: 13px; font-weight: 650; }
 .activity-box input { border-color: var(--line); font-size: 13px; }
 .activity-box.readonly span { color: var(--muted); }
-.task-person-list { padding: 0; min-height: 80px; max-height: 340px; overflow-y: auto; }
+.task-person-list { padding: 0; min-height: 0; max-height: none; overflow-y: auto; }
 .task-view .task-row { min-height: 44px; padding: 9px 7px; gap: 7px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .task-row:hover { transform: none; background: var(--soft); }
 .task-view .task-copy strong { font-size: 13px; font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
