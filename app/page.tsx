@@ -10,7 +10,8 @@ import { encodeRoomPackets, createPacketReceiver } from "./room-packets";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CloudSaveButton, type CloudSaveState } from "./CloudSaveButton";
 import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
-import { AddMemberTask, NewMemberTasks } from "./MemberTasks";
+import { NewMemberTasks } from "./MemberTasks";
+import { RoomCollaboration } from "./RoomCollaboration";
 import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomBell } from "./RoomBell";
@@ -2208,6 +2209,7 @@ export default function Home() {
       <header className="topbar">
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
+          <RoomCollaboration identityId={identityId} onChanged={loadTasks} />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘
@@ -2490,7 +2492,7 @@ export default function Home() {
                 const { nickname, tasks: sharedTasks, activity: memberActivity } = group;
                 return (
                   <section className="task-person-card" aria-label={`${nickname}的任务`} key={group.identityKey}>
-                    <div className="activity-heading"><div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div><AddMemberTask recipientId={group.identityKey} name={nickname} /></div>
+                    <div className="activity-heading"><div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div></div>
                     <div className="task-person-list">
                       <div className="task-list">
                         {sharedTasks.map((task) => (

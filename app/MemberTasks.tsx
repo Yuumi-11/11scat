@@ -2,46 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, X, LoaderCircle, Inbox } from "lucide-react";
+import { X, Inbox } from "lucide-react";
 
 type NewTask = { id: string; title: string; senderName: string; createdAt: number };
-
-export function AddMemberTask({ recipientId, name }: { recipientId: string; name: string }) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const operation = useRef({ id: "", title: "" });
-  const inFlight = useRef(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const close = () => { if (!inFlight.current) { setOpen(false); trigger.current?.focus(); } };
-  const submit = async () => {
-    const text = title.trim();
-    if (!text || inFlight.current) return;
-    if (operation.current.title !== text || !operation.current.id) operation.current = { title: text, id: crypto.randomUUID() };
-    inFlight.current = true;
-    setSending(true); setError(""); setNotice("");
-    try {
-      const response = await fetch("/api/ticktick/shared", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...operation.current, recipientId }), signal: AbortSignal.timeout(45_000) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "添加失败，请重试。");
-      setTitle(""); operation.current = { title: "", id: "" }; setOpen(false);
-      setNotice(`已添加到${name}的收集箱`); trigger.current?.focus();
-    } catch (error) { setError(error instanceof Error ? error.message : "添加结果未确认，请先查看对方收集箱。"); }
-    finally { inFlight.current = false; setSending(false); }
-  };
-  return <div className="member-task-action">
-    <button ref={trigger} type="button" className="icon-button member-task-add" title={`向${name}添加待办`} aria-label={`向${name}添加待办`} aria-expanded={open} aria-haspopup="dialog" onClick={() => { setOpen(!open); setNotice(""); }}><Plus size={20} /></button>
-    {notice && <span className="member-task-notice" role="status">{notice}</span>}
-    {open && <form className="member-task-popover" role="dialog" aria-label={`添加到${name}的收集箱`} onSubmit={event => { event.preventDefault(); void submit(); }} onKeyDown={event => { if (event.key === "Escape") close(); }}>
-      <div className="popover-heading"><strong>给{name}的待办</strong><button type="button" className="icon-button" onClick={close} disabled={sending} aria-label="关闭添加待办" title="关闭"><X size={18} /></button></div>
-      <input autoFocus value={title} onChange={event => setTitle(event.target.value)} maxLength={500} placeholder="填写待办，按 Enter 添加" aria-label="新待办内容" disabled={sending} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
-      <div className="popover-footer"><small>收集箱 · 无日期</small><button className="primary-button" type="submit" disabled={sending || !title.trim()}>{sending ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}{sending ? "正在添加" : "添加"}</button></div>
-      {error && <p role="alert" className="error-message">{error}</p>}
-    </form>}
-  </div>;
-}
 
 export function NewMemberTasks({ identityId, onChanged }: { identityId: string; onChanged: () => Promise<boolean> }) {
   const [tasks, setTasks] = useState<NewTask[]>([]);
