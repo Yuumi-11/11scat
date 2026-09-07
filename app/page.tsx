@@ -11,6 +11,8 @@ import { VoiceRecorder } from "./VoiceRecorder";
 import { CloudSaveButton, type CloudSaveState } from "./CloudSaveButton";
 import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
 import { AddMemberTask, NewMemberTasks } from "./MemberTasks";
+import { useRoomTheme } from "./use-room-theme";
+import { ThemeColorPicker } from "./ThemeColorPicker";
 
 type Task = {
   id: string;
@@ -245,7 +247,7 @@ export default function Home() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
-  const [appearanceTheme, setAppearanceTheme] = useState<"pink" | "blue" | "green" | "purple">("blue");
+  const { theme: appearanceTheme, color: appearanceColor, choosePreset, chooseCustom } = useRoomTheme();
   const [backgroundImage, setBackgroundImage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloudPath, setCloudPath] = useState("");
@@ -626,8 +628,6 @@ export default function Home() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const saved = window.localStorage.getItem("11scat-appearance-theme");
-        if (["pink", "blue", "green", "purple"].includes(saved || "")) setAppearanceTheme(saved as "pink" | "blue" | "green" | "purple");
         setBackgroundImage(window.localStorage.getItem("11scat-appearance-background") || "");
       } catch { /* Appearance remains at defaults when storage is unavailable. */ }
     }, 0);
@@ -1779,11 +1779,6 @@ export default function Home() {
     setShareModeOpen(true);
   };
 
-  const chooseAppearanceTheme = (theme: "pink" | "blue" | "green" | "purple") => {
-    setAppearanceTheme(theme);
-    try { window.localStorage.setItem("11scat-appearance-theme", theme); } catch { /* keep session-only setting */ }
-  };
-
   const importBackground = (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -2648,12 +2643,8 @@ export default function Home() {
             <button className="modal-close" onClick={() => setAppearanceOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
             <h2 id="appearance-title">外观设置</h2>
             <button className="push-button" type="button" onClick={() => { setAppearanceOpen(false); setPushOpen(true); }}><Bell size={18} aria-hidden="true" />消息提醒设置</button>
-            <p>选择统一强调色，或导入一张经过模糊和淡化处理的背景。</p>
-            <div className="theme-options" aria-label="主题颜色">
-              {(["pink", "blue", "green", "purple"] as const).map((theme) => (
-                <button className={appearanceTheme === theme ? `theme-swatch ${theme} active` : `theme-swatch ${theme}`} type="button" onClick={() => chooseAppearanceTheme(theme)} key={theme} aria-label={`${({ pink: "玫瑰", blue: "雾蓝", green: "青绿", purple: "暮紫" })[theme]}主题`} title={`${({ pink: "玫瑰", blue: "雾蓝", green: "青绿", purple: "暮紫" })[theme]}主题`} aria-pressed={appearanceTheme === theme} />
-              ))}
-            </div>
+            <p>选择预设或自由选色，让整个自习室与你喜欢的颜色相配。</p>
+            <ThemeColorPicker theme={appearanceTheme} color={appearanceColor} choosePreset={choosePreset} chooseCustom={chooseCustom} />
             <input ref={backgroundInputRef} className="chat-image-input" type="file" accept="image/*" onChange={(event) => { importBackground(event.target.files?.[0]); event.currentTarget.value = ""; }} />
             <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}><ImagePlus size={18} aria-hidden="true" />导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
           </section>

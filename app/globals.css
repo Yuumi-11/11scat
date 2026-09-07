@@ -910,9 +910,6 @@ body { overflow: hidden; }
 .appearance-modal h2 { margin: 0 0 8px; font-size: 23px; }
 .appearance-modal > p { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .theme-options { display: flex; gap: 12px; margin-bottom: 20px; }
-.theme-swatch { width: 38px; height: 38px; border: 4px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
-.theme-swatch.pink { background: var(--theme-accent); }.theme-swatch.blue { background: #5986d9; }.theme-swatch.green { background: #45a77e; }.theme-swatch.purple { background: #936dcc; }
-.theme-swatch.active { box-shadow: 0 0 0 3px var(--theme-accent); }
 .background-actions { display: flex; align-items: center; gap: 10px; }
 .background-actions > button:not(.primary-button) { padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #fff; cursor: pointer; }
 
