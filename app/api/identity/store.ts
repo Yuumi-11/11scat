@@ -42,6 +42,11 @@ export async function getUser(identityId: string): Promise<UserRecord | null> {
   return (await readStore()).users[identityId] || null;
 }
 
+export async function listRoomMembers() {
+  await writeQueue;
+  return Object.entries((await readStore()).users).map(([id, user]) => ({ id, name: user.nickname || "成员" }));
+}
+
 export function updateUser(identityId: string, update: (current: UserRecord | null) => UserRecord): Promise<UserRecord> {
   let result: UserRecord;
   const operation = writeQueue.then(async () => {

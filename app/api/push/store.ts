@@ -80,3 +80,28 @@ export async function sendChatPush(message: { sender: string; body: string; atta
   }));
   if (expired.size) await mutate((current) => { current.subscriptions = current.subscriptions.filter((item) => !expired.has(item.endpoint)); });
 }
+
+export async function sendRingPush(ring: { id: string; recipientId: string; senderName: string; expiresAt: number }): Promise<"accepted" | "unavailable" | "failed"> {
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return "unavailable";
+  webPush.setVapidDetails(process.env.VAPID_SUBJECT || "https://study.11scat.xyz", publicKey, privateKey);
+  await mutationQueue;
+  const subscriptions = (await readStore()).subscriptions.filter(item => item.identityId === ring.recipientId);
+  if (!subscriptions.length) return "unavailable";
+  const payload = JSON.stringify({ kind: "ring", ringId: ring.id, expiresAt: ring.expiresAt, title: `${ring.senderName} 摇了摇铃`, body: "有空看一下自习室，点击确认。", url: "/?ring=1" });
+  const expired = new Set<string>();
+  const results = await Promise.all(subscriptions.map(async item => {
+    try {
+      const ttl = Math.floor((ring.expiresAt - Date.now()) / 1000);
+      if (ttl <= 0) return false;
+      await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: ttl, urgency: "high", timeout: 10_000 });
+      return true;
+    } catch (error) {
+      if ([404, 410].includes((error as { statusCode: number }).statusCode)) expired.add(item.endpoint);
+      return false;
+    }
+  }));
+  if (expired.size) await mutate(current => { current.subscriptions = current.subscriptions.filter(item => !expired.has(item.endpoint)); });
+  return results.some(Boolean) ? "accepted" : "failed";
+}

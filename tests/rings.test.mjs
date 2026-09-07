@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+test('ring persistence, concurrent deduplication, ownership, cancellation and expiry', async () => {
+  process.env.DATA_DIR = await mkdtemp(path.join(tmpdir(), '11scat-rings-'));
+  const { startRing, listRings, finishRing, setRingDelivery } = await import('../app/api/room/rings/store.ts');
+  const input = { id: 'ring-1', senderId: 'alice', recipientId: 'bob', senderName: 'Alice', recipientName: 'Bob' };
+  const now = 1000000;
+  const batch = await Promise.all(Array.from({ length: 20 }, () => startRing(input, now)));
+  assert.equal(batch.filter(r => r.created).length, 1);
+  assert.equal((await startRing({ ...input, id: 'second-device' }, now)).created, false);
+  assert.equal((await listRings('mallory', now)).length, 0);
+  await assert.rejects(finishRing(input.id, 'alice', 'acknowledge', now), { status: 403 });
+  await assert.rejects(finishRing(input.id, 'bob', 'cancel', now), { status: 403 });
+  await finishRing(input.id, 'bob', 'acknowledge', now + 1);
+  assert.equal((await finishRing(input.id, 'bob', 'acknowledge', now + 2)).state, 'acknowledged');
+  assert.equal((await startRing(input, now + 3)).ring.state, 'acknowledged');
+  await assert.rejects(startRing({ ...input, id: 'too-soon' }, now + 4), { status: 429 });
+  const next = { ...input, id: 'ring-2' };
+  await startRing(next, now + 31000);
+  await setRingDelivery(next.id, 'accepted');
+  assert.equal((await listRings('bob', now + 31000))[0].delivery, 'accepted');
+  assert.equal((await listRings('bob', now + 151001))[0].state, 'expired');
+  assert.equal((await finishRing(next.id, 'bob', 'acknowledge', now + 151001)).state, 'expired');
+  await assert.rejects(startRing({ ...next, senderId: 'mallory' }, now + 151001), { status: 409 });
+  const third = { ...input, id: 'ring-3' };
+  await startRing(third, now + 160000);
+  await finishRing(third.id, 'alice', 'cancel', now + 160001);
+  assert.equal((await listRings('bob', now + 160002))[0].state, 'cancelled');
+  const saved = JSON.parse(await readFile(path.join(process.env.DATA_DIR, 'rings.json'), 'utf8'));
+  assert.equal(saved.length, 3);
+  assert.equal(saved[2].state, 'cancelled');
+});
+
+test('ring notifications validate server state, dedupe tags, expire and support explicit acknowledgement', async () => {
+  const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const listeners = {};
+  const shown = [];
+  let fetches = [];
+  let state = 'active';
+  const self = { addEventListener: (name, fn) => { listeners[name] = fn; }, location: { origin: 'https://example.test' }, registration: { getNotifications: async () => [], showNotification: async (...args) => shown.push(args) }, clients: { matchAll: async () => [], openWindow: async () => {} } };
+  const fakeFetch = async (...args) => { fetches.push(args); return Response.json({ identityId: 'bob', rings: [{ id: 'ring-1', recipientId: 'bob', state }] }); };
+  new Function('self', 'fetch', source)(self, fakeFetch);
+  const payload = { kind: 'ring', ringId: 'ring-1', expiresAt: Date.now() + 60000, title: 'Alice 摇了摇铃' };
+  async function push(data) { let work; listeners.push({ data: { json: () => data }, waitUntil: p => { work = p; } }); await work; }
+  await push(payload);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0][1].tag, '11scat-ring-ring-1');
+  assert.equal(shown[0][1].renotify, false);
+  state = 'cancelled'; await push(payload); assert.equal(shown.length, 1);
+  state = 'active'; await push({ ...payload, expiresAt: 0 }); assert.equal(shown.length, 1);
+  self.registration.getNotifications = async () => [{}]; await push(payload); assert.equal(shown.length, 1);
+  let work;
+  listeners.notificationclick({ action: 'acknowledge', notification: { close() {}, data: { ringId: 'ring-1', url: '/' } }, waitUntil: p => { work = p; } });
+  await work;
+  assert.equal(JSON.parse(fetches.at(-1)[1].body).action, 'acknowledge');
+});
