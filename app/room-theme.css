@@ -93,9 +93,14 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .chat-form { margin-top: 0; padding-top: 14px; gap: 8px; border-color: var(--line); }
 .chat-form textarea, .app-shell .chat-form textarea { min-height: 70px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--panel); font-size: 14px; line-height: 1.5; box-shadow: none; }
 .chat-form textarea:focus { border-color: var(--theme-accent); box-shadow: 0 0 0 3px var(--theme-soft); }
-.chat-input-row { grid-template-columns: 36px 36px minmax(0,1fr) auto; align-items: center; gap: 6px; }
-.chat-attach-button, .chat-voice-button, .app-shell .chat-attach-button { width: 36px; height: 40px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--panel); }
-.chat-send-button { min-height: 40px; padding: 8px 12px; font-size: 13px; }
+.chat-input-row { --chat-control-size: 32px; grid-template-columns: minmax(0, 1fr) repeat(2, var(--chat-control-size)); grid-template-rows: repeat(2, var(--chat-control-size)); align-items: stretch; gap: 6px; }
+.app-shell .chat-input-row > textarea { grid-column: 1; grid-row: 1 / 3; min-width: 0; min-height: 0; height: 100%; padding: 8px 10px; }
+.chat-input-row > .chat-attach-button, .chat-input-row > .chat-voice-button { width: var(--chat-control-size); min-width: 0; height: var(--chat-control-size); min-height: 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); }
+.chat-input-row > .chat-attach-button { grid-column: 2; grid-row: 1; }
+.chat-input-row > .chat-voice-button { grid-column: 3; grid-row: 1; }
+.chat-input-row > .chat-attach-button svg, .chat-input-row > .chat-voice-button svg { width: 18px; height: 18px; }
+.chat-input-row > .chat-send-button { grid-column: 2 / 4; grid-row: 2; width: 100%; min-width: 0; height: var(--chat-control-size); min-height: 0; padding: 4px 8px; border-radius: 7px; font-size: 12px; }
+.chat-input-row > .voice-recording { grid-column: 1 / -1; grid-row: 3; min-width: 0; flex-wrap: wrap; }
 .chat-image-preview, .chat-file-preview, .chat-quote-preview { border-color: var(--line); background: var(--soft); }
 .chat-image-preview button, .chat-quote-preview button, .chat-file-preview button { display: grid; place-items: center; }
 .image-cloud-button.cloud-save-icon { color: var(--theme-accent-dark); border-color: var(--line); background: var(--panel); }
@@ -256,12 +261,6 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
   .empty-share p { font-size: 12px; margin-bottom: 16px; }
   .side-panel { padding: 12px; height: 72dvh; }
   .side-tabs { margin-bottom: 16px; }
-  .chat-input-row { grid-template-columns: 40px 40px minmax(0,1fr) auto; gap: 6px; }
-  .chat-input-row > textarea { grid-column: 1 / -1; grid-row: 1; }
-  .chat-input-row > .chat-attach-button { grid-column: 1; grid-row: 2; width: 40px; height: 44px; }
-  .chat-input-row > .chat-voice-button { grid-column: 2; grid-row: 2; width: 40px; height: 44px; }
-  .chat-input-row > .chat-send-button { grid-column: 4; grid-row: 2; min-height: 44px; }
-  .chat-input-row > .voice-recording { grid-column: 1 / 4; grid-row: 3; }
   .modal-backdrop { padding: 12px; }
   .sync-modal, .share-mode-modal, .appearance-modal, .cloud-modal, .push-modal { max-width: 100%; max-height: 90dvh; padding: 22px 16px; overflow-y: auto; }
   .cloud-toolbar { gap: 6px; }
@@ -269,6 +268,9 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
   .cloud-dropzone { padding: 8px; gap: 8px; }
   .access-shell { padding: 16px; }
   .access-card { padding: 28px 24px; }
+}
+@media (pointer: coarse) {
+  .chat-input-row { --chat-control-size: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
