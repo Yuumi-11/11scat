@@ -12,16 +12,16 @@ self.addEventListener("push", (event) => {
     if (ring) {
       if (!Number.isFinite(data.expiresAt) || data.expiresAt <= Date.now()) return;
       const existing = await self.registration.getNotifications({ tag: `11scat-ring-${data.ringId}` });
-      if (existing.length) return;
+      if (existing.some(notification => !data.repeat || (notification.data?.sequence || 0) >= (data.sequence || 1))) return;
     }
     await self.registration.showNotification(title, {
     body,
     icon: "/favicon.svg",
     badge: "/favicon.svg",
     tag: ring ? `11scat-ring-${data.ringId}` : "11scat-room-message",
-    renotify: !ring,
+    renotify: !ring || !!data.repeat,
     ...(ring ? { actions: [{ action: "acknowledge", title: "知道了" }] } : {}),
-    data: { url, ...(ring ? { ringId: data.ringId } : {}) },
+    data: { url, ...(ring ? { ringId: data.ringId, sequence: data.sequence || 1 } : {}) },
     });
     // Display first: background network/authentication must not swallow a push.
     if (ring) {

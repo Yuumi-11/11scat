@@ -81,7 +81,7 @@ export async function sendChatPush(message: { sender: string; body: string; atta
   if (expired.size) await mutate((current) => { current.subscriptions = current.subscriptions.filter((item) => !expired.has(item.endpoint)); });
 }
 
-export async function sendRingPush(ring: { id: string; recipientId: string; senderName: string; expiresAt: number }): Promise<"accepted" | "unavailable" | "failed"> {
+export async function sendRingPush(ring: { id: string; recipientId: string; senderName: string; expiresAt: number; repeat?: boolean; attempts?: number }): Promise<"accepted" | "unavailable" | "failed"> {
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   if (!publicKey || !privateKey) return "unavailable";
@@ -89,13 +89,13 @@ export async function sendRingPush(ring: { id: string; recipientId: string; send
   await mutationQueue;
   const subscriptions = (await readStore()).subscriptions.filter(item => item.identityId === ring.recipientId);
   if (!subscriptions.length) return "unavailable";
-  const payload = JSON.stringify({ kind: "ring", ringId: ring.id, expiresAt: ring.expiresAt, title: `${ring.senderName} 摇了摇铃`, body: "有空看一下自习室，点击确认。", url: "/?ring=1" });
+  const payload = JSON.stringify({ kind: "ring", ringId: ring.id, sequence: ring.attempts || 1, repeat: !!ring.repeat, expiresAt: ring.expiresAt, title: `${ring.senderName} 摇了摇铃`, body: "有空看一下自习室，点击确认。", url: "/?ring=1" });
   const expired = new Set<string>();
   const results = await Promise.all(subscriptions.map(async item => {
     try {
-      const ttl = Math.floor((ring.expiresAt - Date.now()) / 1000);
+      const ttl = Math.min(3, Math.floor((ring.expiresAt - Date.now()) / 1000));
       if (ttl <= 0) return false;
-      const response = await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: ttl, urgency: "high", timeout: 10_000 });
+      const response = await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: ttl, urgency: "high", timeout: 2500 });
       console.info("ring-push", JSON.stringify({ ringId: ring.id, provider: new URL(item.endpoint).hostname, status: response.statusCode }));
       return true;
     } catch (error) {

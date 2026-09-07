@@ -35,6 +35,23 @@ test('ring persistence, concurrent deduplication, ownership, cancellation and ex
   assert.equal(saved[2].state, 'cancelled');
 });
 
+test('repeated reminders claim once per interval, do not catch up, and stop at cancellation/expiry', async () => {
+  const { startRing, claimDueRings, finishRing } = await import('../app/api/room/rings/store.ts');
+  const now = 2000000;
+  await startRing({ id: 'repeating', senderId: 'carol', recipientId: 'dave', senderName: 'Carol', recipientName: 'Dave' }, now);
+  const claims = await Promise.all(Array.from({length: 10}, () => claimDueRings(now)));
+  assert.equal(claims.flat().length, 1);
+  assert.equal((await claimDueRings(now + 2999)).length, 0);
+  assert.equal((await claimDueRings(now + 3000))[0].attempts, 2);
+  assert.equal((await claimDueRings(now + 60000))[0].attempts, 3);
+  assert.equal((await claimDueRings(now + 60001)).length, 0);
+  await finishRing('repeating', 'dave', 'acknowledge', now + 61000);
+  assert.equal((await claimDueRings(now + 63000)).length, 0);
+  await startRing({ id: 'bounded', senderId: 'carol', recipientId: 'dave', senderName: 'Carol', recipientName: 'Dave' }, now + 70000);
+  for (let i=0;i<40;i++) assert.equal((await claimDueRings(now+70000+i*3000)).length, 1);
+  assert.equal((await claimDueRings(now+190000)).length, 0);
+});
+
 test('ring notifications validate server state, dedupe tags, expire and support explicit acknowledgement', async () => {
   const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
   const listeners = {};
@@ -55,6 +72,13 @@ test('ring notifications validate server state, dedupe tags, expire and support 
   state = 'active'; await push({ ...payload, expiresAt: 0 }); assert.equal(shown.length, 2);
   networkFailure = true; await push(payload); assert.equal(shown.length, 3, 'offline revalidation cannot swallow a valid push'); networkFailure = false;
   self.registration.getNotifications = async () => [{}]; await push(payload); assert.equal(shown.length, 3);
+  self.registration.getNotifications = async () => [{data:{sequence:1}}];
+  await push({...payload, repeat:true, sequence:2});
+  assert.equal(shown.length, 4);
+  assert.equal(shown.at(-1)[1].renotify, true);
+  self.registration.getNotifications = async () => [{data:{sequence:2}}];
+  await push({...payload, repeat:true, sequence:2});
+  assert.equal(shown.length, 4);
   let work;
   listeners.notificationclick({ action: 'acknowledge', notification: { close() {}, data: { ringId: 'ring-1', url: '/' } }, waitUntil: p => { work = p; } });
   await work;

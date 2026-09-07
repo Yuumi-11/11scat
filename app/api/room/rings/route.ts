@@ -1,8 +1,8 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser, listRoomMembers } from "../../identity/store";
-import { sendRingPush } from "../../push/store";
-import { finishRing, listRings, RingError, setRingDelivery, startRing } from "./store";
+import { finishRing, listRings, RingError, startRing } from "./store";
+import { startRingScheduler, tickRings } from "./scheduler";
 
 export const runtime = "nodejs";
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -30,12 +30,8 @@ export async function POST(request: NextRequest) {
   if (!sender || !recipient) return json({ error: "成员不存在" }, 404);
   try {
     const result = await startRing({ id: body.id, senderId: identityId, recipientId: body.recipientId, senderName: sender.nickname || "成员", recipientName: recipient.nickname || "成员" });
-    if (result.created) after(async () => {
-      const active = (await listRings(identityId)).find(r => r.id === result.ring.id);
-      if (!active || active.state !== "active") return;
-      try { await setRingDelivery(active.id, await sendRingPush(active)); }
-      catch { await setRingDelivery(active.id, "failed"); }
-    });
+    startRingScheduler();
+    if (result.created) after(() => tickRings());
     return json(result, result.created ? 201 : 200);
   } catch (error) {
     if (error instanceof RingError) return json({ error: error.message }, error.status);

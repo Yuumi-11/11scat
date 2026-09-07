@@ -81,7 +81,7 @@ export function RoomBell() {
     if (!live(r)) return "已超时";
     if (r.delivery === "unavailable") return "等待确认 · 对方未开启推送";
     if (r.delivery === "failed") return "等待确认 · 手机推送失败";
-    return `等待确认 · ${Math.ceil((r.expiresAt - now) / 1000)}秒`;
+    return `${r.repeat ? "每3秒提醒" : "等待确认"} · ${Math.ceil((r.expiresAt - now) / 1000)}秒`;
   };
   return <div className="room-bell" ref={root}>
     <button className={`room-bell-trigger${incoming.length ? " has-incoming" : ""}`} type="button" title="摇铃" aria-label={incoming.length ? `摇铃，${incoming.length}条待确认` : "摇铃"} aria-expanded={open} aria-controls="room-bell-panel" onClick={() => setOpen(v => !v)}>
