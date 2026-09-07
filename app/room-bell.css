@@ -2,11 +2,16 @@
 .room-bell button { cursor: pointer; }
 .room-bell button:disabled { cursor: wait; opacity: .6; }
 .room-bell button:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
-.room-bell .room-bell-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control, 8px); background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 550; box-shadow: none; }
-.room-bell-trigger svg { width: 17px; height: 17px; stroke-width: 1.8; }
+.chat-view > .chat-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.chat-bell-host { align-self: end; padding-bottom: 2px; }
+.room-bell .room-bell-trigger { position: relative; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(150deg, var(--panel), var(--theme-soft)); color: var(--theme-accent-dark); box-shadow: inset 0 1px 0 var(--panel), 0 3px 9px rgb(var(--shadow-rgb) / 9%); }
+.room-bell-trigger svg { width: 22px; height: 22px; stroke-width: 1.8; transform-origin: 50% 15%; }
+.room-bell .room-bell-trigger:hover, .room-bell .room-bell-trigger[aria-expanded="true"] { border-color: var(--theme-accent-dark); background: var(--theme-soft); }
+.room-bell-trigger:hover svg, .room-bell-trigger:focus-visible svg { animation: bell-sway .42s ease-in-out; }
+.room-bell-active-dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--theme-accent); box-shadow: 0 0 0 2px var(--panel); }
 .room-bell .has-incoming { color: var(--theme-accent-dark); border-color: var(--theme-accent); background: var(--theme-soft); }
-.room-bell-trigger i { font-style: normal; border-radius: 20px; min-width: 18px; padding: 1px 4px; background: var(--theme-accent); color: var(--on-accent); font-size: 12px; }
-.room-bell.room-bell-panel { position: fixed; right: 24px; top: 72px; width: 332px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 96px); z-index: 120; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 16px 48px rgb(0 0 0 / 13%); overflow: auto; }
+.room-bell-trigger i { position: absolute; top: -5px; right: -5px; font-style: normal; border: 2px solid var(--panel); border-radius: 20px; min-width: 20px; padding: 1px 4px; background: var(--theme-accent); color: var(--on-accent); font-size: 10px; }
+.room-bell.room-bell-panel { position: fixed; width: 332px; max-width: calc(100vw - 24px); z-index: 120; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 16px 48px rgb(var(--shadow-rgb) / 17%); overflow: auto; overscroll-behavior: contain; }
 .room-bell-panel header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; color: var(--ink); font-size: 16px; }
 .room-bell-panel header button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); }
 .room-bell-member { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
@@ -27,5 +32,6 @@
 .room-bell-spinner { animation: ring-spin 1s linear infinite; }
 @keyframes ring-spin { to { transform: rotate(360deg); } }
 @keyframes ring-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 640px) { .room-bell.room-bell-panel { top: 68px; right: 12px; } .room-bell.room-bell-incoming { left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); } .room-bell-card { padding: 12px; gap: 8px; } .room-bell .room-bell-trigger { gap: 5px; padding: 7px 9px; font-size: 12px; } .room-bell-trigger > span { display: none; } }
-@media (prefers-reduced-motion: reduce) { .room-bell-card, .room-bell-spinner { animation: none; } }
+@keyframes bell-sway { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg); } 60% { transform: rotate(9deg); } 80% { transform: rotate(-4deg); } }
+@media (max-width: 640px) { .room-bell.room-bell-incoming { left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); } .room-bell-card { padding: 12px; gap: 8px; } }
+@media (prefers-reduced-motion: reduce) { .room-bell-card, .room-bell-spinner, .room-bell-trigger:hover svg, .room-bell-trigger:focus-visible svg { animation: none; } }

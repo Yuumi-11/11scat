@@ -240,6 +240,8 @@ export default function Home() {
   const [messageMenuId, setMessageMenuId] = useState("");
   const [messageMenuPlacement, setMessageMenuPlacement] = useState<"above" | "below">("below");
   const [sideView, setSideView] = useState<"chat" | "tasks">("chat");
+  const [bellHost, setBellHost] = useState<HTMLDivElement | null>(null);
+  const showBellChat = useCallback(() => setSideView("chat"), []);
   const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
   const [activity, setActivity] = useState("");
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
@@ -2259,7 +2261,6 @@ export default function Home() {
       <header className="topbar">
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
-          <RoomBell />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘
@@ -2395,7 +2396,7 @@ export default function Home() {
           </div>
 
           {sideView === "chat" ? <div className="chat-view">
-            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div></div>
+            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><div className="chat-bell-host" ref={setBellHost} /></div>
             <div className="message-list" ref={messageListRef} onScroll={handleChatScroll} aria-live="polite">
               {chatHistoryLoading && <div className="chat-history-status">正在加载聊天记录…</div>}
               {!chatHistoryLoading && chatHistoryReady && !chatHistoryCursor && messages.length > 0 && <div className="chat-history-status">已经到最早一条了</div>}
@@ -2560,6 +2561,7 @@ export default function Home() {
         </aside>
       </section>
 
+      <RoomBell triggerHost={bellHost} onShowChat={showBellChat} />
       {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}
 
       {shareModeOpen && (
