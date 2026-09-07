@@ -1,3 +1,6 @@
+self.addEventListener("install", () => { self.skipWaiting(); });
+self.addEventListener("activate", event => { event.waitUntil(self.clients.claim()); });
+
 self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
@@ -8,12 +11,6 @@ self.addEventListener("push", (event) => {
     const ring = data.kind === "ring" && typeof data.ringId === "string";
     if (ring) {
       if (!Number.isFinite(data.expiresAt) || data.expiresAt <= Date.now()) return;
-      try {
-        const response = await fetch("/api/room/rings", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(5000) });
-        if (!response.ok || response.redirected || !response.headers.get("content-type")?.includes("application/json")) return;
-        const snapshot = await response.json();
-        if (!snapshot.rings.some(item => item.id === data.ringId && item.recipientId === snapshot.identityId && item.state === "active")) return;
-      } catch { return; /* Never revive an unverified, potentially cancelled ring. */ }
       const existing = await self.registration.getNotifications({ tag: `11scat-ring-${data.ringId}` });
       if (existing.length) return;
     }
@@ -26,6 +23,18 @@ self.addEventListener("push", (event) => {
     ...(ring ? { actions: [{ action: "acknowledge", title: "知道了" }] } : {}),
     data: { url, ...(ring ? { ringId: data.ringId } : {}) },
     });
+    // Display first: background network/authentication must not swallow a push.
+    if (ring) {
+      try {
+        const response = await fetch("/api/room/rings", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(5000) });
+        if (!response.ok || response.redirected || !response.headers.get("content-type")?.includes("application/json")) return;
+        const snapshot = await response.json();
+        if (!snapshot.rings.some(item => item.id === data.ringId && item.recipientId === snapshot.identityId && item.state === "active")) {
+          const notifications = await self.registration.getNotifications({ tag: `11scat-ring-${data.ringId}` });
+          notifications.forEach(notification => notification.close());
+        }
+      } catch { /* Keep the single notification when the phone is offline. */ }
+    }
   })());
 });
 

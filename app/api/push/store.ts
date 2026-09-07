@@ -95,9 +95,11 @@ export async function sendRingPush(ring: { id: string; recipientId: string; send
     try {
       const ttl = Math.floor((ring.expiresAt - Date.now()) / 1000);
       if (ttl <= 0) return false;
-      await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: ttl, urgency: "high", timeout: 10_000 });
+      const response = await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: ttl, urgency: "high", timeout: 10_000 });
+      console.info("ring-push", JSON.stringify({ ringId: ring.id, provider: new URL(item.endpoint).hostname, status: response.statusCode }));
       return true;
     } catch (error) {
+      console.warn("ring-push", JSON.stringify({ ringId: ring.id, provider: new URL(item.endpoint).hostname, status: (error as { statusCode?: number }).statusCode || "network-error" }));
       if ([404, 410].includes((error as { statusCode: number }).statusCode)) expired.add(item.endpoint);
       return false;
     }

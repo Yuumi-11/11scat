@@ -41,8 +41,9 @@ test('ring notifications validate server state, dedupe tags, expire and support 
   const shown = [];
   let fetches = [];
   let state = 'active';
+  let networkFailure = false;
   const self = { addEventListener: (name, fn) => { listeners[name] = fn; }, location: { origin: 'https://example.test' }, registration: { getNotifications: async () => [], showNotification: async (...args) => shown.push(args) }, clients: { matchAll: async () => [], openWindow: async () => {} } };
-  const fakeFetch = async (...args) => { fetches.push(args); return Response.json({ identityId: 'bob', rings: [{ id: 'ring-1', recipientId: 'bob', state }] }); };
+  const fakeFetch = async (...args) => { fetches.push(args); if (networkFailure) throw new Error('offline'); return Response.json({ identityId: 'bob', rings: [{ id: 'ring-1', recipientId: 'bob', state }] }); };
   new Function('self', 'fetch', source)(self, fakeFetch);
   const payload = { kind: 'ring', ringId: 'ring-1', expiresAt: Date.now() + 60000, title: 'Alice 摇了摇铃' };
   async function push(data) { let work; listeners.push({ data: { json: () => data }, waitUntil: p => { work = p; } }); await work; }
@@ -50,9 +51,10 @@ test('ring notifications validate server state, dedupe tags, expire and support 
   assert.equal(shown.length, 1);
   assert.equal(shown[0][1].tag, '11scat-ring-ring-1');
   assert.equal(shown[0][1].renotify, false);
-  state = 'cancelled'; await push(payload); assert.equal(shown.length, 1);
-  state = 'active'; await push({ ...payload, expiresAt: 0 }); assert.equal(shown.length, 1);
-  self.registration.getNotifications = async () => [{}]; await push(payload); assert.equal(shown.length, 1);
+  state = 'cancelled'; await push(payload); assert.equal(shown.length, 2);
+  state = 'active'; await push({ ...payload, expiresAt: 0 }); assert.equal(shown.length, 2);
+  networkFailure = true; await push(payload); assert.equal(shown.length, 3, 'offline revalidation cannot swallow a valid push'); networkFailure = false;
+  self.registration.getNotifications = async () => [{}]; await push(payload); assert.equal(shown.length, 3);
   let work;
   listeners.notificationclick({ action: 'acknowledge', notification: { close() {}, data: { ringId: 'ring-1', url: '/' } }, waitUntil: p => { work = p; } });
   await work;
