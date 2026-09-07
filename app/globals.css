@@ -138,7 +138,6 @@ h1, h2, p { margin-top: 0; }
 .board-tile:hover .board-delete, .board-tile:focus-within .board-delete { opacity: 1; }
 
 .whiteboard-shell { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) 58px; gap: 8px; padding: 8px; background: var(--theme-soft); }
-.whiteboard-shell.fullscreen { position: fixed; background: var(--theme-soft); }
 .whiteboard-paper { min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 10px 30px rgba(61,41,52,.08); }
 .whiteboard-paper svg { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .whiteboard-tools { min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; overflow-x: hidden; overflow-y: auto; padding: 7px 5px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.96); box-shadow: 0 7px 22px rgba(92,53,70,.1); }

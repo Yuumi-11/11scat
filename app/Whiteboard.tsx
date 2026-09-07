@@ -34,8 +34,10 @@ function makeBoardTextUpdate(current: BoardText, patch: Partial<BoardText>): Boa
   return { ...current, ...patch, updatedAt: Date.now(), revision: makeBoardRevision(current.revision) };
 }
 
-export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpsertText, onDeleteText, onSaved }: {
+export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke, onDeleteStroke, onClear, onUpsertText, onDeleteText, onSaved }: {
   board: RoomBoard;
+  fullscreen: boolean;
+  onToggleFullscreen: () => Promise<void>;
   onAddStroke: (stroke: BoardStroke, epoch: string) => void;
   onDeleteStroke: (strokeId: string, epoch: string) => void;
   onClear: () => void;
@@ -50,20 +52,12 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   const [draftEpoch, setDraftEpoch] = useState(board.epoch);
   const [editingTextId, setEditingTextId] = useState("");
   const [saving, setSaving] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const shellRef = useRef<HTMLDivElement>(null);
   const paperRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef<BoardStroke | null>(null);
   const draftEpochRef = useRef(board.epoch);
   const lastStrokeBroadcastRef = useRef(0);
   const erasedDuringGestureRef = useRef(new Set<string>());
   const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number } | null>(null);
-
-  useEffect(() => {
-    const update = () => setFullscreen(document.fullscreenElement === shellRef.current);
-    document.addEventListener("fullscreenchange", update);
-    return () => document.removeEventListener("fullscreenchange", update);
-  }, []);
 
   const visibleStrokes = useMemo(() => draft && draftEpoch === board.epoch && !board.deletedStrokeIds.includes(draft.id) ? [...board.strokes.filter((stroke) => stroke.id !== draft.id), draft] : board.strokes, [board.strokes, board.epoch, board.deletedStrokeIds, draft, draftEpoch]);
 
@@ -182,11 +176,6 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
     if (Math.abs(nextWidth - text.width) > 1 || Math.abs(nextHeight - text.height) > 1) updateText(text, { width: nextWidth, height: nextHeight });
   };
 
-  const toggleFullscreen = async () => {
-    try { if (document.fullscreenElement === shellRef.current) await document.exitFullscreen(); else await shellRef.current?.requestFullscreen(); }
-    catch { onSaved("当前浏览器无法进入全屏", true); }
-  };
-
   const saveBoard = async () => {
     setSaving(true);
     try {
@@ -259,7 +248,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
   };
 
   return (
-    <div className={fullscreen ? "whiteboard-shell fullscreen" : "whiteboard-shell"} ref={shellRef}>
+    <div className="whiteboard-shell">
       <div className={`whiteboard-paper tool-${tool}`} ref={paperRef}>
         <svg viewBox={`0 0 ${BOARD_WIDTH} ${BOARD_HEIGHT}`} preserveAspectRatio="none" role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke}>
           <rect width="100%" height="100%" fill="#fff" />
@@ -289,7 +278,7 @@ export function Whiteboard({ board, onAddStroke, onDeleteStroke, onClear, onUpse
         <label className="board-width" title="画笔粗细"><span>{width}px</span><input type="range" min="2" max="28" value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label>
         <button type="button" onClick={onClear} title="清屏" aria-label="清屏"><Trash2 aria-hidden="true" /></button>
         <button type="button" onClick={() => void saveBoard()} disabled={saving} title="保存到云盘 /board" aria-label="保存到云盘">{saving ? "…" : <Save aria-hidden="true" />}</button>
-        <button type="button" onClick={() => void toggleFullscreen()} title={fullscreen ? "退出全屏" : "全屏"} aria-label={fullscreen ? "退出全屏" : "全屏"}>{fullscreen ? <Minimize2 aria-hidden="true" /> : <Expand aria-hidden="true" />}</button>
+        <button type="button" onClick={() => void onToggleFullscreen()} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "全屏（F）"} aria-label={fullscreen ? "退出全屏" : "全屏"}>{fullscreen ? <Minimize2 aria-hidden="true" /> : <Expand aria-hidden="true" />}</button>
       </aside>
     </div>
   );

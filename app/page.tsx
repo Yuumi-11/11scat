@@ -15,6 +15,9 @@ import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomBell } from "./RoomBell";
 import { CloudDeleteButton } from "./CloudDeleteButton";
+import { Expand, Minimize2 } from "lucide-react";
+import { useMainFullscreen } from "./use-main-fullscreen";
+import "./main-fullscreen.css";
 
 type Task = {
   id: string;
@@ -240,6 +243,7 @@ export default function Home() {
   const [messageMenuId, setMessageMenuId] = useState("");
   const [messageMenuPlacement, setMessageMenuPlacement] = useState<"above" | "below">("below");
   const [sideView, setSideView] = useState<"chat" | "tasks">("chat");
+  const { stageRef, fullscreen, fullscreenError, toggleFullscreen } = useMainFullscreen();
   const [bellHost, setBellHost] = useState<HTMLDivElement | null>(null);
   const showBellChat = useCallback(() => setSideView("chat"), []);
   const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
@@ -2328,8 +2332,10 @@ export default function Home() {
             ))}
           </div>
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
-          <div className="share-canvas">
-            {activeBoard ? <Whiteboard board={activeBoard} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
+          <div className="share-canvas" ref={stageRef}>
+            {!activeBoard && <button className="main-fullscreen-button" type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}>{fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />}</button>}
+            {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
+            {activeBoard ? <Whiteboard board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
