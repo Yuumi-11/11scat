@@ -13,7 +13,7 @@ export function RoomBell() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
   const locked = useRef(false);
@@ -46,11 +46,11 @@ export function RoomBell() {
     const poll = async () => { await refresh(); if (!stopped) timer = setTimeout(poll, document.hidden ? 15000 : 3000); };
     const resume = () => { if (!document.hidden) void refresh(); };
     void poll();
-    if (new URLSearchParams(window.location.search).has("ring")) setOpen(true);
+    const openTimer = setTimeout(() => { if (new URLSearchParams(window.location.search).has("ring")) setOpen(true); }, 0);
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("online", resume);
     window.addEventListener("focus", resume);
-    return () => { stopped = true; sequence.current++; clearTimeout(timer); document.removeEventListener("visibilitychange", resume); window.removeEventListener("online", resume); window.removeEventListener("focus", resume); };
+    return () => { stopped = true; clearTimeout(openTimer); clearTimeout(timer); document.removeEventListener("visibilitychange", resume); window.removeEventListener("online", resume); window.removeEventListener("focus", resume); };
   }, [refresh]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now() + offset.current), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
