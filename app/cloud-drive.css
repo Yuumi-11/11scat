@@ -14,7 +14,7 @@
 .cloud-drive .drive-entry-main { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 5px 8px 10px; border: none; background: transparent; border-radius: 12px; color: var(--ink); font: inherit; text-align: center; }
 .cloud-drive button.drive-entry-main { cursor: pointer; }
 .cloud-drive button.drive-entry-main:hover:not(:disabled) { background: color-mix(in srgb, var(--panel) 50%, transparent); }
-.drive-folder-art { width: min(132px, 100%); height: 100px; flex-shrink: 0; filter: drop-shadow(0 3px 3px rgb(100 70 10 / 7%)); }
+.drive-folder-art { width: min(132px, 100%); height: 100px; flex-shrink: 0; }
 .drive-new-folder { color: var(--muted); }
 .drive-new-folder .drive-folder-art { color: var(--theme-accent-dark); filter: none; }
 .cloud-drive .drive-entry-main strong { font-size: 13px; line-height: 1.45; font-weight: 550; max-width: 100%; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
