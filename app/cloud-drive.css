@@ -1,0 +1,41 @@
+.cloud-modal.cloud-drive { display: flex; flex-direction: column; width: min(960px, 94vw); max-height: 90dvh; min-height: min(600px, 90dvh); overflow: hidden; }
+.cloud-drive .cloud-heading { flex: 0 0 auto; }
+.cloud-drive .cloud-toolbar { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+.cloud-drive .cloud-toolbar > strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-drive .cloud-toolbar button { flex-shrink: 0; min-height: 40px; border-radius: 11px; }
+.cloud-drive .cloud-toolbar .drive-icon-button, .cloud-drive .drive-select-all { position: relative; display: grid; place-items: center; width: 40px; height: 40px; min-width: 40px; padding: 0; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--muted); cursor: pointer; }
+.cloud-drive .drive-delete-mode.active { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); }
+.drive-selection-count { position: absolute; right: -5px; top: -6px; min-width: 18px; padding: 0 4px; border-radius: 10px; font-size: 10px; background: var(--danger); color: white; }
+.cloud-drive .cloud-dropzone { flex: 1; min-height: 180px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 18px 12px; align-content: start; padding: 20px 16px; border: 1px dashed var(--line); background: var(--soft); }
+.cloud-drive .cloud-dropzone.drive-drop-current { border: 2px dashed var(--theme-accent); background: var(--theme-soft); padding: 19px 15px; }
+.cloud-drive .drive-entry { position: relative; min-width: 0; align-self: start; border: 1px solid transparent; border-radius: 12px; }
+.cloud-drive .drive-entry.selected { border-color: var(--theme-accent); background: var(--theme-soft); }
+.cloud-drive .drive-entry.drop-target { outline: 2px dashed var(--theme-accent); outline-offset: 3px; background: var(--theme-soft); }
+.cloud-drive .drive-entry-main { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; min-width: 0; padding: 5px 8px 10px; border: none; background: transparent; border-radius: 12px; color: var(--ink); font: inherit; text-align: center; }
+.cloud-drive button.drive-entry-main { cursor: pointer; }
+.cloud-drive button.drive-entry-main:hover:not(:disabled) { background: color-mix(in srgb, var(--panel) 50%, transparent); }
+.drive-folder-art { width: min(132px, 100%); height: 100px; flex-shrink: 0; filter: drop-shadow(0 3px 3px rgb(100 70 10 / 7%)); }
+.drive-new-folder { color: var(--muted); }
+.drive-new-folder .drive-folder-art { color: var(--theme-accent-dark); filter: none; }
+.cloud-drive .drive-entry-main strong { font-size: 13px; line-height: 1.45; font-weight: 550; max-width: 100%; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cloud-drive .drive-entry-main small { color: var(--muted); font-size: 11px; }
+.cloud-drive .drive-entry.file { background: var(--panel); border-color: var(--line); }
+.drive-image, .drive-file-art { width: 100%; height: 100px; object-fit: contain; padding: 10px; color: var(--theme-accent-dark); }
+.drive-file-links { display: flex; justify-content: center; gap: 20px; padding: 0 8px 10px; font-size: 12px; }
+.drive-file-links a { color: var(--theme-accent-dark); }
+.drive-check { position: absolute; z-index: 1; right: 6px; top: 6px; width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--on-accent); background: var(--panel); }
+.selected .drive-check { border-color: var(--theme-accent); background: var(--theme-accent); }
+.drive-drop-label { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); white-space: nowrap; padding: 2px 7px; border-radius: 5px; background: var(--theme-accent); color: var(--on-accent); font-size: 10px; }
+.cloud-drive .drive-entry-main input { width: 100%; min-width: 0; padding: 5px 3px; border: 1px solid var(--theme-accent); border-radius: 5px; text-align: center; color: var(--ink); background: var(--panel); font: inherit; font-size: 13px; }
+.drive-footer { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding-top: 14px; flex: 0 0 auto; min-height: 50px; }
+.drive-footer > div { min-width: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.drive-footer small { display: block; }
+.drive-footer .drive-error { margin: 4px 0 0; color: var(--danger); max-height: 70px; overflow: auto; overflow-wrap: anywhere; }
+.cloud-drive .drive-select-all { flex-shrink: 0; }
+.cloud-drive .drive-select-all[aria-pressed="true"] { color: var(--theme-accent-dark); background: var(--theme-soft); border-color: var(--theme-accent); }
+.cloud-drive button:disabled { opacity: .5; cursor: default; }
+.cloud-drive button:focus-visible, .cloud-drive a:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
+.drive-spinner { animation: drive-spin 1s linear infinite; }
+@keyframes drive-spin { to { transform: rotate(360deg); } }
+@media (max-width: 640px) { .cloud-modal.cloud-drive { padding: 22px 14px 14px; max-height: 92dvh; min-height: min(550px, 92dvh); } .cloud-drive .cloud-dropzone { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); padding: 12px 8px; gap: 14px 6px; } .cloud-drive .cloud-dropzone.drive-drop-current { padding: 11px 7px; } .cloud-drive .cloud-toolbar { gap: 6px; } .cloud-drive .cloud-toolbar > button:last-of-type span { display: none; } .drive-folder-art { height: 86px; } }
+@media (prefers-reduced-motion: reduce) { .drive-spinner { animation: none; } }

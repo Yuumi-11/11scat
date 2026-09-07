@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, Folder, File, ArrowUp, Upload, FolderPlus, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
+import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
@@ -14,7 +14,7 @@ import { AddMemberTask, NewMemberTasks } from "./MemberTasks";
 import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomBell } from "./RoomBell";
-import { CloudDeleteButton } from "./CloudDeleteButton";
+import { CloudDrive } from "./CloudDrive";
 import { Expand, Minimize2 } from "lucide-react";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
@@ -42,7 +42,6 @@ type MediaItem = {
   kind: MediaSource;
   remote: boolean;
 };
-type CloudItem = { name: string; path: string; kind: "folder" | "file"; size: number; updatedAt: number };
 type CloudStatus = { usedBytes: number; limitBytes: number; warningBytes: number; warning: boolean; percent: number };
 
 const USE_LIVEKIT = false;
@@ -258,13 +257,7 @@ export default function Home() {
   const { theme: appearanceTheme, color: appearanceColor, choosePreset, chooseCustom } = useRoomTheme();
   const [backgroundImage, setBackgroundImage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
-  const [cloudPath, setCloudPath] = useState("");
-  const [cloudItems, setCloudItems] = useState<CloudItem[]>([]);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
-  const [cloudLoading, setCloudLoading] = useState(false);
-  const [cloudError, setCloudError] = useState("");
-  const [cloudUploading, setCloudUploading] = useState(false);
-  const [cloudNotice, setCloudNotice] = useState("");
   const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, CloudSaveState>>({});
   const [boards, setBoards] = useState<RoomBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState("");
@@ -286,7 +279,6 @@ export default function Home() {
   const memberNamesRef = useRef<Record<string, string>>({});
   const chatImageInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
-  const cloudInputRef = useRef<HTMLInputElement>(null);
   const boardsRef = useRef<RoomBoard[]>([]);
   const packetReceiverRef = useRef(createPacketReceiver());
   const deletedBoardIdsRef = useRef(new Set<string>());
@@ -1852,56 +1844,7 @@ export default function Home() {
     }
   };
 
-  const loadCloudFolder = async (path = cloudPath) => {
-    setCloudLoading(true);
-    setCloudError("");
-    try {
-      const response = await fetch(`/api/cloud?path=${encodeURIComponent(path)}`, { cache: "no-store" });
-      const result = await response.json().catch(() => null) as { path?: unknown; items?: unknown; status?: unknown; error?: unknown } | null;
-      if (!response.ok || !Array.isArray(result?.items)) throw new Error(typeof result?.error === "string" ? result.error : "云盘加载失败");
-      setCloudPath(typeof result.path === "string" ? result.path : path);
-      setCloudItems(result.items as CloudItem[]);
-      setCloudStatus(result.status as CloudStatus);
-    } catch (error) { setCloudError(error instanceof Error ? error.message : "云盘加载失败"); }
-    finally { setCloudLoading(false); }
-  };
-
-  const openCloud = () => {
-    setCloudOpen(true);
-    setCloudNotice("");
-    void loadCloudFolder("");
-  };
-
-  const createCloudFolder = async () => {
-    const name = window.prompt("新文件夹名称");
-    if (!name?.trim()) return;
-    const response = await fetch("/api/cloud/folders", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: cloudPath, name }),
-    });
-    const result = await response.json().catch(() => null) as { error?: unknown } | null;
-    if (!response.ok) { setCloudError(typeof result?.error === "string" ? result.error : "创建文件夹失败"); return; }
-    setCloudNotice("文件夹已创建");
-    await loadCloudFolder(cloudPath);
-  };
-
-  const uploadCloudFile = async (file?: File) => {
-    if (!file || cloudUploading) return;
-    setCloudUploading(true);
-    setCloudError("");
-    setCloudNotice("");
-    try {
-      const response = await fetch(`/api/cloud/files?path=${encodeURIComponent(cloudPath)}`, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name || "file") },
-        body: file,
-      });
-      const result = await response.json().catch(() => null) as { error?: unknown } | null;
-      if (!response.ok) throw new Error(typeof result?.error === "string" ? result.error : "上传失败，请重试");
-      setCloudNotice(`${file.name} 已上传`);
-      await loadCloudFolder(cloudPath);
-    } catch (error) { setCloudError(error instanceof Error ? error.message : "上传失败，请重试"); }
-    finally { setCloudUploading(false); }
-  };
+  const openCloud = () => setCloudOpen(true);
 
   const uploadChatImageToCloud = async (attachment: ChatAttachment) => {
     if (chatCloudUploads[attachment.id] === "uploading" || chatCloudUploads[attachment.id] === "done") return;
@@ -2594,46 +2537,7 @@ export default function Home() {
         </div>
       )}
 
-      {cloudOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setCloudOpen(false)}>
-          <section className="cloud-modal" role="dialog" aria-modal="true" aria-labelledby="cloud-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setCloudOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
-            <div className="cloud-heading">
-              <div><span className="eyebrow">ROOM DRIVE</span><h2 id="cloud-title">云盘</h2></div>
-              <div className={cloudStatus?.warning ? "cloud-meter warning" : "cloud-meter"}>
-                <span><i style={{ width: `${cloudStatus?.percent || 0}%` }} /></span>
-                <small>{cloudStatus ? `${formatFileSize(cloudStatus.usedBytes)} / ${formatFileSize(cloudStatus.limitBytes)}` : "正在读取容量…"}</small>
-              </div>
-            </div>
-            {cloudStatus?.warning && <p className="cloud-capacity-warning">云盘已达到容量上限的 90%，新的自动保存和上传已暂停。</p>}
-            <div className="cloud-toolbar">
-              <button type="button" onClick={() => { const parts = cloudPath.split("/").filter(Boolean); parts.pop(); void loadCloudFolder(parts.join("/")); }} disabled={!cloudPath}><ArrowUp size={16} aria-hidden="true" />上一级</button>
-              <strong>/{cloudPath}</strong>
-              <button type="button" onClick={() => void createCloudFolder()}><FolderPlus size={16} aria-hidden="true" />新建文件夹</button>
-              <button type="button" onClick={() => cloudInputRef.current?.click()} disabled={cloudUploading || cloudStatus?.warning}><Upload size={16} aria-hidden="true" />上传文件</button>
-              <input ref={cloudInputRef} type="file" className="chat-image-input" onChange={(event) => { void uploadCloudFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-            </div>
-            <div
-              className={cloudUploading ? "cloud-dropzone uploading" : "cloud-dropzone"}
-              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
-              onDrop={(event) => { event.preventDefault(); void uploadCloudFile(event.dataTransfer.files[0]); }}
-            >
-              {cloudLoading ? <div className="cloud-empty">正在加载…</div> : cloudItems.length ? cloudItems.map((item) => item.kind === "folder" ? (
-                <div className="cloud-item folder" key={item.path}>
-                  <button className="cloud-folder-open" type="button" onClick={() => void loadCloudFolder(item.path)}><Folder size={26} aria-hidden="true" /><strong>{item.name}</strong><small>文件夹</small></button>
-                  <CloudDeleteButton item={item} onDeleted={() => loadCloudFolder(cloudPath)} onError={setCloudError} />
-                </div>
-              ) : (
-                <div className="cloud-item file" key={item.path}>
-                  <>{/\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name) ? <button className="cloud-thumbnail" type="button" aria-label={"查看图片：" + item.name} onClick={() => openChatImage({ url: "/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/"), name: item.name })}><img src={"/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/")} alt={item.name} loading="lazy" /></button> : <File size={26} aria-hidden="true" />}</><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
-                  <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a><CloudDeleteButton item={item} onDeleted={() => loadCloudFolder(cloudPath)} onError={setCloudError} /></div>
-                </div>
-              )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
-            </div>
-            {(cloudError || cloudNotice) && <p className={cloudError ? "cloud-feedback error" : "cloud-feedback"} role="status">{cloudError || cloudNotice}</p>}
-          </section>
-        </div>
-      )}
+      {cloudOpen && <CloudDrive onClose={() => setCloudOpen(false)} onStatusChange={setCloudStatus} onImage={openChatImage} />}
 
       {pushOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setPushOpen(false)}>

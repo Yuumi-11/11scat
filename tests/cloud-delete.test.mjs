@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 
 test('cloud deletion removes files and nested folders but protects source attachments and paths', async () => {
   process.env.DATA_DIR = await mkdtemp(path.join(tmpdir(), 'cloud-delete-'));
-  const { cloudRoot, deleteCloudItem, cloudStatus } = await import('../app/api/cloud/store.ts');
+  const { cloudRoot, deleteCloudItem, cloudStatus, listCloudFolder } = await import('../app/api/cloud/store.ts');
   await mkdir(path.join(cloudRoot, 'test', 'nested'), { recursive: true });
   const source = path.join(process.env.DATA_DIR, 'source.bin');
   await writeFile(source, 'keep me');
@@ -18,6 +18,9 @@ test('cloud deletion removes files and nested folders but protects source attach
   await deleteCloudItem('test');
   await assert.rejects(stat(path.join(cloudRoot, 'test')), { code: 'ENOENT' });
   assert.equal((await cloudStatus()).usedBytes, 0);
+  await mkdir(path.join(cloudRoot, 'chat', 'pics'), { recursive: true });
+  await deleteCloudItem('chat');
+  assert.equal((await listCloudFolder('')).items.some(item => item.name === 'chat'), false);
   await deleteCloudItem('test');
   for (const invalid of ['', '/', '../source.bin', 'chat/../source.bin', 'chat//x', 'C:/test', 'chat\\x', '.hidden']) await assert.rejects(deleteCloudItem(invalid), /INVALID_PATH/);
   const outside = path.join(process.env.DATA_DIR, 'outside');

@@ -32,6 +32,7 @@
   ],
   "exclude": [
     "node_modules",
+    "codex-generated",
     "build",
     "dist",
     "db",

@@ -47,7 +47,8 @@ export function resolveCloudPath(relativePath = "") {
 }
 
 export async function ensureCloudFolders() {
-  await mkdir(path.join(cloudRoot, "chat", "pics"), { recursive: true, mode: 0o700 });
+  // Content-specific folders are created when saving there, not when listing the drive.
+  await mkdir(cloudRoot, { recursive: true, mode: 0o700 });
 }
 
 async function directoryUsage(directory: string): Promise<number> {
