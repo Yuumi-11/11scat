@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellRing, Check, Loader2, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { Ring } from "./api/room/rings/store";
 import "./room-bell.css";
 
@@ -14,6 +15,7 @@ export function RoomBell() {
   const [offline, setOffline] = useState(false);
   const [now, setNow] = useState(Date.now());
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement>(null);
   const locked = useRef(false);
   const sequence = useRef(0);
   const pending = useRef<Record<string, string>>({});
@@ -53,7 +55,7 @@ export function RoomBell() {
   useEffect(() => { const timer = setInterval(() => setNow(Date.now() + offset.current), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !panel.current?.contains(event.target as Node)) setOpen(false); };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
@@ -85,7 +87,7 @@ export function RoomBell() {
     <button className={`room-bell-trigger${incoming.length ? " has-incoming" : ""}`} type="button" title="摇铃" aria-label={incoming.length ? `摇铃，${incoming.length}条待确认` : "摇铃"} aria-expanded={open} aria-controls="room-bell-panel" onClick={() => setOpen(v => !v)}>
       <Bell size={18} aria-hidden="true" /><span>摇铃</span>{incoming.length > 0 && <i>{incoming.length}</i>}
     </button>
-    {open && <section id="room-bell-panel" className="room-bell-panel" aria-label="摇铃">
+    {open && createPortal(<section ref={panel} id="room-bell-panel" className="room-bell room-bell-panel" aria-label="摇铃">
       <header><strong>摇铃</strong><button type="button" aria-label="关闭摇铃面板" onClick={() => setOpen(false)}><X size={18} /></button></header>
       {!data && <p className="room-bell-empty">正在获取成员…</p>}
       {data && !data.members.length && <p className="room-bell-empty">暂无其他成员</p>}
@@ -96,14 +98,14 @@ export function RoomBell() {
           <span className="room-bell-avatar" aria-hidden="true">{member.name.slice(0, 1)}</span>
           <div><strong>{member.name}</strong><small>{latest ? status(latest) : "发一个轻提醒"}</small></div>
           <button className="room-bell-send" type="button" disabled={!!busy} title={active ? "取消提醒" : "摇铃"} aria-label={`${active ? "取消提醒" : "摇铃给"}${member.name}`} onClick={() => void act(member.id, active ? latest : undefined, active ? "cancel" : undefined)}>
-            {busy === member.id || busy === latest?.id ? <Loader2 className="room-bell-spinner" size={18} /> : active ? <X size={18} /> : <BellRing size={18} />}
+            {busy === member.id || busy === latest?.id ? <Loader2 className="room-bell-spinner" size={18} /> : active ? <X size={18} /> : <BellRing size={18} />}<span>{active ? "取消" : "发送"}</span>
           </button>
         </div>;
       })}
       {error && <p className="room-bell-error" role="status">{error}</p>}
       {offline && <p className="room-bell-error" role="status">连接暂时中断，正在重新获取摇铃状态</p>}
-    </section>}
-    {incoming.length > 0 && <div className="room-bell-incoming" aria-label="收到的摇铃">
+    </section>, document.body)}
+    {incoming.length > 0 && createPortal(<div className="room-bell room-bell-incoming" aria-label="收到的摇铃">
       {incoming.map(ring => <section className="room-bell-card" key={ring.id}>
         <span className="room-bell-card-icon" aria-hidden="true"><BellRing size={22} /></span>
         <div className="room-bell-card-copy" role="status"><strong>{ring.senderName} 摇了摇铃</strong><span>有空看一下自习室</span></div>
@@ -112,6 +114,6 @@ export function RoomBell() {
         </button>
       </section>)}
       {error && <p className="room-bell-error" role="status">{error}</p>}
-    </div>}
+    </div>, document.body)}
   </div>;
 }
