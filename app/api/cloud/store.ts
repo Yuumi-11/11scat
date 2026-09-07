@@ -1,4 +1,4 @@
-import { copyFile, link, mkdir, readFile, readdir, stat } from "node:fs/promises";
+import { copyFile, link, mkdir, readFile, readdir, stat, lstat, rm } from "node:fs/promises";
 import path from "node:path";
 
 export const cloudRoot = path.join(
@@ -168,3 +168,18 @@ export async function readChatAttachmentMetadata(id: string) {
 }
 
 export { availableDestination };
+
+export async function deleteCloudItem(relativePath: string) {
+  if (!relativePath || relativePath.length > 800 || relativePath.includes("\\") || relativePath.startsWith("/")
+    || relativePath.split("/").some(part => !part || part === "." || part === ".." || part.startsWith(".") || /[:\u0000-\u001f]/.test(part))) throw new Error("INVALID_PATH");
+  const { normalized, resolved } = resolveCloudPath(relativePath);
+  if (normalized !== relativePath || resolved === path.resolve(cloudRoot)) throw new Error("INVALID_PATH");
+  // Never follow a symlink outside the drive, including symlinked parent folders.
+  let cursor = cloudRoot;
+  for (const part of ["", ...relativePath.split("/")]) {
+    if (part) cursor = path.join(cursor, part);
+    try { if ((await lstat(cursor)).isSymbolicLink()) throw new Error("INVALID_PATH"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+  }
+  await rm(resolved, { recursive: true, force: true });
+}

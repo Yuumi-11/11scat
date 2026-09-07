@@ -14,6 +14,7 @@ import { AddMemberTask, NewMemberTasks } from "./MemberTasks";
 import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomBell } from "./RoomBell";
+import { CloudDeleteButton } from "./CloudDeleteButton";
 
 type Task = {
   id: string;
@@ -2610,13 +2611,14 @@ export default function Home() {
               onDrop={(event) => { event.preventDefault(); void uploadCloudFile(event.dataTransfer.files[0]); }}
             >
               {cloudLoading ? <div className="cloud-empty">正在加载…</div> : cloudItems.length ? cloudItems.map((item) => item.kind === "folder" ? (
-                <button className="cloud-item folder" type="button" key={item.path} onClick={() => void loadCloudFolder(item.path)}>
-                  <Folder size={26} aria-hidden="true" /><strong>{item.name}</strong><small>文件夹</small>
-                </button>
+                <div className="cloud-item folder" key={item.path}>
+                  <button className="cloud-folder-open" type="button" onClick={() => void loadCloudFolder(item.path)}><Folder size={26} aria-hidden="true" /><strong>{item.name}</strong><small>文件夹</small></button>
+                  <CloudDeleteButton item={item} onDeleted={() => loadCloudFolder(cloudPath)} onError={setCloudError} />
+                </div>
               ) : (
                 <div className="cloud-item file" key={item.path}>
                   <>{/\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name) ? <button className="cloud-thumbnail" type="button" aria-label={"查看图片：" + item.name} onClick={() => openChatImage({ url: "/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/"), name: item.name })}><img src={"/api/cloud/files/" + item.path.split("/").map(encodeURIComponent).join("/")} alt={item.name} loading="lazy" /></button> : <File size={26} aria-hidden="true" />}</><strong title={item.name}>{item.name}</strong><small>{formatFileSize(item.size)}</small>
-                  <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a></div>
+                  <div><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} target="_blank" rel="noreferrer">查看</a><a href={`/api/cloud/files/${item.path.split("/").map(encodeURIComponent).join("/")}`} download={item.name}>下载</a><CloudDeleteButton item={item} onDeleted={() => loadCloudFolder(cloudPath)} onError={setCloudError} /></div>
                 </div>
               )) : <div className="cloud-empty">把本地文件拖到这里上传</div>}
             </div>

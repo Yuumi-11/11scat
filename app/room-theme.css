@@ -1,4 +1,8 @@
 /* Shared design tokens. Components use these aliases, including portal dialogs. */
+.cloud-item .cloud-delete-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--danger); font-size: 12px; }
+.cloud-item .cloud-delete-button:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.cloud-item .cloud-folder-open { display: grid; justify-items: center; gap: 4px; width: 100%; min-width: 0; padding: 0; color: inherit; border: 0; background: transparent; }
+.cloud-item.folder { grid-template-rows: auto auto; }
 :root {
   --theme-seed: #416b9e;
   --theme-accent: #416b9e;

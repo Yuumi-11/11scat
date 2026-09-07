@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, link, symlink, stat } from 'node:fs/promises';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
+
+test('cloud deletion removes files and nested folders but protects source attachments and paths', async () => {
+  process.env.DATA_DIR = await mkdtemp(path.join(tmpdir(), 'cloud-delete-'));
+  const { cloudRoot, deleteCloudItem, cloudStatus } = await import('../app/api/cloud/store.ts');
+  await mkdir(path.join(cloudRoot, 'test', 'nested'), { recursive: true });
+  const source = path.join(process.env.DATA_DIR, 'source.bin');
+  await writeFile(source, 'keep me');
+  await link(source, path.join(cloudRoot, 'test', 'linked.txt'));
+  await writeFile(path.join(cloudRoot, 'test', 'nested', 'file.txt'), 'delete me');
+  assert.equal((await cloudStatus()).usedBytes, 16);
+  await deleteCloudItem('test/linked.txt');
+  assert.equal(await readFile(source, 'utf8'), 'keep me');
+  await deleteCloudItem('test');
+  await assert.rejects(stat(path.join(cloudRoot, 'test')), { code: 'ENOENT' });
+  assert.equal((await cloudStatus()).usedBytes, 0);
+  await deleteCloudItem('test');
+  for (const invalid of ['', '/', '../source.bin', 'chat/../source.bin', 'chat//x', 'C:/test', 'chat\\x', '.hidden']) await assert.rejects(deleteCloudItem(invalid), /INVALID_PATH/);
+  const outside = path.join(process.env.DATA_DIR, 'outside');
+  await mkdir(outside); await writeFile(path.join(outside, 'keep.txt'), 'safe');
+  await symlink(outside, path.join(cloudRoot, 'escape'), 'junction');
+  await assert.rejects(deleteCloudItem('escape/keep.txt'), /INVALID_PATH/);
+  assert.equal(await readFile(path.join(outside, 'keep.txt'), 'utf8'), 'safe');
+});

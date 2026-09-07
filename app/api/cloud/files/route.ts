@@ -2,9 +2,26 @@ import { mkdir, open, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
-import { assertCloudCapacity, availableDestination, CloudCapacityError, ensureCloudFolders, resolveCloudPath, sanitizeFileName } from "../store";
+import { assertCloudCapacity, availableDestination, CloudCapacityError, ensureCloudFolders, resolveCloudPath, sanitizeFileName, deleteCloudItem } from "../store";
 
 export const runtime = "nodejs";
+
+export async function DELETE(request: NextRequest) {
+  if (!(await currentIdentityId())) return new NextResponse("Unauthorized", { status: 401 });
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try { if (new URL(origin).host !== request.headers.get("host")) return new NextResponse("Forbidden", { status: 403 }); }
+    catch { return new NextResponse("Forbidden", { status: 403 }); }
+  }
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.path !== "string" || body.confirmed !== true) return NextResponse.json({ error: "请确认要删除的文件或文件夹" }, { status: 400 });
+  try {
+    await deleteCloudItem(body.path);
+    return NextResponse.json({ deleted: true }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message === "INVALID_PATH" ? "不能删除此路径" : "删除失败，请重试" }, { status: (error as Error).message === "INVALID_PATH" ? 400 : 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   if (!(await currentIdentityId())) return new NextResponse("Unauthorized", { status: 401 });
