@@ -79,5 +79,5 @@ jobs:
             -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
-            root@154.9.227.163 \
+            root@154.40.47.72 \
             "deploy $GITHUB_SHA $GITHUB_ACTOR"
