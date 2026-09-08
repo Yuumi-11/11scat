@@ -1,5 +1,10 @@
 # 11scat-web deployment
 
+The Git repository is now `yuumiqwq/duo-space`. Its canonical image location
+remains `ghcr.io/yuumi-11/11scat-web`, matching the restricted VPS deployer and
+rollback allowlist. Repository moves must not silently change the image location;
+moving the package requires coordinating all three configurations and permissions.
+
 GitHub Actions builds each `main` commit and pushes two GHCR tags:
 
 - `ghcr.io/yuumi-11/11scat-web:<full-git-sha>` (immutable deployment tag)
