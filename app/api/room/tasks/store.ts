@@ -111,7 +111,7 @@ export class CollaborationStore {
     if (op.to === null && state.buffer[op.targetId]?.stagedBy === op.id) delete state.buffer[op.targetId].stagedBy;
     op.status = "done"; op.error = ""; await this.checkpoint(state, op);
   }
-  private publicOperation(op: Operation): OperationView { const { id, actorId, title, action, from, to, status, error, updatedAt } = op; return { id, actorId, title, action, from, to, status, error, updatedAt }; }
+  private publicOperation(op: Operation): OperationView { const { id, actorId, title, action, from, to, status, error, createdAt, updatedAt } = op; return { id, actorId, title, action, from, to, status, error, ...(createdAt === undefined ? {} : { createdAt }), updatedAt }; }
   private async candidates(state: State, op: Operation) {
     if (!op.to) return [];
     const inbox = await this.gateway.inbox(op.to);
@@ -192,7 +192,7 @@ export class CollaborationStore {
           }
         }
         if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);
-        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: command.action === "move" ? command.destination! : null, source, fields, targetId: command.action === "move" && command.destination ? randomBytes(12).toString("hex") : randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", updatedAt: Date.now() };
+        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: command.action === "move" ? command.destination! : null, source, fields, targetId: command.action === "move" && command.destination ? randomBytes(12).toString("hex") : randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", createdAt: Date.now(), updatedAt: Date.now() };
         state.operations[op.id] = op; await this.checkpoint(state, op);
       }
       return this.run(state, op);

@@ -30,6 +30,39 @@ async function fixture() {
 }
 const source = task => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
 
+test('reading either member inbox never creates transfers and preserves task ownership', async () => {
+  const f = await fixture();
+  f.accounts.bob.set('original-bob-task', { id: 'original-bob-task', projectId: 'inbox-bob', ...taskFields({ title: 'already in Bob inbox' }) });
+  for (const viewer of ['alice', 'bob', 'alice']) {
+    const snapshot = await f.store.snapshot(viewer);
+    assert.equal(snapshot.members.find(member => member.id === 'alice').tasks.length, 0);
+    const [task] = snapshot.members.find(member => member.id === 'bob').tasks;
+    assert.equal(task.ownerId, 'bob'); assert.equal(task.id, 'original-bob-task');
+    assert.equal(snapshot.operations.length, 0);
+    assert.equal((await f.store.revision()).revision, 0);
+  }
+  assert.deepEqual(f.counts, { creates: 0, removes: 0 });
+  await assert.rejects(readFile(path.join(f.dir, 'room-collaboration.json')), { code: 'ENOENT' });
+});
+
+test('initiating account and creation time stay distinct from source owner, viewer and later retry', async () => {
+  const f = await fixture();
+  const task = { ...taskFields({ title: 'Alice original task' }), id: 'source-task', projectId: 'inbox-alice' };
+  f.accounts.alice.set(task.id, task); f.loseCreate();
+  const started = Date.now();
+  const op = await f.store.execute('bob', { id: randomUUID(), action: 'move', source: { ownerId: 'alice', taskId: task.id, version: remoteVersion(task) }, destination: 'bob' });
+  assert.equal(op.actorId, 'bob'); assert.equal(op.from, 'alice'); assert.equal(op.to, 'bob');
+  assert.ok(op.createdAt >= started && op.createdAt <= op.updatedAt);
+  const resumed = await f.store.resume('alice', op.id);
+  assert.equal(resumed.actorId, 'bob'); assert.equal(resumed.createdAt, op.createdAt);
+  assert.equal((await f.store.snapshot('alice')).operations[0].actorId, 'bob');
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  delete state.operations[op.id].createdAt; await writeFile(file, JSON.stringify(state));
+  const legacy = (await f.store.snapshot('bob')).operations[0];
+  assert.equal(legacy.createdAt, undefined, 'legacy timestamps must not be inferred from a later retry');
+  assert.equal(legacy.actorId, 'bob');
+});
+
 test('collaboration includes the captured redacted diagnostic for the member whose inbox failed', async () => {
   const f = await fixture(), inbox = f.gateway.inbox;
   const diagnostic = JSON.stringify({ version: 2, shape: { project: { id: 'undefined' } } });
