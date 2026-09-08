@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "../store";
-import { tickFetch } from "../client";
-import { inboxResponseShape } from "./shape";
+import { tickFetch, inboxResponseShape } from "../client";
 
 export async function GET() {
   const token = await accessToken();

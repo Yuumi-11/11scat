@@ -15,7 +15,7 @@ async function context(owner: string, refreshInbox = false): Promise<Context> {
   try { token = decryptToken(user.ticktickToken); } catch { throw new CollaborationError("该成员需要重新连接滴答清单", 422); }
   let inbox;
   try { inbox = await tickInboxData<RemoteTask>(token); }
-  catch (error) { throw new CollaborationError(error instanceof TickApiError ? error.message : "收集箱暂时无法读取，请稍后刷新", error instanceof TickApiError && [401, 403].includes(error.status) ? 422 : 502); }
+  catch (error) { throw new CollaborationError(error instanceof TickApiError ? error.message : "收集箱暂时无法读取，请稍后刷新", error instanceof TickApiError && [401, 403].includes(error.status) ? 422 : 502, error instanceof TickApiError ? error.diagnostic : undefined); }
   const next = { token, ...inbox, encrypted: user.ticktickToken, expires: Date.now() + 15000 };
   contexts.set(owner, next); return next;
 }

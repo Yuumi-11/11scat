@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { CollaborationStore, remoteVersion, taskFields } from '../app/api/room/tasks/store.ts';
+import { CollaborationError, CollaborationStore, remoteVersion, taskFields } from '../app/api/room/tasks/store.ts';
 
 async function fixture() {
   await mkdir('codex-generated/test-data', { recursive: true });
@@ -29,6 +29,15 @@ async function fixture() {
   return { dir, gateway, store, create, accounts, counts, loseCreate: () => { loseCreate = true; }, loseDelete: () => { loseDelete = true; }, afterCreate: fn => { afterCreate = fn; } };
 }
 const source = task => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
+
+test('collaboration includes the captured redacted diagnostic for the member whose inbox failed', async () => {
+  const f = await fixture(), inbox = f.gateway.inbox;
+  const diagnostic = JSON.stringify({ version: 2, shape: { project: { id: 'undefined' } } });
+  f.gateway.inbox = async owner => { if (owner === 'bob') throw new CollaborationError('format mismatch', 502, diagnostic); return inbox(owner); };
+  const snapshot = await f.store.snapshot('alice');
+  assert.equal(snapshot.members.find(member => member.id === 'bob').diagnostic, diagnostic);
+  assert.equal(snapshot.members.find(member => member.id === 'alice').diagnostic, undefined);
+});
 test('buffer claims serialize across users, creation retries dedupe and tasks can be reassigned or returned', async () => {
   const f = await fixture();
   const command = { id: randomUUID(), action: 'create', fields: { title: '共同整理笔记', priority: 3 } };

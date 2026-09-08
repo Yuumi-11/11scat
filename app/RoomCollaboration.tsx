@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, GripVertical, Inbox, Loader2, Pencil, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields } from "./collaboration-types";
 import "./room-collaboration.css";
+import { TickTickDiagnostics } from "./TickTickDiagnostics";
 
 type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" };
 type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
@@ -159,10 +160,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       </div>{pending && <small className="coop-pending-label">正在等待操作完成</small>}
     </article>;
   }
-  function column(owner: string | null, name: string, tasks: RoomTask[], problem?: string) {
+  function column(owner: string | null, name: string, tasks: RoomTask[], problem?: string, diagnostic?: string) {
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
       <header><span className="coop-column-icon">{owner === null ? <Inbox size={19} /> : name.slice(0, 1)}</span><div><h3>{name}{owner === identityId && <small>我</small>}</h3><p>{owner === null ? "尚未确定由谁完成" : "滴答收集箱"}</p></div><span className="coop-count">{tasks.length}</span></header>
-      <div className="coop-task-list">{problem ? <p className="coop-empty">{problem}</p> : tasks.length ? tasks.map(card) : <p className="coop-empty">{owner === null ? "把暂不确定由谁做的任务放在这里" : "拖入任务，或在待分配区认领"}</p>}</div>
+      <div className="coop-task-list">{problem ? <><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</> : tasks.length ? tasks.map(card) : <p className="coop-empty">{owner === null ? "把暂不确定由谁做的任务放在这里" : "拖入任务，或在待分配区认领"}</p>}</div>
     </section>;
   }
   const pending = snapshot?.operations.filter(operation => operation.status === "pending") || [];
@@ -182,7 +183,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       {(error || notice) && <p className={`coop-feedback${error ? " error" : ""}`} role="status">{error || notice}</p>}
       {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
       {pending.length > 0 && <div className="coop-recovery-list">{pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small></span><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>)}</div>}
-      <div ref={columns} className="coop-columns" aria-busy={loading || busy}>{snapshot ? <>{column(null, "待分配", snapshot.buffer)}{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error))}</> : <p className="coop-empty">{loading ? "正在读取成员收集箱…" : "暂时无法读取，请点击刷新"}</p>}</div>
+      <div ref={columns} className="coop-columns" aria-busy={loading || busy}>{snapshot ? <>{column(null, "待分配", snapshot.buffer)}{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</> : <p className="coop-empty">{loading ? "正在读取成员收集箱…" : "暂时无法读取，请点击刷新"}</p>}</div>
       <footer className="coop-footer"><span>{busy ? <><Loader2 className="coop-spin" size={14} />正在保存，请稍候</> : "也可用任务下方的成员菜单分配 · 日期按北京时间显示"}</span>{snapshot?.operations.find(operation => operation.status === "done") && <span>最近操作：{ownerName(snapshot.operations.find(operation => operation.status === "done")!.actorId)} · {snapshot.operations.find(operation => operation.status === "done")!.title}</span>}</footer>
       {editor && <div className="coop-editor-backdrop"><form className="coop-editor" aria-label="编辑协作任务" onSubmit={event => {
         event.preventDefault();

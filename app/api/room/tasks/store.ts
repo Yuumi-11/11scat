@@ -22,7 +22,8 @@ type Operation = OperationView & {
 type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation> };
 export class CollaborationError extends Error {
   status: number;
-  constructor(message: string, status = 409) { super(message); this.status = status; }
+  diagnostic?: string;
+  constructor(message: string, status = 409, diagnostic?: string) { super(message); this.status = status; this.diagnostic = diagnostic; }
 }
 const canonicalDate = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 export function taskFields(task: Partial<TaskFields>): TaskFields {
@@ -110,7 +111,7 @@ export class CollaborationStore {
         const inbox = await this.gateway.inbox(member.id);
         const parents = new Set(inbox.tasks.map(task => task.parentId).filter(Boolean));
         return { ...member, tasks: inbox.tasks.filter(task => !task.status).map(task => ({ ...taskFields(task), id: task.id, ownerId: member.id, version: remoteVersion(task), transferBlocked: task.parentId || parents.has(task.id) ? "含父子任务关系，请先在滴答中整理关系后转移" : undefined })) };
-      } catch (error) { return { ...member, tasks: [], error: error instanceof Error ? error.message : "收集箱暂时无法读取" }; }
+      } catch (error) { return { ...member, tasks: [], error: error instanceof Error ? error.message : "收集箱暂时无法读取", ...(error instanceof CollaborationError && error.diagnostic ? { diagnostic: error.diagnostic } : {}) }; }
     })));
     const state = await this.read();
     const pending = Object.values(state.operations).filter(op => op.status === "pending");

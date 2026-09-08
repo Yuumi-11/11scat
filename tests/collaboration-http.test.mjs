@@ -14,7 +14,7 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
   await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port;
   await new Promise(resolve => socket.close(resolve));
-  const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env: { ...process.env, DATA_DIR: dir, AUTH_SESSION_SECRET: secret, VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' }, stdio: 'ignore', windowsHide: true });
+  const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env: { ...process.env, DATA_DIR: dir, AUTH_SESSION_SECRET: secret, SITE_PASSWORD: 'fixture-login', IDENTITY_CODE_HASHES: '', VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' }, stdio: 'ignore', windowsHide: true });
   const origin = `http://127.0.0.1:${port}`;
   const cookie = id => { const payload = `${id}.${Math.floor(Date.now() / 1000) + 600}`; return `ss_access=${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`; };
   const call = (id, body, headers = {}) => fetch(`${origin}/api/room/tasks`, { method: body ? 'POST' : 'GET', redirect: 'manual', headers: { Cookie: cookie(id), Origin: origin, 'Content-Type': 'application/json', ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -25,6 +25,15 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     assert.ok(ready);
+    const diagnosticPath = '/api/ticktick/diagnostics';
+    const loginPage = await (await fetch(`${origin}/access?next=${encodeURIComponent(diagnosticPath)}`)).text();
+    assert.match(loginPage, /name="next" value="\/api\/ticktick\/diagnostics"/);
+    const login = await fetch(`${origin}/api/access`, { method: 'POST', redirect: 'manual', body: new URLSearchParams({ identityCode: 'fixture-login', next: diagnosticPath }) });
+    assert.equal(login.status, 303); assert.equal(login.headers.get('location'), diagnosticPath);
+    const badLogin = await fetch(`${origin}/api/access`, { method: 'POST', redirect: 'manual', body: new URLSearchParams({ identityCode: 'wrong', next: diagnosticPath }) });
+    assert.equal(new URL(badLogin.headers.get('location'), origin).searchParams.get('next'), diagnosticPath);
+    const unlinkedDiagnostics = await fetch(`${origin}${diagnosticPath}`, { headers: { Cookie: cookie('alice') }, redirect: 'manual' });
+    assert.equal(unlinkedDiagnostics.status, 401);
     assert.ok([307, 401].includes((await fetch(`${origin}/api/room/tasks`, { redirect: 'manual' })).status));
     assert.equal((await call('unknown')).status, 401);
     const create = { id: randomUUID(), action: 'create', fields: { title: '全室共同任务' } };

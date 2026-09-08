@@ -4,7 +4,7 @@ export type TaskFields = {
   tags: string[]; reminders: string[]; repeatFlag: string; repeatFrom: string; desc: string; kind: string; items: Record<string, unknown>[];
 };
 export type RoomTask = TaskFields & { id: string; ownerId: string | null; version: string; pending?: string; transferBlocked?: string };
-export type CollaborationMember = { id: string; name: string; connected: boolean; error?: string; tasks: RoomTask[] };
+export type CollaborationMember = { id: string; name: string; connected: boolean; error?: string; diagnostic?: string; tasks: RoomTask[] };
 export type OperationView = { id: string; actorId: string; title: string; action: string; from: string | null; to: string | null; status: "pending" | "done" | "cancelled"; error: string; updatedAt: number };
 export type CollaborationSnapshot = { identityId: string; revision: number; buffer: RoomTask[]; members: CollaborationMember[]; operations: OperationView[] };
 export type TaskSource = { ownerId: string | null; taskId: string; version: string };

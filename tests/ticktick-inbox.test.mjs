@@ -22,7 +22,7 @@ test('official inbox lookup handles empty accounts and never guesses an ID from 
     data.tasks = [{ id: 'valid', projectId: 'account-inbox' }, { id: 'foreign', projectId: 'foreign-inbox' }, null];
     assert.deepEqual((await tickInboxData('open-api-only')).tasks.map(task => task.id), ['valid']);
     delete data.project;
-    await assert.rejects(tickInboxData('open-api-only'), /数据不完整/);
+    await assert.rejects(tickInboxData('open-api-only'), error => error.message.includes('查看连接诊断') && JSON.parse(error.diagnostic).shape.project.id === 'undefined');
     for (const code of [401, 403, 429, 500]) {
       status = code;
       await assert.rejects(tickInboxData('open-api-only'), error => error.status === code && (code === 401 ? error.message.includes('重新连接') : !error.message.includes('重新连接')));

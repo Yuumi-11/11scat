@@ -1,3 +1,20 @@
+const kind = (value: unknown): string => value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const idKind = (value: unknown) => typeof value !== "string" ? kind(value) : value === "inbox" ? "inbox-alias" : /^[A-Za-z0-9_-]{1,100}$/.test(value) ? "concrete-id" : "other-string";
+
+// Report only known field types/counts, never identifiers, task text or credentials.
+export function inboxResponseShape(value: unknown) {
+  const root = record(value), project = record(root.project);
+  const tasks = Array.isArray(root.tasks) ? root.tasks : [];
+  const ids = tasks.map(task => record(task).projectId);
+  return {
+    rootType: kind(value),
+    fields: Object.fromEntries(["project", "tasks", "columns", "data", "id", "projectId", "errorCode", "error", "message"].map(key => [key, kind(root[key])])),
+    project: { id: idKind(project.id), topLevelId: idKind(root.id), topLevelProjectId: idKind(root.projectId) },
+    tasks: { count: tasks.length, concreteProjectIds: new Set(ids.filter(id => idKind(id) === "concrete-id")).size, aliasCount: ids.filter(id => id === "inbox").length, missingProjectIdCount: ids.filter(id => id == null).length },
+  };
+}
+
 export type TickProject = { id: string; name: string; closed?: boolean };
 export type TickTask = { id: string; projectId: string; title: string; status?: number; dueDate?: string; startDate?: string };
 
@@ -11,7 +28,8 @@ export async function tickFetch(path: string, token: string, init?: RequestInit)
 
 export class TickApiError extends Error {
   status: number;
-  constructor(message: string, status = 502) { super(message); this.status = status; }
+  diagnostic?: string;
+  constructor(message: string, status = 502, diagnostic?: string) { super(message); this.status = status; this.diagnostic = diagnostic; }
 }
 
 // Open API resolves "inbox" for the bearer account, including an empty inbox.
@@ -24,7 +42,7 @@ export async function tickInboxData<T extends { id: string; projectId: string } 
   if (!response.ok) throw new TickApiError(response.status === 401 ? "滴答授权已失效，请重新连接" : response.status === 403 ? "滴答授权缺少收集箱读取权限" : response.status === 429 ? "滴答请求较频繁，请稍后刷新" : "滴答收集箱暂时无法读取，请稍后刷新", response.status);
   const data = await response.json().catch(() => null);
   const projectId = data?.project?.id;
-  if (typeof projectId !== "string" || projectId === "inbox" || !/^[A-Za-z0-9_-]{1,100}$/.test(projectId) || !Array.isArray(data.tasks)) throw new TickApiError("滴答收集箱返回的数据不完整，请稍后刷新");
+  if (typeof projectId !== "string" || projectId === "inbox" || !/^[A-Za-z0-9_-]{1,100}$/.test(projectId) || !Array.isArray(data.tasks)) throw new TickApiError("滴答收集箱格式暂不兼容，请查看连接诊断", 502, JSON.stringify({ version: 2, endpoint: "/project/inbox/data", status: response.status, shape: inboxResponseShape(data) }, null, 2));
   return { projectId, tasks: data.tasks.filter((task: T | null) => task && typeof task.id === "string" && task.projectId === projectId) };
 }
 

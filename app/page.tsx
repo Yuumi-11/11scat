@@ -12,6 +12,7 @@ import { CloudSaveButton, type CloudSaveState } from "./CloudSaveButton";
 import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
 import { NewMemberTasks } from "./MemberTasks";
 import { RoomCollaboration } from "./RoomCollaboration";
+import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomBell } from "./RoomBell";
@@ -2588,6 +2589,7 @@ export default function Home() {
                 <button className="primary-button wide" type="submit">验证并连接</button>
               </form>
             )}
+            <TickTickDiagnostics />
             <a className="oauth-link" href="https://dida365.com/webapp/#settings/account" target="_blank" rel="noreferrer">前往滴答网页端：头像 → 设置 → 账户与安全 → API 口令</a>
           </section>
         </div>

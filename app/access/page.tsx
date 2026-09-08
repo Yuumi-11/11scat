@@ -1,5 +1,7 @@
+import { safeAccessReturn } from "../access-return";
+
 type AccessPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 };
 
 export const metadata = {
@@ -8,7 +10,7 @@ export const metadata = {
 };
 
 export default async function AccessPage({ searchParams }: AccessPageProps) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
 
   return (
     <main className="access-shell">
@@ -21,6 +23,7 @@ export default async function AccessPage({ searchParams }: AccessPageProps) {
         <h1>输入身份识别码</h1>
         <p>输入身份验证码后会自动进入同一个自习房间，并恢复你的昵称与个人连接。</p>
         <form action="/api/access" method="post">
+          <input type="hidden" name="next" value={safeAccessReturn(next)} />
           <label htmlFor="identityCode">身份识别码</label>
           <input
             id="identityCode"

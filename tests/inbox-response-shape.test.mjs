@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inboxResponseShape } from '../app/api/ticktick/diagnostics/shape.ts';
+import { inboxResponseShape } from '../app/api/ticktick/client.ts';
 
 test('inbox diagnostics distinguish missing/alias metadata without exposing account IDs, task text or tokens', () => {
   const data = { project: { id: 'inbox', name: 'private-name' }, tasks: [{ id: 'private-task-id', projectId: 'private-account-id', title: 'private-title', content: 'private-content' }], message: 'private-token', unexpected: 'private-extra' };

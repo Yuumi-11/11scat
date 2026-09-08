@@ -1,0 +1,7 @@
+.ticktick-diagnostics { margin-top: 12px; min-width: 0; font-size: 12px; }
+.ticktick-diagnostics > button, .ticktick-diagnostic-result > button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--theme-accent-dark); background: var(--soft); cursor: pointer; font: inherit; }
+.ticktick-diagnostics button:disabled { opacity: .6; cursor: wait; }
+.ticktick-diagnostic-result p { font-size: 11px; line-height: 1.6; color: var(--muted); }
+.ticktick-diagnostic-result textarea { display: block; width: 100%; max-height: 180px; margin: 8px 0; resize: vertical; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: 11px/1.5 monospace; }
+.sync-modal:has(.ticktick-diagnostics) { max-height: calc(100dvh - 40px); overflow-y: auto; }
+.coop-task-list > .ticktick-diagnostics { margin: 0 12px 12px; }
