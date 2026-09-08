@@ -1,6 +1,8 @@
-# vinext-starter
+# duo-space
 
-A clean full-stack starter running on
+Repository: [yuumiqwq/duo-space](https://github.com/yuumiqwq/duo-space).
+
+Originally based on a full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
 Drizzle support.
 

@@ -38,4 +38,4 @@
 
 收件人为 `yuumiqwq@agent.qq.com`，主题为“持续摇铃与网易云播放同步：后续开发交接”，北京时间 2026-09-07 07:52 发送。已独立搜索已发送文件夹并读取正文，确认两项交接要求、接收地址及调研链接；已发送记录标识为 `msg_Yo-R1swHEE30rzuc_fuuwODbgr8dBG9CFxlV6YVBvk_LkQ`，这表示发送已验证，尚未表示对方回复或完成开发。
 
-邮件引用的[调研报告固定版本](https://github.com/Yuumi-11/11scat/blob/2003975c4c5edc6a8ef220dc1a1dd8c10471aab3/docs/priority-research-report-2026-09-07.md)已通过 GitHub 内容接口确认存在。依照“报告不在同步范围内才附加”的要求，本次邮件没有另附重复文件。
+邮件引用的[调研报告固定版本](https://github.com/yuumiqwq/duo-space/blob/2003975c4c5edc6a8ef220dc1a1dd8c10471aab3/docs/priority-research-report-2026-09-07.md)已通过 GitHub 内容接口确认存在。依照“报告不在同步范围内才附加”的要求，本次邮件没有另附重复文件。
