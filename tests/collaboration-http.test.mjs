@@ -55,7 +55,7 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
     assert.equal((await call('alice', { id: randomUUID(), action: 'delete', source })).status, 409);
     const next = (await (await call('alice')).json()).buffer[0];
     assert.equal(next.title, '另一成员修改');
-    assert.equal((await call('alice', { id: randomUUID(), action: 'move', source: { ...source, version: next.version }, destination: 'offline' })).status, 422);
+    assert.equal((await call('alice', { id: randomUUID(), action: 'claim', source: { ...source, version: next.version }, destination: 'offline' })).status, 422);
     assert.equal((await call('alice', { id: randomUUID(), action: 'update', source: { ...source, version: next.version }, fields: { ticktickToken: 'injected' } })).status, 400);
     assert.equal((await call('bob', { id: randomUUID(), action: 'delete', source: { ...source, version: next.version } })).status, 200);
     assert.equal((await (await call('alice')).json()).buffer.length, 0);

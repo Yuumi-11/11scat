@@ -45,24 +45,6 @@ test('reading either member inbox never creates transfers and preserves task own
   await assert.rejects(readFile(path.join(f.dir, 'room-collaboration.json')), { code: 'ENOENT' });
 });
 
-test('initiating account and creation time stay distinct from source owner, viewer and later retry', async () => {
-  const f = await fixture();
-  const task = { ...taskFields({ title: 'Alice original task' }), id: 'source-task', projectId: 'inbox-alice' };
-  f.accounts.alice.set(task.id, task); f.loseCreate();
-  const started = Date.now();
-  const op = await f.store.execute('bob', { id: randomUUID(), action: 'move', source: { ownerId: 'alice', taskId: task.id, version: remoteVersion(task) }, destination: 'bob' });
-  assert.equal(op.actorId, 'bob'); assert.equal(op.from, 'alice'); assert.equal(op.to, 'bob');
-  assert.ok(op.createdAt >= started && op.createdAt <= op.updatedAt);
-  const resumed = await f.store.resume('alice', op.id);
-  assert.equal(resumed.actorId, 'bob'); assert.equal(resumed.createdAt, op.createdAt);
-  assert.equal((await f.store.snapshot('alice')).operations[0].actorId, 'bob');
-  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
-  delete state.operations[op.id].createdAt; await writeFile(file, JSON.stringify(state));
-  const legacy = (await f.store.snapshot('bob')).operations[0];
-  assert.equal(legacy.createdAt, undefined, 'legacy timestamps must not be inferred from a later retry');
-  assert.equal(legacy.actorId, 'bob');
-});
-
 test('collaboration includes the captured redacted diagnostic for the member whose inbox failed', async () => {
   const f = await fixture(), inbox = f.gateway.inbox;
   const diagnostic = JSON.stringify({ version: 2, shape: { project: { id: 'undefined' } } });
@@ -72,176 +54,167 @@ test('collaboration includes the captured redacted diagnostic for the member who
   assert.equal(snapshot.members.find(member => member.id === 'alice').diagnostic, undefined);
 });
 
-test('an unresolved empty destination is rejected before a transfer is recorded or either account is written', async () => {
-  const f = await fixture(), task = await f.create('保留在缓冲区'), inbox = f.gateway.inbox;
-  f.gateway.inbox = async owner => owner === 'bob' ? { projectId: 'inbox', tasks: [] } : inbox(owner);
-  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' }), { status: 422 });
-  assert.equal(f.counts.creates, 0); assert.equal(f.counts.removes, 0);
-  const snapshot = await f.store.snapshot('alice');
-  assert.equal(snapshot.buffer.length, 1);
-  assert.equal(snapshot.operations.filter(op => op.status === 'pending').length, 0);
+const claim = (f, task, actor = 'bob', destination = actor) => f.store.claim(actor, { id: randomUUID(), action: 'claim', source: source(task), destination });
+const act = (f, workflow, actor, action, extra = {}) => f.store.workflowCommand(actor, { id: randomUUID(), workflowId: workflow.id, version: workflow.version, action, ...extra });
+async function personal(f, fields = {}) {
+  const task = { id: 'original-task', projectId: 'inbox-alice', ...taskFields({ title: '共同复习', ...fields }) };
+  f.accounts.alice.set(task.id, task);
+  return { ...task, ownerId: 'alice', version: remoteVersion(task) };
+}
+
+test('personal claim preserves original and fields, submits without completion, rejects with comments, then completes both only on approval', async () => {
+  const f = await fixture(), task = await personal(f, { priority: 5, dueDate: '2026-09-12T12:00:00+0800', tags: ['study'] });
+  let w = await claim(f, task);
+  assert.equal(w.status, 'working'); assert.equal(w.reviewerId, 'alice'); assert.equal(w.claimantId, 'bob');
+  assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.removes, 0);
+  assert.equal(f.accounts.bob.get(w.targetId).title, task.title); assert.equal(f.accounts.bob.get(w.targetId).priority, 5);
+  await assert.rejects(act(f, w, 'alice', 'submit'), { status: 403 });
+  w = await act(f, w, 'bob', 'submit', { comment: '第一版' });
+  assert.equal(w.status, 'submitted'); assert.ok(!f.accounts.alice.get(task.id).status); assert.ok(!f.accounts.bob.get(w.targetId).status);
+  await assert.rejects(act(f, w, 'bob', 'approve'), { status: 403 });
+  w = await act(f, w, 'alice', 'reject', { comment: '请补充证明' });
+  assert.equal(w.status, 'rejected'); assert.equal(w.events.at(-1).comment, '请补充证明');
+  assert.ok(!f.accounts.alice.get(task.id).status); assert.ok(!f.accounts.bob.get(w.targetId).status);
+  w = await act(f, w, 'bob', 'submit', { comment: '已补充' });
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.get(task.id).status, 2); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  assert.deepEqual(w.events.map(event => event.type), ['claimed', 'submit', 'reject', 'submit', 'approve', 'completed']);
+  const restarted = new CollaborationStore(f.dir, f.gateway);
+  assert.equal((await restarted.snapshot('alice')).workflows[0].status, 'done');
 });
-test('buffer claims serialize across users, creation retries dedupe and tasks can be reassigned or returned', async () => {
-  const f = await fixture();
-  const command = { id: randomUUID(), action: 'create', fields: { title: '共同整理笔记', priority: 3 } };
-  await Promise.all([f.store.execute('alice', command), f.store.execute('alice', command)]);
-  const task = (await f.store.snapshot('alice')).buffer[0];
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
-  const moves = await Promise.allSettled(['alice', 'bob'].map(owner => f.store.execute(owner, { id: randomUUID(), action: 'move', source: source(task), destination: owner })));
-  assert.equal(moves.filter(result => result.status === 'fulfilled').length, 1);
-  assert.equal(f.counts.creates, 1);
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
-  const owned = (await f.store.snapshot('alice')).members.flatMap(member => member.tasks)[0];
-  const destination = owned.ownerId === 'alice' ? 'bob' : 'alice';
-  await f.store.execute('bob', { id: randomUUID(), action: 'move', source: source(owned), destination });
-  assert.equal(f.accounts[owned.ownerId].size, 0); assert.equal(f.accounts[destination].size, 1);
-  const reassigned = (await f.store.snapshot('alice')).members.find(member => member.id === destination).tasks[0];
-  await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(reassigned), destination: null });
-  assert.equal(f.accounts[destination].size, 0);
-  assert.equal((await f.store.snapshot('alice')).buffer[0].priority, 3);
+
+test('public reviewer stays the publisher after another user edits it, board stays until approval', async () => {
+  const f = await fixture(), task = await f.create('公共任务');
+  await f.store.execute('bob', { id: randomUUID(), action: 'update', source: source(task), fields: { title: '编辑后的任务' } });
+  const updated = (await f.store.snapshot('bob')).buffer[0]; assert.equal(updated.publisherId, 'alice');
+  let w = await claim(f, updated); assert.equal(w.reviewerId, 'alice'); assert.ok(w.reviewerTaskId);
+  assert.equal((await f.store.snapshot('bob')).buffer[0].workflowId, w.id);
+  assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1);
+  w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done'); assert.equal((await f.store.snapshot('bob')).buffer.length, 0);
+  assert.equal((await f.store.revision()).bufferCount, 0);
+});
+
+test('publisher claiming own public task creates one task and completes it once', async () => {
+  const f = await fixture(), task = await f.create('自己认领'); let completes = 0;
+  const complete = f.gateway.complete; f.gateway.complete = async (...args) => { completes++; await complete(...args); };
+  let w = await claim(f, task, 'alice'); assert.equal(w.targetId, w.reviewerTaskId); assert.equal(f.counts.creates, 1);
+  w = await act(f, w, 'alice', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done'); assert.equal(completes, 1);
+});
+
+test('concurrent claims serialize, command replay is idempotent, IDs cannot be reused with different content', async () => {
+  const f = await fixture(), task = await f.create('仅认领一次');
+  const results = await Promise.allSettled([claim(f, task, 'alice'), claim(f, task, 'bob')]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const f2 = await fixture(), t2 = await personal(f2), command = { id: randomUUID(), action: 'claim', source: source(t2), destination: 'bob' };
+  const [w1, w2] = await Promise.all([f2.store.claim('bob', command), f2.store.claim('bob', command)]);
+  assert.equal(w1.id, w2.id); assert.equal(f2.counts.creates, 1);
+  await assert.rejects(f2.store.claim('alice', command), /编号/);
+  const submit = { id: randomUUID(), workflowId: w1.id, version: w1.version, action: 'submit' };
+  await f2.store.workflowCommand('bob', submit); const repeated = await f2.store.workflowCommand('bob', submit);
+  assert.equal(repeated.events.filter(event => event.type === 'submit').length, 1);
+  await assert.rejects(f2.store.workflowCommand('bob', { ...submit, comment: 'changed' }), /编号/);
+});
+
+test('provider assigned creation IDs survive restart and failed readback without additional creates', async () => {
+  const f = await fixture(), task = await personal(f); let failRead = true;
+  f.gateway.create = async (owner, id, fields, receipt) => {
+    f.counts.creates++; f.accounts[owner].set('provider-id', { ...fields, id: 'provider-id', projectId: 'inbox-' + owner }); await receipt('provider-id');
+    throw new Error('verification unavailable');
+  };
+  const get = f.gateway.get;
+  f.gateway.get = async (owner, id) => { if (id === 'provider-id' && failRead) throw new Error('read unavailable'); return get(owner, id); };
+  let w = await claim(f, task); assert.equal(w.status, 'creating'); assert.equal(w.targetId, 'provider-id');
+  assert.equal((await f.store.snapshot('bob')).members.find(member => member.id === 'bob').tasks[0].workflowId, w.id);
+  failRead = false; f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.equal(w.status, 'working'); assert.equal(f.counts.creates, 1);
+});
+
+test('lost creation response recovers one new match and never repeats an uncertain create', async () => {
+  const f = await fixture(), task = await personal(f);
+  f.gateway.create = async (owner, id, fields) => { f.counts.creates++; f.accounts[owner].set('assigned', { ...fields, id: 'assigned', projectId: 'inbox-' + owner }); throw new Error('lost'); };
+  let w = await claim(f, task); assert.equal(w.status, 'creating');
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.equal(w.status, 'working'); assert.equal(w.targetId, 'assigned'); assert.equal(f.counts.creates, 1);
+  const f2 = await fixture(), t2 = await personal(f2); f2.gateway.create = async () => { f2.counts.creates++; throw new Error('unknown'); };
+  let pending = await claim(f2, t2); pending = await act(f2, pending, 'bob', 'retry-workflow'); assert.equal(pending.status, 'creating'); assert.equal(f2.counts.creates, 1);
+});
+
+test('website completion, edit and delete cannot bypass an active workflow; unrelated task remains usable', async () => {
+  const f = await fixture(), task = await personal(f); await claim(f, task);
+  for (const owner of ['alice', 'bob']) {
+    const owned = (await f.store.snapshot(owner)).members.find(member => member.id === owner).tasks[0];
+    for (const action of ['complete', 'delete', 'update']) await assert.rejects(f.store.execute(owner, { id: randomUUID(), action, source: source(owned), fields: { title: 'bypass' } }), /流程/);
+    await assert.rejects(f.store.personalCompletion(owner, owned.id, () => assert.fail('must not complete')), /审批/);
+  }
+  assert.equal(await f.store.personalCompletion('bob', 'unrelated', async () => 'allowed'), 'allowed');
+  await assert.rejects(claim(f, task), /已经有人认领/); assert.equal(f.counts.creates, 1);
+});
+
+test('stale approvals and out of workflow manual completions are rejected without polling or reopening', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
+  f.accounts.bob.get(w.targetId).title = 'changed externally';
+  await assert.rejects(act(f, w, 'alice', 'approve'), /发生变化/); assert.ok(!f.accounts.alice.get(task.id).status);
+  w = await act(f, w, 'alice', 'reject'); f.accounts.bob.get(w.targetId).status = 2;
+  await assert.rejects(act(f, w, 'bob', 'submit'), /流程外/); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  await assert.rejects(act(f, { ...w, version: w.version - 1 }, 'bob', 'submit'), /已更新/);
+});
+
+test('approval resumes partial success after restart without completing acknowledged side twice', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
+  const completes = [], complete = f.gateway.complete; let fail = true;
+  f.gateway.complete = async (owner, id) => { completes.push(owner); if (owner === 'bob' && fail) throw new Error('offline'); await complete(owner, id); };
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'approving'); assert.equal(f.accounts.alice.get(task.id).status, 2);
+  fail = false; f.store = new CollaborationStore(f.dir, f.gateway); w = await act(f, w, 'alice', 'retry-workflow');
+  assert.equal(w.status, 'done'); assert.deepEqual(completes, ['alice', 'bob', 'bob']);
+});
+
+test('lost completion response is read back, but ambiguous recurring completion is never repeated', async () => {
+  for (const recurring of [false, true]) {
+    const f = await fixture(), task = await personal(f, recurring ? { repeatFlag: 'RRULE:FREQ=DAILY' } : {}); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
+    let count = 0; const complete = f.gateway.complete;
+    f.gateway.complete = async (owner, id) => { count++; if (owner === 'alice') { if (!recurring) await complete(owner, id); throw new Error('lost response'); } await complete(owner, id); };
+    w = await act(f, w, 'alice', 'approve'); w = await act(f, w, 'alice', 'retry-workflow');
+    assert.equal(w.status, recurring ? 'approving' : 'done'); assert.equal(count, recurring ? 1 : 2);
+  }
+});
+
+test('attachments are scoped to workflow and uploader; drafts are private and rejection files become shared', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
+  const id = randomUUID(); await mkdir(path.join(f.dir, 'workflow-files')); await writeFile(path.join(f.dir, 'workflow-files', id + '.json'), JSON.stringify({ id, workflowId: w.id, actorId: 'alice', name: '评语.txt', size: 10 }));
+  await assert.rejects(f.store.attachmentAccess('bob', w.id, false, { id, actorId: 'alice' }), { status: 403 });
+  await assert.rejects(f.store.attachmentAccess('bob', w.id, true), { status: 403 });
+  w = await act(f, w, 'alice', 'reject', { comment: '参考附件', attachments: [id] }); assert.equal(w.events.at(-1).files[0].name, '评语.txt');
+  await f.store.attachmentAccess('bob', w.id, false, { id, actorId: 'alice' });
+  await assert.rejects(act(f, w, 'bob', 'submit', { attachments: [id] }), { status: 403 });
+  await assert.rejects(act(f, w, 'bob', 'submit', { attachments: Array(11).fill(id) }), { status: 400 });
+  await assert.rejects(f.store.attachmentAccess('stranger', w.id), { status: 403 });
+});
+
+async function legacy(f, task, targetId, extra = {}) {
+  const id = randomUUID(), file = path.join(f.dir, 'room-collaboration.json');
+  const state = { version: 1, revision: 0, buffer: {}, operations: { [id]: { id, actorId: 'bob', action: 'move', title: task.title, from: 'alice', to: 'bob', source: source(task), targetId, fields: taskFields(task), status: 'pending', phase: 'prepared', error: '', updatedAt: Date.now(), ...extra } } };
+  await writeFile(file, JSON.stringify(state)); return id;
+}
+test('legacy reset removes identified unchanged receiver task, preserves original and deletes old records idempotently', async () => {
+  const f = await fixture(), task = await personal(f); f.accounts.bob.set('known', { ...taskFields(task), id: 'known', projectId: 'inbox-bob' }); await legacy(f, task, 'known');
+  assert.deepEqual((await f.store.resetLegacy('alice')).issues, []); assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 0);
+  assert.equal((await f.store.snapshot('alice')).operations.length, 0); await f.store.resetLegacy('bob'); assert.equal(f.counts.removes, 1);
+});
+test('legacy reset never infers missing created IDs from a matching title, and protects changed or missing-source tasks', async () => {
+  for (const scenario of ['unknown-id', 'changed', 'missing-source']) {
+    const f = await fixture(), task = await personal(f); f.accounts.bob.set('known', { ...taskFields(task), id: 'known', projectId: 'inbox-bob' });
+    await legacy(f, task, scenario === 'unknown-id' ? 'old-random-id' : 'known');
+    if (scenario === 'changed') f.accounts.bob.get('known').title = 'user edited';
+    if (scenario === 'missing-source') f.accounts.alice.clear();
+    const result = await f.store.resetLegacy('alice'); assert.equal(result.issues.length, 1); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.removes, 0);
+    assert.equal((await f.store.snapshot('alice')).operations.length, scenario === 'unknown-id' ? 0 : 1);
+  }
+});
+test('legacy destructive routes stay disabled and public edits reject stale or invalid fields', async () => {
+  const f = await fixture(), task = await f.create('编辑');
+  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' }), /认领审批/);
+  await f.store.execute('bob', { id: randomUUID(), action: 'update', source: source(task), fields: { title: '新标题' } });
+  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'delete', source: source(task) }), /已被修改/);
+  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'create', fields: { title: 'x', token: 'forbidden' } }), { status: 400 });
   await assert.rejects(f.store.execute('stranger', { id: randomUUID(), action: 'create', fields: { title: 'x' } }), { status: 403 });
-});
-test('lost creation and deletion responses resume across service restarts without losing or duplicating tasks', async () => {
-  const f = await fixture(), task = await f.create('准备习题');
-  f.loseCreate();
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  assert.equal(op.status, 'pending'); assert.equal(f.accounts.bob.size, 1);
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
-  const restarted = new CollaborationStore(f.dir, f.gateway);
-  await restarted.resume('bob', op.id);
-  assert.equal(f.counts.creates, 1); assert.equal((await restarted.snapshot('bob')).buffer.length, 0);
-  const owned = (await restarted.snapshot('bob')).members.find(member => member.id === 'bob').tasks[0];
-  f.loseDelete();
-  const returned = await restarted.execute('bob', { id: randomUUID(), action: 'move', source: source(owned), destination: null });
-  assert.equal(returned.status, 'pending'); assert.equal(f.accounts.bob.size, 0);
-  const again = new CollaborationStore(f.dir, f.gateway);
-  await again.resume('alice', returned.id);
-  const snapshot = await again.snapshot('alice');
-  assert.equal(snapshot.buffer.length, 1); assert.equal(snapshot.buffer[0].pending, undefined);
-});
-
-test('server allocated IDs are checkpointed before verification and remain locked after a failed read', async () => {
-  const f = await fixture(), task = await f.create('server assigned');
-  let writes = 0;
-  f.gateway.create = async (owner, proposed, fields, receipt) => {
-    writes++;
-    f.accounts[owner].set('actual-server-id', { ...fields, id: 'actual-server-id', projectId: 'inbox-' + owner });
-    await receipt('actual-server-id');
-    throw new Error('verification connection lost');
-  };
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  const snapshot = await f.store.snapshot('alice');
-  assert.equal(op.status, 'pending');
-  assert.equal(snapshot.members.find(m => m.id === 'bob').tasks[0].pending, op.id);
-  const restarted = new CollaborationStore(f.dir, f.gateway);
-  assert.equal((await restarted.resume('alice', op.id)).status, 'done');
-  assert.equal(writes, 1); assert.equal((await restarted.snapshot('alice')).buffer.length, 0);
-});
-
-test('lost response with a changed ID recovers uniquely new exact copy and never repeats an uncertain create', async () => {
-  const f = await fixture(), task = await f.create('lost allocation');
-  f.accounts.bob.set('preexisting', { ...taskFields(task), id: 'preexisting', projectId: 'inbox-bob' });
-  let writes = 0;
-  f.gateway.create = async (owner, proposed, fields) => {
-    writes++; f.accounts[owner].set('new-server-id', { ...fields, id: 'new-server-id', projectId: 'inbox-' + owner });
-    throw new Error('response lost');
-  };
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  assert.equal((await new CollaborationStore(f.dir, f.gateway).resume('alice', op.id)).status, 'done');
-  assert.equal(writes, 1); assert.equal(f.accounts.bob.size, 2);
-
-  const other = await f.create('unknown create');
-  f.gateway.create = async () => { writes++; throw new Error('timeout before acknowledgement'); };
-  const uncertain = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(other), destination: 'bob' });
-  assert.equal((await f.store.resume('alice', uncertain.id)).status, 'pending');
-  assert.equal(writes, 2, 'no repeat POST when the original request outcome is unknown');
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
-});
-
-test('legacy operations reconnect only explicitly chosen unchanged full matches without creating or deleting other copies', async () => {
-  const f = await fixture(), task = await f.create('legacy allocation');
-  f.gateway.create = async () => { throw new Error('legacy failed'); };
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
-  delete state.operations[op.id].creation;
-  await writeFile(file, JSON.stringify(state));
-  for (const id of ['actual-one', 'actual-two']) f.accounts.bob.set(id, { ...taskFields(task), id, projectId: 'inbox-bob' });
-  f.accounts.bob.set('different', { ...taskFields(task), id: 'different', projectId: 'inbox-bob', content: 'other content' });
-  const check = await f.store.inspectTransfer('alice', op.id);
-  assert.equal(check.candidates.length, 2);
-  assert.equal((await f.store.resume('alice', op.id)).status, 'pending');
-  await assert.rejects(f.store.recover('stranger', op.id, check.candidates[0]), { status: 403 });
-  await assert.rejects(f.store.recover('alice', op.id, { id: 'different', version: remoteVersion(f.accounts.bob.get('different')) }), /内容不一致/);
-  const selected = check.candidates[0];
-  f.accounts.bob.get(selected.id).etag = 'changed';
-  await assert.rejects(f.store.recover('alice', op.id, selected), /已变化/);
-  const fresh = (await f.store.inspectTransfer('alice', op.id)).candidates.find(c => c.id === selected.id);
-  assert.equal((await f.store.recover('alice', op.id, fresh)).status, 'done');
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
-  assert.equal(f.accounts.bob.size, 3); assert.equal(f.counts.creates, 0); assert.equal(f.counts.removes, 0);
-});
-
-test('transfer inspection identifies changed fields without exposing values or writing either account or operation state', async () => {
-  const f = await fixture(), task = await f.create('private-task-title');
-  f.loseCreate();
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  const target = [...f.accounts.bob.values()][0];
-  target.timeZone = 'Europe/London';
-  const stateBefore = await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8');
-  const countsBefore = { ...f.counts };
-  const result = await f.store.inspectTransfer('alice', op.id);
-  assert.equal(result.sourceExists, true);
-  assert.equal(result.sourceUnchanged, true);
-  assert.equal(result.destinationExists, true);
-  assert.deepEqual(result.differences, ['时区']);
-  assert.match(result.message, /时区/);
-  for (const secret of [task.title, task.id, target.id, target.projectId, target.timeZone]) assert.equal(JSON.stringify(result).includes(secret), false);
-  assert.deepEqual(f.counts, countsBefore);
-  assert.equal(await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8'), stateBefore);
-  await assert.rejects(f.store.inspectTransfer('stranger', op.id), { status: 403 });
-  await assert.rejects(f.store.inspectTransfer('alice', 'invalid'), { status: 400 });
-  await assert.rejects(f.store.inspectTransfer('alice', randomUUID()), { status: 404 });
-});
-
-test('transfer inspection distinguishes missing and completed copies and does not resume a verified pending transfer', async () => {
-  const f = await fixture(), task = await f.create('waiting');
-  f.loseCreate();
-  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
-  let result = await f.store.inspectTransfer('bob', op.id);
-  assert.equal(result.status, 'pending'); assert.deepEqual(result.differences, []);
-  assert.match(result.message, /核对一致/);
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
-  const target = [...f.accounts.bob.values()][0];
-  target.status = 2;
-  result = await f.store.inspectTransfer('alice', op.id);
-  assert.equal(result.destinationCompleted, true);
-  f.accounts.bob.clear();
-  result = await f.store.inspectTransfer('alice', op.id);
-  assert.equal(result.destinationExists, false); assert.match(result.message, /未读到接收方副本/);
-  assert.equal(f.counts.removes, 0);
-});
-test('source edits during transfer preserve the original and allow rolling back an unchanged copy', async () => {
-  const f = await fixture();
-  const remote = { ...taskFields({ title: '原任务' }), id: 'original', projectId: 'inbox-alice' };
-  f.accounts.alice.set(remote.id, remote);
-  f.afterCreate(() => { remote.title = '滴答中刚修改的任务'; });
-  const op = await f.store.execute('bob', { id: randomUUID(), action: 'move', source: { ownerId: 'alice', taskId: remote.id, version: remoteVersion(remote) }, destination: 'bob' });
-  assert.equal(op.status, 'pending'); assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1);
-  await f.store.resume('alice', op.id, true);
-  assert.equal(f.accounts.bob.size, 0); assert.equal(f.accounts.alice.get(remote.id).title, '滴答中刚修改的任务');
-});
-test('edits reject stale versions and invalid destinations while complete/delete affect the chosen account only', async () => {
-  const f = await fixture(), task = await f.create('待编辑');
-  await f.store.execute('bob', { id: randomUUID(), action: 'update', source: source(task), fields: { title: '已更新', priority: 5, dueDate: '2026-09-10T12:00:00+0800' } });
-  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'update', source: source(task), fields: { title: '过期覆盖' } }), /已被修改/);
-  const updated = (await f.store.snapshot('alice')).buffer[0];
-  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(updated), destination: 'stranger' }), { status: 400 });
-  await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(updated), destination: 'bob' });
-  const owned = (await f.store.snapshot('alice')).members.find(member => member.id === 'bob').tasks[0];
-  assert.equal(owned.dueDate, '2026-09-10T04:00:00.000Z');
-  await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(owned) });
-  assert.equal(f.accounts.bob.get(owned.id).status, 2); assert.equal(f.accounts.alice.size, 0);
-  const deletable = await f.create('仅删除这一项');
-  await f.store.execute('bob', { id: randomUUID(), action: 'delete', source: source(deletable) });
-  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
 });

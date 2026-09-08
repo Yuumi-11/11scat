@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
+import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
 
 export type RemoteTask = Partial<TaskFields> & { id: string; projectId: string; status?: number; parentId?: string; [key: string]: unknown };
 export type Gateway = {
@@ -14,13 +14,15 @@ export type Gateway = {
   complete(owner: string, id: string): Promise<void>;
   checkTransfer(owner: string, task: RemoteTask): Promise<void>;
 };
-type BufferTask = { fields: TaskFields; version: number; stagedBy?: string };
+type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; completedAt?: number };
+type Creation = { state: "new" | "sent" | "received"; beforeIds?: string[] };
+type Workflow = ClaimWorkflow & { signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean }; submitted?: { source: string; target: string } };
 type Operation = OperationView & {
   signature: string; source?: TaskSource; fields: TaskFields; targetId: string;
   phase: "prepared" | "destination-ready" | "source-removed";
   creation?: { state: "new" | "sent" | "received"; beforeIds?: string[] };
 };
-type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation> };
+type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation>; workflows: Record<string, Workflow>; legacyCleanup?: { title: string; message: string }[]; legacyReset?: boolean };
 export class CollaborationError extends Error {
   status: number;
   diagnostic?: string;
@@ -86,8 +88,12 @@ export class CollaborationStore {
     try {
       const state = JSON.parse(await readFile(this.file, "utf8"));
       if (state.version !== 1 || !state.buffer || !state.operations) throw new Error("协作记录格式异常");
+      state.workflows ||= {};
+      for (const [id, task] of Object.entries(state.buffer) as [string, BufferTask][]) {
+        task.publisherId ||= (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id)?.actorId;
+      }
       return state;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, revision: 0, buffer: {}, operations: {} }; throw error; }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, revision: 0, buffer: {}, operations: {}, workflows: {} }; throw error; }
   }
   private async write(state: State) {
     await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
@@ -102,7 +108,7 @@ export class CollaborationStore {
   }
   private serial<T>(work: () => Promise<T>): Promise<T> { const result = this.queue.then(work); this.queue = result.catch(() => undefined); return result; }
   private async source(state: State, source: TaskSource): Promise<{ fields: TaskFields; version: string; remote?: RemoteTask } | null> {
-    if (source.ownerId === null) { const task = Object.hasOwn(state.buffer, source.taskId) ? state.buffer[source.taskId] : null; return task ? { fields: task.fields, version: String(task.version) } : null; }
+    if (source.ownerId === null) { const task = Object.hasOwn(state.buffer, source.taskId) ? state.buffer[source.taskId] : null; return task && !task.completedAt ? { fields: task.fields, version: String(task.version) } : null; }
     const task = await this.gateway.get(source.ownerId, source.taskId);
     return task ? { fields: taskFields(task), version: remoteVersion(task), remote: task } : null;
   }
@@ -118,7 +124,7 @@ export class CollaborationStore {
     const locked = new Set(Object.values(state.operations).filter(other => other.id !== op.id && other.status === "pending").flatMap(other => [other.to === op.to ? other.targetId : "", other.source?.ownerId === op.to ? other.source.taskId : ""]));
     return inbox.tasks.filter(task => !task.status && !locked.has(task.id) && !op.creation?.beforeIds?.includes(task.id) && sameFields(task, op.fields));
   }
-  async revision() { const state = await this.read(); return { revision: state.revision, bufferCount: Object.values(state.buffer).filter(task => !task.stagedBy).length }; }
+  async revision() { const state = await this.read(); return { revision: state.revision, bufferCount: Object.values(state.buffer).filter(task => !task.stagedBy && !task.completedAt).length }; }
   inspectTransfer(actorId: string, id: string) {
     return this.serial(async () => {
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("操作编号无效", 400);
@@ -135,7 +141,7 @@ export class CollaborationStore {
       const candidates = !target ? await this.candidates(state, op) : [];
       const sourceMessage = !source ? "本次未读到原任务。" : sourceUnchanged ? "原任务仍在原处，内容与转移开始时一致。" : "原任务仍在原处，但已发生变化。";
       const targetMessage = !target ? "本次未读到接收方副本，尚不能确认是否创建成功。" : destinationCompleted ? "接收方副本已完成或状态改变。" : differences.length ? `接收方副本与转移记录不一致的项目：${differences.join("、")}。` : "接收方副本已读到，任务内容核对一致。";
-      return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, candidates: candidates.map(task => ({ id: task.id, version: remoteVersion(task) })), message: `${sourceMessage}${targetMessage}${candidates.length ? `接收方另有 ${candidates.length} 项完整内容一致的任务，可接续已有副本完成转移。` : ""}本次核对只读取状态，没有继续或取消转移。` };
+      return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, candidates: candidates.map(task => ({ id: task.id, version: remoteVersion(task) })), message: `${sourceMessage}${targetMessage}${candidates.length ? `接收方另有 ${candidates.length} 项完整内容一致的任务，旧记录无法仅凭内容确定这些任务的来源。` : ""}本次核对只读取状态，没有继续或取消转移。` };
     });
   }
   async snapshot(identityId: string): Promise<CollaborationSnapshot> {
@@ -146,22 +152,230 @@ export class CollaborationStore {
         if (!member.connected) return { ...member, tasks: [], error: "尚未连接滴答清单" };
         const inbox = await this.gateway.inbox(member.id);
         const parents = new Set(inbox.tasks.map(task => task.parentId).filter(Boolean));
-        return { ...member, tasks: inbox.tasks.filter(task => !task.status).map(task => ({ ...taskFields(task), id: task.id, ownerId: member.id, version: remoteVersion(task), transferBlocked: task.parentId || parents.has(task.id) ? "含父子任务关系，请先在滴答中整理关系后转移" : undefined })) };
+        return { ...member, tasks: inbox.tasks.filter(task => !task.status).map(task => ({ ...taskFields(task), id: task.id, ownerId: member.id, version: remoteVersion(task), transferBlocked: task.parentId || parents.has(task.id) ? "含父子任务关系，请先在滴答中整理关系后认领" : undefined })) };
       } catch (error) { return { ...member, tasks: [], error: error instanceof Error ? error.message : "收集箱暂时无法读取", ...(error instanceof CollaborationError && error.diagnostic ? { diagnostic: error.diagnostic } : {}) }; }
     })));
     const state = await this.read();
     const pending = Object.values(state.operations).filter(op => op.status === "pending");
-    const lock = (task: RoomTask) => ({ ...task, pending: pending.find(op => (op.source?.ownerId === task.ownerId && op.source.taskId === task.id) || (op.to === task.ownerId && op.targetId === task.id))?.id });
+    const lock = (task: RoomTask) => ({ ...task, workflowId: this.taskWorkflow(state, task.ownerId, task.id)?.id, pending: pending.find(op => (op.source?.ownerId === task.ownerId && op.source.taskId === task.id) || (op.to === task.ownerId && op.targetId === task.id))?.id });
     return {
       identityId, revision: state.revision,
-      buffer: Object.entries(state.buffer).map(([id, task]) => lock({ ...task.fields, id, ownerId: null, version: String(task.version) })),
+      buffer: Object.entries(state.buffer).filter(([, task]) => !task.completedAt).map(([id, task]) => lock({ ...task.fields, id, ownerId: null, version: String(task.version), publisherId: task.publisherId })),
       members: results.map(member => ({ ...member, tasks: member.tasks.map(lock) })),
       operations: Object.values(state.operations).sort((a, b) => b.updatedAt - a.updatedAt).filter((op, index) => op.status === "pending" || index < 30).map(op => this.publicOperation(op)),
+      workflows: Object.values(state.workflows).sort((a, b) => b.updatedAt - a.updatedAt).map(workflow => this.publicWorkflow(workflow)),
+      legacyCleanup: state.legacyCleanup || [],
     };
+  }
+  private taskWorkflow(state: State, owner: string | null, id: string) {
+    return Object.values(state.workflows).find(workflow => workflow.status !== "done" && (
+      (workflow.source.ownerId === owner && workflow.source.taskId === id) ||
+      (workflow.claimantId === owner && workflow.targetId === id) ||
+      (workflow.reviewerId === owner && workflow.reviewerTaskId === id)
+    ));
+  }
+  private publicWorkflow(workflow: Workflow): ClaimWorkflow {
+    const { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields, status, version, createdAt, updatedAt, error, events } = workflow;
+    return { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields, status, version, createdAt, updatedAt, error, events: events.map(({ id, actorId, type, at, comment, files }) => ({ id, actorId, type, at, comment, files })) };
+  }
+  private async saveWorkflow(state: State, workflow: Workflow) {
+    workflow.updatedAt = Date.now(); workflow.version++; state.revision++; await this.write(state);
+  }
+  private async requireMember(actor: string) {
+    const members = await this.gateway.members();
+    if (!members.some(member => member.id === actor)) throw new CollaborationError("成员不存在", 403);
+    return members;
+  }
+  private async ensureWorkflowTask(state: State, workflow: Workflow, reviewer = false) {
+    const owner = reviewer ? workflow.reviewerId : workflow.claimantId;
+    const creation = reviewer ? workflow.reviewerCreation! : workflow.targetCreation;
+    const id = reviewer ? workflow.reviewerTaskId! : workflow.targetId;
+    let task = await this.gateway.get(owner, id);
+    const remember = async (actualId: string) => {
+      if (creation.beforeIds?.includes(actualId)) throw new CollaborationError("创建响应指向原有任务，暂不能建立认领");
+      if (reviewer) workflow.reviewerTaskId = actualId; else workflow.targetId = actualId;
+      creation.state = "received"; await this.saveWorkflow(state, workflow);
+    };
+    if (!task && creation.state === "new") {
+      creation.beforeIds = (await this.gateway.inbox(owner)).tasks.map(item => item.id);
+      creation.state = "sent"; await this.saveWorkflow(state, workflow);
+      await this.gateway.create(owner, id, workflow.fields, remember);
+      task = await this.gateway.get(owner, reviewer ? workflow.reviewerTaskId! : workflow.targetId);
+    } else if (!task && creation.state === "sent") {
+      const matches = (await this.gateway.inbox(owner)).tasks.filter(item => !creation.beforeIds?.includes(item.id) && !item.status && sameFields(item, workflow.fields) && !this.taskWorkflow(state, owner, item.id));
+      if (matches.length !== 1) throw new CollaborationError("创建结果暂未确定，已停止重复创建，请稍后重试");
+      await remember(matches[0].id); task = await this.gateway.get(owner, matches[0].id);
+    }
+    if (!task || task.status || !sameFields(task, workflow.fields)) throw new CollaborationError("尚未核实认领任务，原任务仍保留");
+  }
+  private async startWorkflow(state: State, workflow: Workflow) {
+    try {
+      if (workflow.source.ownerId === null && workflow.reviewerId !== workflow.claimantId) await this.ensureWorkflowTask(state, workflow, true);
+      await this.ensureWorkflowTask(state, workflow);
+      if (workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId) workflow.reviewerTaskId = workflow.targetId;
+      workflow.status = "working"; workflow.error = "";
+    } catch (error) { workflow.error = error instanceof Error ? error.message : "认领任务暂未建立，请重试"; }
+    await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
+  }
+  claim(actor: string, command: CollaborationCommand) {
+    return this.serial(async () => {
+      const members = await this.requireMember(actor), source = command.source;
+      if (!/^[a-f0-9-]{36}$/i.test(command.id) || command.action !== "claim" || !source || typeof source.taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(source.taskId) || typeof source.version !== "string") throw new CollaborationError("认领参数无效", 400);
+      const claimant = command.destination || actor;
+      if (!members.some(member => member.id === claimant && member.connected) || (source.ownerId !== null && !members.some(member => member.id === source.ownerId))) throw new CollaborationError("认领者或任务来源不可用", 422);
+      if (source.ownerId === claimant) throw new CollaborationError("任务已经在此账号中", 400);
+      const state = await this.read(), signature = fingerprint({ actor, command }), existing = state.workflows[command.id];
+      if (existing) {
+        if (existing.signature !== signature) throw new CollaborationError("操作编号已使用");
+        return existing.status === "creating" ? this.startWorkflow(state, existing) : this.publicWorkflow(existing);
+      }
+      if (this.taskWorkflow(state, source.ownerId, source.taskId)) throw new CollaborationError("此任务已经有人认领");
+      if (Object.values(state.operations).some(op => op.status === "pending" && ((op.source?.ownerId === source.ownerId && op.source.taskId === source.taskId) || (op.to === source.ownerId && op.targetId === source.taskId)))) throw new CollaborationError("请先清理此任务的旧记录");
+      const current = await this.source(state, source);
+      if (!current || current.remote?.status || current.version !== source.version || (source.ownerId === null && state.buffer[source.taskId]?.completedAt)) throw new CollaborationError("任务已变化，请刷新后认领");
+      const reviewer = source.ownerId || state.buffer[source.taskId]?.publisherId;
+      if (!reviewer || !members.some(member => member.id === reviewer && member.connected)) throw new CollaborationError("任务发布者需要先连接滴答清单", 422);
+      const targetInbox = await this.gateway.inbox(claimant);
+      if (targetInbox.projectId === "inbox") throw new CollaborationError("暂不能识别认领者收集箱，请先添加一项任务后刷新", 422);
+      if (source.ownerId && current.remote) {
+        if (current.remote.parentId || (await this.gateway.inbox(source.ownerId)).tasks.some(task => task.parentId === current.remote!.id)) throw new CollaborationError("含父子任务关系，暂不能单独认领", 422);
+        if (current.remote.projectId === targetInbox.projectId) throw new CollaborationError("两位成员连接了同一个滴答收集箱", 422);
+      } else {
+        const reviewerInbox = await this.gateway.inbox(reviewer);
+        if (reviewerInbox.projectId === "inbox") throw new CollaborationError("暂不能识别发布者收集箱", 422);
+        if (reviewer !== claimant && reviewerInbox.projectId === targetInbox.projectId) throw new CollaborationError("两位成员连接了同一个滴答收集箱", 422);
+      }
+      const now = Date.now();
+      const workflow: Workflow = { id: command.id, signature, title: current.fields.title, source: { ...source }, reviewerId: reviewer, claimantId: claimant, targetId: randomBytes(12).toString("hex"), ...(source.ownerId === null ? { reviewerTaskId: randomBytes(12).toString("hex"), reviewerCreation: { state: "new" as const } } : {}), fields: current.fields, status: "creating", version: 0, createdAt: now, updatedAt: now, error: "", targetCreation: { state: "new" }, events: [{ id: command.id, actorId: actor, type: "claimed", at: now, comment: "", files: [] }] };
+      state.workflows[workflow.id] = workflow; await this.saveWorkflow(state, workflow);
+      return this.startWorkflow(state, workflow);
+    });
+  }
+  private async workflowSides(state: State, workflow: Workflow) {
+    const source = workflow.source.ownerId
+      ? await this.gateway.get(workflow.reviewerId, workflow.source.taskId)
+      : await this.gateway.get(workflow.reviewerId, workflow.reviewerTaskId!);
+    const target = workflow.claimantId === workflow.reviewerId && workflow.targetId === workflow.reviewerTaskId
+      ? source : await this.gateway.get(workflow.claimantId, workflow.targetId);
+    if (!source || !target || (workflow.source.ownerId === null && !state.buffer[workflow.source.taskId])) throw new CollaborationError("流程关联的任务缺失，请先核对滴答中的任务");
+    return { source, target };
+  }
+  private async finishApproval(state: State, workflow: Workflow) {
+    const approval = workflow.approval!;
+    try {
+      for (const side of ["source", "target"] as const) {
+        const key = side === "source" ? "sourceDone" : "targetDone";
+        if (approval[key]) continue;
+        const owner = side === "source" ? workflow.reviewerId : workflow.claimantId;
+        const id = side === "source" ? workflow.source.ownerId ? workflow.source.taskId : workflow.reviewerTaskId! : workflow.targetId;
+        const task = await this.gateway.get(owner, id);
+        if (!task) throw new CollaborationError("尚不能确认任务的完成结果，请核对后重试");
+        if (task.status !== 2) {
+          if (task.status || remoteVersion(task) !== workflow.submitted![side]) throw new CollaborationError("任务在提交后发生变化，暂未勾选，请核对后重试");
+          const sent = side === "source" ? "sourceSent" : "targetSent";
+          if (approval[sent] && workflow.fields.repeatFlag) throw new CollaborationError("重复任务的完成响应未确认，已停止重复勾选，请核对滴答中的本次任务");
+          approval[sent] = true; await this.saveWorkflow(state, workflow);
+          await this.gateway.complete(owner, id);
+        }
+        approval[key] = true;
+        if (workflow.claimantId === workflow.reviewerId && workflow.targetId === workflow.reviewerTaskId) approval.targetDone = true;
+        await this.saveWorkflow(state, workflow);
+      }
+      if (workflow.source.ownerId === null) state.buffer[workflow.source.taskId].completedAt = Date.now();
+      workflow.status = "done"; workflow.error = "";
+      workflow.events.push({ id: randomUUID(), actorId: workflow.reviewerId, type: "completed", at: Date.now(), comment: "两边任务已完成", files: [] });
+    } catch (error) { workflow.error = error instanceof Error ? error.message : "完成状态尚未同步，请重试"; }
+    await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
+  }
+  workflowCommand(actor: string, command: WorkflowCommand) {
+    return this.serial(async () => {
+      await this.requireMember(actor);
+      if (!command || !/^[a-f0-9-]{36}$/i.test(command.id) || !/^[a-f0-9-]{36}$/i.test(command.workflowId) || !Number.isSafeInteger(command.version)) throw new CollaborationError("流程参数无效", 400);
+      const state = await this.read(), workflow = state.workflows[command.workflowId];
+      if (!workflow) throw new CollaborationError("流程不存在", 404);
+      const signature = fingerprint({ actor, command }), prior = workflow.events.find(event => event.id === command.id);
+      if (prior) {
+        if (prior.signature !== signature) throw new CollaborationError("操作编号已使用");
+        return workflow.status === "approving" && actor === workflow.reviewerId ? this.finishApproval(state, workflow) : this.publicWorkflow(workflow);
+      }
+      if (workflow.version !== command.version) throw new CollaborationError("流程已更新，请刷新后操作");
+      if (command.action === "retry-workflow") {
+        if (![workflow.claimantId, workflow.reviewerId].includes(actor)) throw new CollaborationError("只有流程参与者能重试", 403);
+        if (workflow.status === "creating") return this.startWorkflow(state, workflow);
+        if (workflow.status === "approving" && actor === workflow.reviewerId) return this.finishApproval(state, workflow);
+        throw new CollaborationError("此流程无需重试");
+      }
+      if (!["submit", "approve", "reject"].includes(command.action)) throw new CollaborationError("流程操作无效", 400);
+      const submit = command.action === "submit";
+      if (actor !== (submit ? workflow.claimantId : workflow.reviewerId)) throw new CollaborationError(submit ? "只有认领者能提交完成" : "只有原任务所属用户或发布者能审批", 403);
+      if (submit ? !["working", "rejected"].includes(workflow.status) : workflow.status !== "submitted") throw new CollaborationError("当前流程状态不支持此操作");
+      const comment = command.comment ?? "";
+      if (typeof comment !== "string" || comment.length > 10000 || !Array.isArray(command.attachments || []) || (command.attachments?.length || 0) > 10) throw new CollaborationError("评语或附件参数无效", 400);
+      const files: WorkflowFile[] = [];
+      for (const id of [...new Set(command.attachments || [])]) {
+        if (typeof id !== "string" || !/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("附件无效", 400);
+        const metadata = JSON.parse(await readFile(path.join(path.dirname(this.file), "workflow-files", `${id}.json`), "utf8").catch(() => { throw new CollaborationError("附件不存在，请重新上传", 400); }));
+        if (metadata.workflowId !== workflow.id || metadata.actorId !== actor) throw new CollaborationError("附件不属于此流程或当前账号", 403);
+        files.push({ id, name: metadata.name, size: metadata.size, url: `/api/room/tasks/files/${id}` });
+      }
+      if (submit || command.action === "approve") {
+        const sides = await this.workflowSides(state, workflow);
+        if (sides.source.status || sides.target.status) throw new CollaborationError("滴答任务已在流程外被勾选，请先恢复为未完成，再提交或审批");
+        if (submit) workflow.submitted = { source: remoteVersion(sides.source), target: remoteVersion(sides.target) };
+        else if (remoteVersion(sides.source) !== workflow.submitted?.source || remoteVersion(sides.target) !== workflow.submitted?.target) throw new CollaborationError("任务在提交后发生变化，请打回后重新提交");
+      }
+      workflow.events.push({ id: command.id, signature, actorId: actor, type: command.action, at: Date.now(), comment: comment.trim(), files });
+      workflow.status = submit ? "submitted" : command.action === "reject" ? "rejected" : "approving";
+      workflow.error = "";
+      if (workflow.status === "approving") workflow.approval = { sourceDone: false, targetDone: false };
+      await this.saveWorkflow(state, workflow);
+      return workflow.status === "approving" ? this.finishApproval(state, workflow) : this.publicWorkflow(workflow);
+    });
+  }
+  async attachmentAccess(actor: string, workflowId: string, upload = false, file?: { id: string; actorId: string }) {
+    await this.requireMember(actor);
+    if (!/^[a-f0-9-]{36}$/i.test(workflowId)) throw new CollaborationError("流程编号无效", 400);
+    const workflow = (await this.read()).workflows[workflowId];
+    if (!workflow) throw new CollaborationError("流程不存在", 404);
+    if (file && file.actorId !== actor && !workflow.events.some(event => event.files.some(item => item.id === file.id))) throw new CollaborationError("附件尚未提交", 403);
+    if (upload && !((actor === workflow.claimantId && ["working", "rejected"].includes(workflow.status)) || (actor === workflow.reviewerId && workflow.status === "submitted"))) throw new CollaborationError("当前账号不能为此流程添加附件", 403);
+    return true;
+  }
+  personalCompletion<T>(actor: string, taskId: string, complete: () => Promise<T>) {
+    return this.serial(async () => {
+      if (this.taskWorkflow(await this.read(), actor, taskId)) throw new CollaborationError("此任务需要审批，请在协作区提交完成或审批");
+      return complete();
+    });
+  }
+  resetLegacy(actor: string) {
+    return this.serial(async () => {
+      await this.requireMember(actor); const state = await this.read();
+      if (state.legacyReset) return { issues: state.legacyCleanup || [] };
+      const issues: { title: string; message: string }[] = [];
+      for (const op of Object.values(state.operations).filter(item => item.action === "move" && item.status === "pending")) {
+        try {
+          const source = await this.source(state, op.source!);
+          if (!source) throw new CollaborationError("来源任务缺失，尚未自动复原");
+          if (op.to) {
+            const target = await this.gateway.get(op.to, op.targetId);
+            if (target) {
+              if (target.status || !sameFields(target, op.fields)) throw new CollaborationError("接收方任务已变化，未删除");
+              await this.gateway.checkTransfer(op.to, target); await this.gateway.remove(op.to, op.targetId);
+            } else if ((await this.candidates(state, op)).length) {
+              issues.push({ title: op.title, message: "原任务已保留；接收方存在同内容任务，但旧记录未保存其实际编号，未自动删除" });
+            }
+          } else if (state.buffer[op.targetId]?.stagedBy === op.id) delete state.buffer[op.targetId];
+          delete state.operations[op.id]; state.revision++; await this.write(state);
+        } catch (error) { issues.push({ title: op.title, message: error instanceof Error ? error.message : "旧记录清理未完成" }); }
+      }
+      state.legacyCleanup = issues; state.legacyReset = !Object.values(state.operations).some(op => op.action === "move" && op.status === "pending");
+      state.revision++; await this.write(state); return { issues };
+    });
   }
   execute(actorId: string, command: CollaborationCommand) {
     return this.serial(async () => {
       if (!command || typeof command.id !== "string" || !/^[a-f0-9-]{36}$/i.test(command.id) || !["create", "update", "move", "complete", "delete"].includes(command.action)) throw new CollaborationError("协作操作无效", 400);
+      if (command.action === "move") throw new CollaborationError("任务分配已改为认领审批，请刷新页面", 409);
       const members = await this.gateway.members();
       if (!members.some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
       const state = await this.read(), signature = fingerprint({ actorId, command });
@@ -174,25 +388,17 @@ export class CollaborationStore {
         if (command.action === "create") { fields = taskFields(validateFields(command.fields)); if (!fields.title) throw new CollaborationError("请填写任务标题", 400); }
         else {
           if (!source || (source.ownerId !== null && !members.some(member => member.id === source!.ownerId)) || typeof source.taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(source.taskId) || typeof source.version !== "string") throw new CollaborationError("任务来源无效", 400);
+          if (this.taskWorkflow(state, source.ownerId, source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
           if (Object.values(state.operations).some(item => item.status === "pending" && ((item.source?.ownerId === source!.ownerId && item.source.taskId === source!.taskId) || (item.to === source!.ownerId && item.targetId === source!.taskId)))) throw new CollaborationError("任务正在处理中，请先完成或取消之前的操作");
           const current = await this.source(state, source);
           if (!current || current.remote?.status) throw new CollaborationError("任务已完成或已移走，请刷新");
           if (current.version !== source.version) throw new CollaborationError("任务已被修改，请刷新后重新操作");
           fields = current.fields;
           if (command.action === "update") fields = { ...fields, ...validateFields(command.fields) };
-          if (command.action === "move") {
-            if (command.destination !== null && (typeof command.destination !== "string" || !members.some(member => member.id === command.destination))) throw new CollaborationError("目标成员无效", 400);
-            if (command.destination === source.ownerId) throw new CollaborationError("任务已经在此区域", 400);
-            if (source.ownerId && current.remote) await this.gateway.checkTransfer(source.ownerId, current.remote);
-            if (command.destination) {
-              const target = await this.gateway.inbox(command.destination);
-              if (target.projectId === "inbox") throw new CollaborationError("该成员收集箱为空且滴答未返回具体编号，请先在其收集箱添加一项后刷新再分配", 422);
-              if (current.remote?.projectId === target.projectId) throw new CollaborationError("两位成员连接的是同一个收集箱，无需转移");
-            }
-          }
+
         }
         if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);
-        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: command.action === "move" ? command.destination! : null, source, fields, targetId: command.action === "move" && command.destination ? randomBytes(12).toString("hex") : randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", createdAt: Date.now(), updatedAt: Date.now() };
+        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: null, source, fields, targetId: randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", createdAt: Date.now(), updatedAt: Date.now() };
         state.operations[op.id] = op; await this.checkpoint(state, op);
       }
       return this.run(state, op);
@@ -204,88 +410,24 @@ export class CollaborationStore {
       if (!(await this.gateway.members()).some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
       const state = await this.read(), op = state.operations[id];
       if (!op) throw new CollaborationError("操作不存在", 404);
+      if (op.action === "move") throw new CollaborationError("旧转移已停用，请使用旧记录清理");
       if (op.status !== "pending") return this.publicOperation(op);
       if (!cancel) return this.run(state, op);
       const current = op.source ? await this.source(state, op.source) : null;
-      if (op.action === "move") {
-        if (!current) throw new CollaborationError("原任务已移除，请继续完成转移");
-        if (op.to) {
-          const copy = await this.gateway.get(op.to, op.targetId);
-          if (copy) {
-            if (copy.status || !sameFields(copy, op.fields)) throw new CollaborationError("接收方任务已变更，暂不能自动撤回，请先核对两个任务");
-            await this.gateway.checkTransfer(op.to, copy);
-            await this.gateway.remove(op.to, op.targetId);
-          }
-        } else if (state.buffer[op.targetId]?.stagedBy === op.id) delete state.buffer[op.targetId];
-      } else if (op.action === "update" && current && sameFields(current.fields, op.fields)) { await this.finish(state, op); return this.publicOperation(op); }
+      if (op.action === "update" && current && sameFields(current.fields, op.fields)) { await this.finish(state, op); return this.publicOperation(op); }
       else if ((op.action === "delete" && !current) || (op.action === "complete" && current?.remote?.status === 2)) { await this.finish(state, op); return this.publicOperation(op); }
       op.status = "cancelled"; op.error = ""; await this.checkpoint(state, op); return this.publicOperation(op);
     });
   }
-  recover(actorId: string, id: string, target: { id: string; version: string }) {
-    return this.serial(async () => {
-      if (!/^[a-f0-9-]{36}$/i.test(id) || !target || typeof target.id !== "string" || typeof target.version !== "string") throw new CollaborationError("恢复参数无效", 400);
-      if (!(await this.gateway.members()).some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
-      const state = await this.read(), op = state.operations[id];
-      if (!op || op.action !== "move" || !op.to) throw new CollaborationError("转移记录不存在", 404);
-      if (op.status !== "pending") return this.publicOperation(op);
-      if (op.phase !== "prepared" || await this.gateway.get(op.to, op.targetId)) throw new CollaborationError("转移状态已变化，请刷新后继续");
-      const match = (await this.candidates(state, op)).find(task => task.id === target.id && remoteVersion(task) === target.version);
-      if (!match) throw new CollaborationError("接收方任务已变化或内容不一致，请重新核对");
-      const source = await this.source(state, op.source!);
-      if (!source || source.version !== op.source!.version) throw new CollaborationError("原任务已变化，请重新核对");
-      op.targetId = match.id; op.creation = { ...op.creation, state: "received" };
-      await this.checkpoint(state, op);
-      return this.run(state, op);
-    });
+  async recover(): Promise<never> {
+    throw new CollaborationError("旧转移已停用，请重新认领", 409);
   }
   private async run(state: State, op: Operation) {
     try {
-      if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1 };
-      else if (op.action === "move") {
-        if (op.phase === "prepared") {
-          const source = await this.source(state, op.source!);
-          if (!source || source.version !== op.source!.version) throw new CollaborationError("原任务已变更，请取消本次转移后重新操作");
-          if (op.to) {
-            let existing = await this.gateway.get(op.to, op.targetId);
-            if (!existing && op.creation?.state === "new") {
-              const before = await this.gateway.inbox(op.to);
-              op.creation = { state: "sent", beforeIds: before.tasks.map(task => task.id) };
-              await this.checkpoint(state, op);
-              await this.gateway.create(op.to, op.targetId, op.fields, async actualId => {
-                if (op.creation!.beforeIds!.includes(actualId)) throw new CollaborationError("创建响应指向原有任务，已保留来源并停止转移");
-                op.targetId = actualId; op.creation!.state = "received";
-                await this.checkpoint(state, op);
-              });
-              existing = await this.gateway.get(op.to, op.targetId);
-            } else if (!existing && op.creation?.state !== "received") {
-              const matches = await this.candidates(state, op);
-              // Only a new, uniquely matching task outside the persisted pre-write
-              // snapshot can be recovered automatically after a lost response.
-              if (op.creation?.beforeIds && matches.length === 1) {
-                op.targetId = matches[0].id; op.creation.state = "received";
-                await this.checkpoint(state, op); existing = await this.gateway.get(op.to, op.targetId);
-              } else throw new CollaborationError("创建结果尚未对应，请核对并接续已有副本；已停止重复创建");
-            }
-            if (!existing || existing.status || !sameFields(existing, op.fields)) throw new CollaborationError(verificationIssue(existing, op.fields));
-          }
-          else state.buffer[op.targetId] = { fields: op.fields, version: 1, stagedBy: op.id };
-          op.phase = "destination-ready"; await this.checkpoint(state, op);
-        }
-        if (op.phase === "destination-ready") {
-          if (op.to) {
-            const target = await this.gateway.get(op.to, op.targetId);
-            if (!target || target.status || !sameFields(target, op.fields)) throw new CollaborationError("接收方副本不存在或已变更，原任务暂时保留");
-          }
-          const source = await this.source(state, op.source!);
-          if (source) {
-            if (source.version !== op.source!.version) throw new CollaborationError("原任务在转移期间被修改，请取消本次转移后重新操作");
-            if (op.source!.ownerId) { await this.gateway.checkTransfer(op.source!.ownerId, source.remote!); await this.gateway.remove(op.source!.ownerId, op.source!.taskId); }
-            else delete state.buffer[op.source!.taskId];
-          }
-          op.phase = "source-removed"; await this.checkpoint(state, op);
-        }
-      } else {
+      if (op.source && this.taskWorkflow(state, op.source.ownerId, op.source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
+      if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1, publisherId: op.actorId };
+      else if (op.action === "move") throw new CollaborationError("旧转移已停用，请重新认领");
+      else {
         const source = await this.source(state, op.source!);
         if (op.action === "delete" && !source) { await this.finish(state, op); return this.publicOperation(op); }
         if (!source) throw new CollaborationError("任务已移走，请取消此次操作并刷新");
@@ -295,7 +437,7 @@ export class CollaborationStore {
           if (op.action === "update") await this.gateway.update(op.source!.ownerId, op.source!.taskId, op.fields, source.version);
           else if (op.action === "complete") await this.gateway.complete(op.source!.ownerId, op.source!.taskId);
           else await this.gateway.remove(op.source!.ownerId, op.source!.taskId);
-        } else if (op.action === "update") state.buffer[op.source!.taskId] = { fields: op.fields, version: Number(source.version) + 1 };
+        } else if (op.action === "update") state.buffer[op.source!.taskId] = { ...state.buffer[op.source!.taskId], fields: op.fields, version: Number(source.version) + 1 };
         else delete state.buffer[op.source!.taskId];
       }
       await this.finish(state, op);

@@ -112,3 +112,42 @@
 @media (max-width: 640px) { .room-collaboration-dialog { width: calc(100vw - 20px); height: calc(100dvh - 104px); } .coop-surface { padding: 9px; border-radius: 13px; } .room-collaboration-dialog .coop-close { right: 0; top: -42px; } .coop-layout, .coop-members { gap: 10px; } .coop-column.buffer { min-height: 185px; } .coop-column.buffer .coop-task-list { grid-template-columns: repeat(auto-fill, minmax(min(205px, 100%), 1fr)); padding: 12px; } .coop-editor { padding: 16px; } .coop-editor-row { gap: 8px; } .topbar-actions .room-collaboration-trigger { padding: 7px 9px; } }
 @media (max-height: 580px) { .coop-column.buffer { min-height: 150px; } }
 @media (prefers-reduced-motion: reduce) { .coop-spin { animation: none; } }
+.coop-workflow-badge { display: inline-flex; gap: 5px; margin: 7px 0 0 23px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; color: var(--theme-accent-dark); background: var(--theme-soft); }
+.coop-workflows { position: fixed; inset: 0; margin: auto; width: min(680px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 64px); padding: 22px; border: 1px solid var(--line); border-radius: 18px; color: var(--ink); background: var(--panel); box-shadow: 0 20px 80px rgb(var(--shadow-rgb) / 25%); }
+.coop-workflows[open] { display: flex; flex-direction: column; gap: 18px; }
+.coop-workflows::backdrop { background: rgb(var(--shadow-rgb) / 24%); }
+.coop-workflows > header, .coop-workflows h3, .coop-workflow-heading { display: flex; align-items: center; gap: 9px; }
+.coop-workflows > header { justify-content: space-between; }
+.coop-workflows h3 { margin: 0; font-size: 17px; }
+.coop-workflow-list, .coop-workflow-detail { overflow-y: auto; min-height: 0; }
+.coop-workflow-list { display: grid; gap: 9px; }
+.coop-workflow-list > button { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 16px; border: 1px solid var(--line); border-radius: 11px; text-align: left; background: var(--soft); color: var(--ink); }
+.coop-workflow-list small { display: block; margin-top: 6px; color: var(--muted); }
+.coop-workflow-status { flex-shrink: 0; color: var(--theme-accent-dark); background: var(--theme-soft); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+.coop-workflow-status.rejected { color: var(--danger); }
+.coop-workflow-back { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; color: var(--muted); background: transparent; font-size: 12px; }
+.coop-workflow-heading { justify-content: space-between; margin: 16px 0 8px; }
+.coop-workflow-heading h4 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+.coop-workflow-people { font-size: 12px; color: var(--muted); margin: 8px 0 16px; }
+.coop-workflow-description { white-space: pre-wrap; font-size: 13px; color: var(--muted); }
+.coop-workflow-events { list-style: none; padding: 0 0 0 14px; margin: 20px 0; border-left: 2px solid var(--line); }
+.coop-workflow-events li { position: relative; padding: 0 0 20px 6px; font-size: 13px; }
+.coop-workflow-events li::before { content: ''; position: absolute; left: -19px; top: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--theme-accent); }
+.coop-workflow-events li:last-child { padding-bottom: 0; }
+.coop-workflow-events li > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.coop-workflow-events time { color: var(--muted); font-size: 11px; }
+.coop-workflow-events p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; margin: 8px 0; }
+.coop-workflow-events a { display: flex; align-items: center; gap: 5px; color: var(--theme-accent-dark); overflow-wrap: anywhere; margin: 6px 0; }
+.coop-workflow-compose { margin-top: 16px; padding: 14px; border: 1px dashed var(--line); border-radius: 11px; background: var(--soft); }
+.coop-workflow-compose label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+.coop-workflow-compose textarea { box-sizing: border-box; resize: vertical; width: 100%; padding: 10px; font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.coop-workflow-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.coop-workflow-files > span { display: flex; align-items: center; gap: 5px; font-size: 12px; overflow-wrap: anywhere; }
+.coop-workflow-files button { background: transparent; border: 0; color: var(--muted); }
+.coop-workflow-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.coop-workflow-actions > span { flex: 1; }
+.coop-workflow-actions small { font-size: 10px; color: var(--muted); }
+.coop-workflow-actions button { display: flex; align-items: center; gap: 5px; padding: 8px 10px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); }
+.coop-workflow-actions button.primary { background: var(--theme-accent); color: var(--theme-on-accent, white); border-color: var(--theme-accent); }
+.coop-workflows button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 500px) { .coop-workflows { padding: 15px; } .coop-workflow-heading { align-items: start; } }

@@ -1,0 +1,33 @@
+// Loaded only by the isolated test server. No requests reach real Dida accounts.
+import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+const original = globalThis.fetch;
+globalThis.fetch = async (input, init = {}) => {
+  const url = new URL(typeof input === 'string' ? input : input.url || input.href);
+  if (url.hostname !== 'api.dida365.com') return original(input, init);
+  const owner = new Headers(init.headers).get('authorization')?.replace('Bearer fixture-', '');
+  if (!['alice', 'bob'].includes(owner)) return new Response(null, { status: 401 });
+  const file = path.join(process.env.DATA_DIR, 'fake-dida.json');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8')), tasks = state[owner];
+  const route = url.pathname.replace('/open/v1', ''), method = init.method || 'GET';
+  const save = () => fs.writeFileSync(file, JSON.stringify(state));
+  if (route === '/project') return Response.json([]);
+  if (route === '/project/inbox') return Response.json({ id: `inbox-${owner}` });
+  if (route === '/project/inbox/data') return Response.json({ tasks: Object.values(tasks).filter(task => !task.status), columns: [] });
+  if (route === '/task/batch') {
+    const body = JSON.parse(init.body), ids = {};
+    for (const task of body.add) { const id = randomUUID().replaceAll('-', '').slice(0, 24); tasks[id] = { ...task, id }; ids[id] = 'created'; }
+    save(); return Response.json({ id2etag: ids });
+  }
+  if (route.endsWith('/comments')) return Response.json([]);
+  const match = route.match(/^\/project\/([^/]+)\/task\/([^/]+)(\/complete)?$/);
+  if (match && match[1] === `inbox-${owner}`) {
+    const id = match[2];
+    if (!tasks[id]) return new Response(null, { status: 404 });
+    if (method === 'DELETE') { delete tasks[id]; save(); return new Response(null, { status: 204 }); }
+    if (match[3] && method === 'POST') { tasks[id].status = 2; save(); return new Response(null, { status: 204 }); }
+    return Response.json(tasks[id]);
+  }
+  return new Response(null, { status: 404 });
+};

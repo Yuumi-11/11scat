@@ -1676,10 +1676,10 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: task.projectId, taskId: task.id }),
         });
-        if (!response.ok) throw new Error("complete failed");
-      } catch {
+        if (!response.ok) { const result = await response.json().catch(() => ({})); throw new Error(result.error || "完成状态没有同步成功"); }
+      } catch (error) {
         setTasks((current) => current.map((item) => item.id === task.id ? { ...item, done: false } : item));
-        setSyncError("完成状态没有同步成功");
+        setSyncError(error instanceof Error ? error.message : "完成状态没有同步成功");
       }
     }
   };

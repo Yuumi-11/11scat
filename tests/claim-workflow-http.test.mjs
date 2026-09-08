@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { createHmac, randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
+import { encryptToken } from '../app/api/ticktick/crypto.ts';
+import { taskFields } from '../app/api/room/tasks/store.ts';
+
+test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, role checks and approval', { timeout: 40000 }, async () => {
+  await mkdir('codex-generated/test-data', { recursive: true });
+  const dir = await mkdtemp(path.resolve('codex-generated/test-data/workflow-http-'));
+  const secret = randomUUID(), previous = process.env.TICKTICK_STORAGE_SECRET;
+  process.env.TICKTICK_STORAGE_SECRET = secret;
+  const users = Object.fromEntries(['alice', 'bob'].map(id => [id, { nickname: id, ticktickToken: encryptToken('fixture-' + id) }]));
+  if (previous === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previous;
+  await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, users }));
+  await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify({ alice: { original: { id: 'original', projectId: 'inbox-alice', ...taskFields({ title: 'HTTP 认领测试' }) } }, bob: {} }));
+  const socket = createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve)); const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
+  const child = spawn(process.execPath, ['--import', './tests/helpers/dida-fixture.mjs', 'node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env: { ...process.env, DATA_DIR: dir, AUTH_SESSION_SECRET: secret, TICKTICK_STORAGE_SECRET: secret, SITE_PASSWORD: 'fixture', IDENTITY_CODE_HASHES: '', VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' }, stdio: 'ignore', windowsHide: true });
+  const origin = `http://127.0.0.1:${port}`;
+  const cookie = id => { const payload = `${id}.${Math.floor(Date.now() / 1000) + 600}`; return `ss_access=${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`; };
+  const call = (id, route = '/api/room/tasks', body, headers = {}) => fetch(origin + route, { method: body === undefined ? 'GET' : 'POST', redirect: 'manual', headers: { Cookie: cookie(id), Origin: origin, 'Content-Type': 'application/json', ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  try {
+    let ready = false; for (let i = 0; i < 60; i++) { try { if ((await fetch(origin + '/access')).ok) { ready = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 200)); } assert.ok(ready);
+    const before = await (await call('alice')).json(), sourceTask = before.members.find(member => member.id === 'alice').tasks[0];
+    const claim = { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: sourceTask.id, version: sourceTask.version }, destination: 'bob' };
+    let response = await call('bob', '/api/room/tasks', claim); assert.equal(response.status, 200); let w = (await response.json()).workflow; assert.equal(w.status, 'working');
+    const act = async (actor, action, extra = {}) => call(actor, '/api/room/tasks', { id: randomUUID(), workflowId: w.id, version: w.version, action, ...extra });
+    response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 409); assert.match((await response.json()).error, /审批/);
+    response = await call('alice', '/api/ticktick/complete', { projectId: 'inbox-alice', taskId: sourceTask.id }); assert.equal(response.status, 409);
+    const upload = (actor, body, headers = {}) => fetch(`${origin}/api/room/tasks/files?workflow=${w.id}&name=${encodeURIComponent('评语.txt')}`, { method: 'POST', body, headers: { Cookie: cookie(actor), Origin: origin, ...headers }, redirect: 'manual' });
+    assert.equal((await upload('alice', 'draft')).status, 403);
+    assert.equal((await upload('bob', 'draft', { Origin: 'https://foreign.example' })).status, 403);
+    assert.equal((await upload('unknown', 'draft')).status, 403);
+    response = await upload('bob', '完成说明'); assert.equal(response.status, 200); const file = (await response.json()).file;
+    assert.equal((await call('alice', file.url)).status, 403);
+    const downloaded = await call('bob', file.url); assert.equal(downloaded.status, 200); assert.equal(await downloaded.text(), '完成说明'); assert.match(downloaded.headers.get('content-disposition'), /^attachment;/); assert.equal(downloaded.headers.get('x-content-type-options'), 'nosniff');
+    response = await act('bob', 'submit', { attachments: [file.id], comment: '已完成' }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal((await call('alice', file.url)).status, 200);
+    assert.equal((await act('bob', 'approve')).status, 403);
+    response = await upload('alice', '补充证明'); assert.equal(response.status, 200); const reviewFile = (await response.json()).file;
+    response = await act('alice', 'reject', { attachments: [reviewFile.id], comment: '请补充证明' }); w = (await response.json()).workflow; assert.equal(w.status, 'rejected');
+    assert.equal((await call('bob', reviewFile.url)).status, 200);
+    const state = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.ok(!state.alice.original.status); assert.ok(!state.bob[w.targetId].status);
+    const count = (await readdir(path.join(dir, 'workflow-files'))).length;
+    response = await upload('bob', new Uint8Array(20 * 1024 * 1024 + 1)); assert.equal(response.status, 413); assert.equal((await readdir(path.join(dir, 'workflow-files'))).length, count);
+    response = await act('bob', 'submit'); w = (await response.json()).workflow;
+    response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow; assert.equal(w.status, 'done');
+    const final = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(final.alice.original.status, 2); assert.equal(final.bob[w.targetId].status, 2);
+    assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
+  } finally { child.kill(); }
+});

@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { CircleAlert, CalendarDays, CalendarOff, Check, Ellipsis, GripVertical, Inbox, Loader2, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
-import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields } from "./collaboration-types";
+import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { InlineTaskTitle } from "./InlineTaskTitle";
 import { collaborationDate, splitCollaborationTasks } from "./collaboration-view";
-import { CollaborationRecovery, TransferCheck } from "./CollaborationRecovery";
+import { CollaborationRecovery } from "./CollaborationRecovery";
 
-type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" } | { id: string; action: "recover"; target: { id: string; version: string } };
+import { ClaimWorkflows, workflowStatus } from "./ClaimWorkflows";
+
+type RequestCommand = WorkflowCommand | { id: string; action: "legacy-reset" } | CollaborationCommand | { id: string; action: "resume" | "cancel" } | { id: string; action: "recover"; target: { id: string; version: string } };
 type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
 const taskKey = (task: RoomTask) => `${task.ownerId || "buffer"}:${task.id}`;
 const taskSource = (task: RoomTask) => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
@@ -29,6 +31,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false), [workflowId, setWorkflowId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [inlineTask, setInlineTask] = useState<RoomTask | null>(null);
   const [keyboardDrag, setKeyboardDrag] = useState<{ task: RoomTask; owner: string } | null>(null);
@@ -87,7 +90,13 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     if (!open) return;
     const element = dialog.current, button = trigger.current;
     element?.showModal();
-    const first = setTimeout(() => void load(), 0);
+    const first = setTimeout(() => {
+      locked.current = true; setBusy(true);
+      void fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "legacy-reset" }), signal: AbortSignal.timeout(90000) })
+        .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "旧记录清理暂未完成"); })
+        .catch(cause => setError(cause instanceof Error ? cause.message : "旧记录清理暂未完成"))
+        .finally(async () => { await load(true); locked.current = false; setBusy(false); });
+    }, 0);
     const timer = setInterval(() => { if (!document.hidden && !locked.current && !drag.current) void load(); }, 15000);
     const invalidate = () => { generation.current++; fetching.current = false; loadController.current?.abort(); };
     return () => { clearTimeout(first); clearInterval(timer); invalidate(); element?.close(); button?.focus({ preventScroll: true }); };
@@ -96,18 +105,22 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
   async function perform(command: RequestCommand): Promise<boolean> {
     if (locked.current) return false;
     locked.current = true; setBusy(true); setError(""); setNotice(""); setUncertain(command);
-    let operation: OperationView | undefined;
+    let operation: OperationView | undefined, workflow: ClaimWorkflow | undefined;
     try {
       const response = await fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command), signal: AbortSignal.timeout(90000) });
       const data = await response.json();
       if (!response.ok) { if (response.status < 500) setUncertain(null); throw new Error(data.error || "操作未完成"); }
-      operation = data.operation;
+      operation = data.operation; workflow = data.workflow;
+      if (workflow) { setWorkflowId(workflow.id); setWorkflowOpen(true); }
       setUncertain(null);
-      if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
+      if (workflow?.error) setError(workflow.error);
+      else if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
       else setNotice(operation?.status === "cancelled" ? "已取消未完成的操作" : "已保存");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "请求结果未确认，请核对并重试"); }
     finally {
       const next = await load(true);
+      workflow ||= next?.workflows.find(item => item.id === command.id || item.events.some(event => event.id === command.id) || (command.action === "retry-workflow" && item.id === command.workflowId && item.version !== command.version));
+      if (workflow) { setUncertain(null); setWorkflowId(workflow.id); setWorkflowOpen(true); }
       const known = next?.operations.find(item => item.id === command.id);
       if (known) { setUncertain(null); operation ||= known; }
       if (operation?.status === "done") { setError(""); setNotice("已保存"); }
@@ -115,16 +128,16 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       void onChanged();
     }
     if (operation?.status === "done" || operation?.status === "cancelled") setDraftId(current => current === command.id ? null : current);
-    return operation?.status === "done";
+    return workflow ? !workflow.error : operation?.status === "done";
   }
   const unavailable = busy || !!uncertain;
   const ownerName = (owner: string | null) => owner === null ? "任务板" : snapshot?.members.find(member => member.id === owner)?.name || "成员";
-  const canDrop = (owner: string) => owner === "" || snapshot?.members.some(member => member.id === owner && member.connected && !member.error);
+  const canDrop = (owner: string) => owner !== "" && snapshot?.members.some(member => member.id === owner && member.connected && !member.error);
   const move = async (task: RoomTask, owner: string) => {
-    if (unavailable || task.pending || task.transferBlocked || (task.ownerId || "") === owner || !canDrop(owner)) return;
-    await perform({ id: crypto.randomUUID(), action: "move", source: taskSource(task), destination: owner || null });
+    if (unavailable || task.workflowId || task.pending || task.transferBlocked || (task.ownerId || "") === owner || !canDrop(owner)) return;
+    await perform({ id: crypto.randomUUID(), action: "claim", source: taskSource(task), destination: owner || null });
   };
-  const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setRecoveryOpen(false); setInlineTask(null); setDraftId(null); setKeyboardDrag(null); setHoverOwner(null); setGhost(null); drag.current = null; } };
+  const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setRecoveryOpen(false); setWorkflowOpen(false); setInlineTask(null); setDraftId(null); setKeyboardDrag(null); setHoverOwner(null); setGhost(null); drag.current = null; } };
   const edit = (task: RoomTask) => {
     setDeleteArmed(false); setError(""); setKeyboardDrag(null); setHoverOwner(null);
     setEditor({ task, title: task.title, content: task.content, priority: task.priority, start: dateInput(task.startDate, task.isAllDay), due: dateInput(task.dueDate, task.isAllDay), allDay: task.isAllDay, tags: task.tags.join(", "), repeat: task.repeatFlag, reminders: task.reminders });
@@ -158,8 +171,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     }
   }
   function card(task: RoomTask) {
+    const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
+    const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
-    const cardLocked = unavailable || pending || !!inlineTask || !!draftId;
+    const cardLocked = unavailable || !!workflow || pending || !!inlineTask || !!draftId;
     return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
       <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动安排任务；键盘可按空格、方向键，再按 Enter 放下"} aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
         onBlur={() => { setKeyboardDrag(null); setHoverOwner(null); }}
@@ -170,7 +185,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
           if (event.key === "Escape") { setKeyboardDrag(null); setHoverOwner(null); return; }
           if (!keyboardDrag) { setKeyboardDrag({ task, owner: task.ownerId || "" }); setHoverOwner(task.ownerId || ""); return; }
           if ([" ", "Enter"].includes(event.key)) { void move(keyboardDrag.task, keyboardDrag.owner); setKeyboardDrag(null); setHoverOwner(null); return; }
-          const owners = ["", ...(snapshot?.members.filter(member => canDrop(member.id)).map(member => member.id) || [])];
+          const owners = snapshot?.members.filter(member => canDrop(member.id)).map(member => member.id) || [];
           const next = owners[(owners.indexOf(keyboardDrag.owner) + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) + owners.length) % owners.length];
           setKeyboardDrag({ task: keyboardDrag.task, owner: next }); setHoverOwner(next);
           const target = Array.from(dialog.current?.querySelectorAll<HTMLElement>("[data-coop-owner]") || []).find(element => element.dataset.coopOwner === next);
@@ -180,21 +195,22 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         {isEditing ? <InlineTaskTitle key={taskKey(inlineTask)} initialValue={inlineTask.title} label="修改任务标题" disabled={unavailable} onCancel={() => setInlineTask(null)} onSave={async title => {
           const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
           if (done) setInlineTask(null); return done;
-        }} /> : <button className="coop-task-title" type="button" disabled={cardLocked} title="点击修改标题" onClick={() => { setInlineTask(task); setError(""); }}>{task.title}</button>}
-        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={cardLocked} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
+        }} /> : <button className="coop-task-title" type="button" disabled={unavailable || pending || !!inlineTask || !!draftId} title={workflow ? "查看工作流程" : "点击修改标题"} onClick={() => { if (workflow) showWorkflow(); else { setInlineTask(task); setError(""); } }}>{task.title}</button>}
+        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => workflow ? showWorkflow() : edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
         <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={cardLocked} onClick={() => void perform({ id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
       {task.content && <p className="coop-task-summary">{task.content}</p>}
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (task.ownerId !== identityId && canDrop(identityId))) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
-        {task.ownerId !== identityId && canDrop(identityId) && <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
+        {!workflow && task.ownerId !== identityId && canDrop(identityId) && <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
       </div>}
-      {task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
+      {workflow && <button type="button" className={`coop-workflow-badge ${workflow.status}`} onClick={showWorkflow}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</button>}
+      {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
       {pending && <button type="button" className="coop-pending-label" onClick={() => setRecoveryOpen(true)}><CircleAlert size={12} aria-hidden="true" />查看待处理操作</button>}
     </article>;
   }
   function column(owner: string | null, name: string, tasks: RoomTask[], problem?: string, diagnostic?: string) {
     const { dated, undated } = splitCollaborationTasks(tasks);
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
-      <header><span className="coop-column-icon">{owner === null ? <Inbox size={18} /> : name.slice(0, 1)}</span><h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span>{owner === null && <>{(pending.length > 0 || uncertain) && <button type="button" className="coop-recovery-trigger" aria-haspopup="dialog" aria-expanded={recoveryOpen} onClick={() => setRecoveryOpen(true)}><CircleAlert size={14} aria-hidden="true" />待处理 {new Set([...pending.map(operation => operation.id), ...(uncertain ? [uncertain.id] : [])]).size}</button>}<button type="button" className="coop-icon coop-refresh" disabled={loading || busy} title="刷新全室任务" aria-label="刷新全室任务" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={17} className={loading ? "coop-spin" : ""} /></button></>}</header>
+      <header><span className="coop-column-icon">{owner === null ? <Inbox size={18} /> : name.slice(0, 1)}</span><h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span>{owner === null && <><button type="button" className="coop-recovery-trigger" onClick={() => { setWorkflowId(null); setWorkflowOpen(true); setError(""); }}>工作流程 {snapshot?.workflows.filter(item => item.status !== "done").length || ""}</button>{(pending.length > 0 || uncertain || !!snapshot?.legacyCleanup?.length) && <button type="button" className="coop-recovery-trigger" aria-haspopup="dialog" aria-expanded={recoveryOpen} onClick={() => setRecoveryOpen(true)}><CircleAlert size={14} aria-hidden="true" />核对 {new Set([...pending.map(operation => operation.id), ...(uncertain ? [uncertain.id] : [])]).size}</button>}<button type="button" className="coop-icon coop-refresh" disabled={loading || busy} title="刷新全室任务" aria-label="刷新全室任务" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={17} className={loading ? "coop-spin" : ""} /></button></>}</header>
       {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", icon: CalendarDays, tasks: dated }, { label: "无日期", icon: CalendarOff, tasks: undated }]).map(lane => <section className="coop-lane" key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><lane.icon size={13} aria-hidden="true" /><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(card)}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(card)}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
         const done = await perform({ id: draftId, action: "create", fields: { title } }); if (done) setDraftId(null); return done;
       }} /></div> : <button className="coop-new-task" type="button" title="新建任务" aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>}</div>}
@@ -215,12 +231,15 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       <button type="button" className="coop-icon coop-close" disabled={busy || !!editor} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button>
       <div className="coop-surface">
       <div className="coop-layout" aria-busy={loading || busy}>{snapshot ? <>{column(null, "任务板", snapshot.buffer)}<div ref={membersPane} className="coop-members">{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</div></> : <div className="coop-empty"><p>{loading ? "正在读取…" : "暂时无法读取任务"}</p><button type="button" className="coop-icon" disabled={loading} aria-label="重新读取任务" onClick={() => { setError(""); void load(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button>{uncertain && <button type="button" onClick={() => setRecoveryOpen(true)}>查看待处理操作</button>}</div>}</div>
-      {!editor && !recoveryOpen && (error || notice || busy) && <div className={`coop-toast${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}<span>{error || (busy ? "正在保存…" : notice)}</span>{(pending.length > 0 || uncertain) && <button type="button" onClick={() => setRecoveryOpen(true)}>查看</button>}{!busy && <button type="button" aria-label="收起提示" onClick={() => { setError(""); setNotice(""); }}><X size={14} /></button>}</div>}
+      {!editor && !recoveryOpen && !workflowOpen && (error || notice || busy) && <div className={`coop-toast${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}<span>{error || (busy ? "正在保存…" : notice)}</span>{(pending.length > 0 || uncertain) && <button type="button" onClick={() => setRecoveryOpen(true)}>查看</button>}{!busy && <button type="button" aria-label="收起提示" onClick={() => { setError(""); setNotice(""); }}><X size={14} /></button>}</div>}
+      {workflowOpen && snapshot && <ClaimWorkflows snapshot={snapshot} initialId={workflowId} busy={busy} error={error} perform={perform} retryUncertain={uncertain ? () => void perform(uncertain) : undefined} onClose={() => setWorkflowOpen(false)} />}
       {recoveryOpen && <CollaborationRecovery busy={busy} onClose={() => setRecoveryOpen(false)}>
         {error && <p className="coop-feedback error" role="status">{error}</p>}
         {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
-        {pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small><small>发起账号：{ownerName(operation.actorId)} · {operation.createdAt ? `发起于 ${operationTime(operation.createdAt)}` : "首次时间未记录"}</small><small>最近处理：{operationTime(operation.updatedAt)}</small></span><div className="coop-recovery-actions"><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>{operation.action === "move" && <TransferCheck key={`${operation.id}:${operation.updatedAt}`} operationId={operation.id} disabled={unavailable} onRecover={target => void perform({ id: operation.id, action: "recover", target })} />}</div>)}
-        {!pending.length && !uncertain && <p className="coop-empty">没有待处理的操作</p>}
+        {snapshot?.legacyCleanup?.map((issue, index) => <div className="coop-recovery" key={index}><span><strong>{issue.title}</strong><small>{issue.message}</small></span></div>)}
+        {pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.error || "等待继续"}</small><small>发起账号：{ownerName(operation.actorId)} · {operation.createdAt ? operationTime(operation.createdAt) : "首次时间未记录"}</small></span><div className="coop-recovery-actions">{operation.action === "move" ? <button type="button" disabled={unavailable} onClick={() => void perform({ id: crypto.randomUUID(), action: "legacy-reset" })}>重试旧记录回退</button> : <><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>停止重试</button></>}</div></div>)}
+
+        {!pending.length && !uncertain && !snapshot?.legacyCleanup?.length && <p className="coop-empty">没有待处理的操作</p>}
       </CollaborationRecovery>}
       <span className="coop-sr-only" aria-live="polite">{keyboardDrag ? `正在移动 ${keyboardDrag.task.title}，目标 ${ownerName(keyboardDrag.owner || null)}，方向键选择，Enter 放下，Esc 取消` : ""}</span>
       {editor && <div className="coop-editor-backdrop"><form className="coop-editor" aria-label="编辑协作任务" onSubmit={event => {
