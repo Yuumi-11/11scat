@@ -12,8 +12,11 @@ async function identity() { const id = await currentIdentityId(); return id && a
 export async function GET(request: NextRequest) {
   const id = await identity();
   if (!id) return json({ error: "请先登录自习室" }, 401);
-  try { return json(request.nextUrl.searchParams.has("revision") ? await store.revision() : await store.snapshot(id)); }
-  catch { return json({ error: "协作区暂时无法读取，请重试" }, 503); }
+  try {
+    const diagnostic = request.nextUrl.searchParams.get("diagnose");
+    return json(diagnostic !== null ? await store.inspectTransfer(id, diagnostic) : request.nextUrl.searchParams.has("revision") ? await store.revision() : await store.snapshot(id));
+  }
+  catch (error) { return json({ error: error instanceof CollaborationError ? error.message : "协作区暂时无法读取，请重试" }, error instanceof CollaborationError ? error.status : 503); }
 }
 export async function POST(request: NextRequest) {
   const actor = await identity();

@@ -41,6 +41,16 @@ function canonical(value: unknown): unknown {
 export const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
 export const remoteVersion = (task: RemoteTask) => fingerprint({ fields: taskFields(task), status: task.status || 0, parentId: task.parentId || "", desc: task.desc || "", etag: task.etag || "" });
 export const sameFields = (a: Partial<TaskFields>, b: Partial<TaskFields>) => fingerprint(taskFields(a)) === fingerprint(taskFields(b));
+const fieldLabels: Record<keyof TaskFields, string> = { title: "标题", content: "说明", priority: "优先级", startDate: "开始时间", dueDate: "截止时间", isAllDay: "全天设置", timeZone: "时区", tags: "标签", reminders: "提醒", repeatFlag: "重复规则", repeatFrom: "重复计算方式", desc: "检查项说明", kind: "任务类型", items: "检查项" };
+export function fieldDifferences(a: Partial<TaskFields>, b: Partial<TaskFields>): string[] {
+  const left = taskFields(a), right = taskFields(b);
+  return (Object.keys(fieldLabels) as (keyof TaskFields)[]).filter(key => fingerprint(left[key]) !== fingerprint(right[key])).map(key => fieldLabels[key]);
+}
+export function verificationIssue(task: RemoteTask | null, fields: TaskFields): string {
+  if (!task) return "尚未读到接收方副本，原任务仍保留";
+  if (task.status) return "接收方副本已完成或状态改变，原任务仍保留";
+  return `接收方副本核对不一致：${fieldDifferences(task, fields).join("、")}；原任务仍保留`;
+}
 export function validateFields(input: unknown): Partial<TaskFields> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new CollaborationError("任务内容无效", 400);
   const value = input as Record<string, unknown>, result: Record<string, unknown> = {};
@@ -102,6 +112,24 @@ export class CollaborationStore {
   }
   private publicOperation(op: Operation): OperationView { const { id, actorId, title, action, from, to, status, error, updatedAt } = op; return { id, actorId, title, action, from, to, status, error, updatedAt }; }
   async revision() { const state = await this.read(); return { revision: state.revision, bufferCount: Object.values(state.buffer).filter(task => !task.stagedBy).length }; }
+  inspectTransfer(actorId: string, id: string) {
+    return this.serial(async () => {
+      if (!/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("操作编号无效", 400);
+      if (!(await this.gateway.members()).some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
+      const state = await this.read(), op = state.operations[id];
+      if (!op) throw new CollaborationError("操作不存在", 404);
+      if (op.action !== "move") throw new CollaborationError("此操作不是任务转移", 422);
+      if (op.status !== "pending") return { status: op.status, message: op.status === "done" ? "该转移已完成，请刷新任务板。" : "该转移已取消，请刷新任务板。" };
+      const source = await this.source(state, op.source!);
+      const target = op.to ? await this.gateway.get(op.to, op.targetId) : state.buffer[op.targetId]?.fields || null;
+      const sourceUnchanged = !!source && source.version === op.source!.version;
+      const destinationCompleted = !!(target && "status" in target && target.status);
+      const differences = target ? fieldDifferences(target, op.fields) : [];
+      const sourceMessage = !source ? "本次未读到原任务。" : sourceUnchanged ? "原任务仍在原处，内容与转移开始时一致。" : "原任务仍在原处，但已发生变化。";
+      const targetMessage = !target ? "本次未读到接收方副本，尚不能确认是否创建成功。" : destinationCompleted ? "接收方副本已完成或状态改变。" : differences.length ? `接收方副本与转移记录不一致的项目：${differences.join("、")}。` : "接收方副本已读到，任务内容核对一致。";
+      return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, message: `${sourceMessage}${targetMessage}本次核对只读取状态，没有继续或取消转移。` };
+    });
+  }
   async snapshot(identityId: string): Promise<CollaborationSnapshot> {
     const members = await this.gateway.members();
     const results: CollaborationSnapshot["members"] = [];

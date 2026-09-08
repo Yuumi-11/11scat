@@ -36,6 +36,11 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
     assert.equal(unlinkedDiagnostics.status, 401);
     assert.ok([307, 401].includes((await fetch(`${origin}/api/room/tasks`, { redirect: 'manual' })).status));
     assert.equal((await call('unknown')).status, 401);
+    const inspectPath = `${origin}/api/room/tasks?diagnose=${randomUUID()}`;
+    assert.ok([307, 401].includes((await fetch(inspectPath, { redirect: 'manual' })).status));
+    assert.equal((await fetch(inspectPath, { headers: { Cookie: cookie('unknown') }, redirect: 'manual' })).status, 401);
+    assert.equal((await fetch(inspectPath, { headers: { Cookie: cookie('alice') } })).status, 404);
+    assert.equal((await fetch(`${origin}/api/room/tasks?diagnose=invalid`, { headers: { Cookie: cookie('alice') } })).status, 400);
     const create = { id: randomUUID(), action: 'create', fields: { title: '全室共同任务' } };
     assert.equal((await call('alice', create, { Origin: 'https://foreign.example' })).status, 403);
     assert.equal((await call('alice', create)).status, 200);

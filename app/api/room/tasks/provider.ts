@@ -1,7 +1,7 @@
 import { getUser, listRoomMembers } from "../../identity/store";
 import { decryptToken } from "../../ticktick/crypto";
 import { tickFetch, tickInboxData, TickApiError } from "../../ticktick/client";
-import { CollaborationError, remoteVersion, sameFields, type Gateway, type RemoteTask } from "./store";
+import { CollaborationError, remoteVersion, sameFields, verificationIssue, type Gateway, type RemoteTask } from "./store";
 import type { TaskFields } from "../../../collaboration-types";
 
 type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number };
@@ -43,12 +43,12 @@ export const gateway: Gateway = {
   },
   async create(owner, id, fields) {
     const existing = await gateway.get(owner, id);
-    if (existing) { if (existing.status || !sameFields(existing, fields)) throw new CollaborationError("接收方任务已经发生变更，暂不重复创建"); return; }
+    if (existing) { if (existing.status || !sameFields(existing, fields)) throw new CollaborationError(verificationIssue(existing, fields)); return; }
     const account = await context(owner);
     const data = await request(owner, "/task/batch", { method: "POST", body: JSON.stringify({ add: [{ ...payload(fields), id, projectId: account.projectId }] }) });
     if (data?.id2error?.[id] && data.id2error[id] !== "EXISTED") throw new CollaborationError("接收方未接受任务，请检查授权或账户配额", 422);
     const created = await gateway.get(owner, id);
-    if (!created || created.status || !sameFields(created, fields)) throw new CollaborationError("接收方任务尚未核实，原任务仍保留");
+    if (!created || created.status || !sameFields(created, fields)) throw new CollaborationError(verificationIssue(created, fields));
   },
   async update(owner, id, fields, version) {
     const account = await context(owner), existing = await gateway.get(owner, id);

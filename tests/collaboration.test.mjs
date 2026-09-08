@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CollaborationError, CollaborationStore, remoteVersion, taskFields } from '../app/api/room/tasks/store.ts';
@@ -85,6 +85,46 @@ test('lost creation and deletion responses resume across service restarts withou
   await again.resume('alice', returned.id);
   const snapshot = await again.snapshot('alice');
   assert.equal(snapshot.buffer.length, 1); assert.equal(snapshot.buffer[0].pending, undefined);
+});
+
+test('transfer inspection identifies changed fields without exposing values or writing either account or operation state', async () => {
+  const f = await fixture(), task = await f.create('private-task-title');
+  f.loseCreate();
+  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
+  const target = [...f.accounts.bob.values()][0];
+  target.timeZone = 'Europe/London';
+  const stateBefore = await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8');
+  const countsBefore = { ...f.counts };
+  const result = await f.store.inspectTransfer('alice', op.id);
+  assert.equal(result.sourceExists, true);
+  assert.equal(result.sourceUnchanged, true);
+  assert.equal(result.destinationExists, true);
+  assert.deepEqual(result.differences, ['时区']);
+  assert.match(result.message, /时区/);
+  for (const secret of [task.title, task.id, target.id, target.projectId, target.timeZone]) assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.deepEqual(f.counts, countsBefore);
+  assert.equal(await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8'), stateBefore);
+  await assert.rejects(f.store.inspectTransfer('stranger', op.id), { status: 403 });
+  await assert.rejects(f.store.inspectTransfer('alice', 'invalid'), { status: 400 });
+  await assert.rejects(f.store.inspectTransfer('alice', randomUUID()), { status: 404 });
+});
+
+test('transfer inspection distinguishes missing and completed copies and does not resume a verified pending transfer', async () => {
+  const f = await fixture(), task = await f.create('waiting');
+  f.loseCreate();
+  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
+  let result = await f.store.inspectTransfer('bob', op.id);
+  assert.equal(result.status, 'pending'); assert.deepEqual(result.differences, []);
+  assert.match(result.message, /核对一致/);
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
+  const target = [...f.accounts.bob.values()][0];
+  target.status = 2;
+  result = await f.store.inspectTransfer('alice', op.id);
+  assert.equal(result.destinationCompleted, true);
+  f.accounts.bob.clear();
+  result = await f.store.inspectTransfer('alice', op.id);
+  assert.equal(result.destinationExists, false); assert.match(result.message, /未读到接收方副本/);
+  assert.equal(f.counts.removes, 0);
 });
 test('source edits during transfer preserve the original and allow rolling back an unchanged copy', async () => {
   const f = await fixture();
