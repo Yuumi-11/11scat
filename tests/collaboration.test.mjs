@@ -75,6 +75,118 @@ test('collaboration includes the captured redacted diagnostic for the member who
 
 const claim = (f, task, actor = 'bob', destination = actor) => f.store.claim(actor, { id: randomUUID(), action: 'claim', source: source(task), destination });
 const act = (f, workflow, actor, action, extra = {}) => f.store.workflowCommand(actor, { id: randomUUID(), workflowId: workflow.id, version: workflow.version, action, ...extra });
+const refreshed = async (f, id) => (await f.store.snapshot('alice')).workflows.find(workflow => workflow.id === id);
+
+test('missing claimant task is restored without resetting submitted review or losing results', async () => {
+  const f = await fixture(), task = await personal(f, { dueDate: '2026-09-12T12:00:00+0800', tags: ['exam'], reminders: ['TRIGGER:-PT15M'], priority: 5 });
+  let w = await claim(f, task);
+  const fileId = randomUUID(); await mkdir(path.join(f.dir, 'workflow-files'), { recursive: true });
+  await writeFile(path.join(f.dir, 'workflow-files', `${fileId}.json`), JSON.stringify({ workflowId: w.id, actorId: 'bob', name: 'solution.pdf', size: 321 }));
+  w = await act(f, w, 'bob', 'submit', { comment: '解题结果已提交', attachments: [fileId] });
+  const original = structuredClone(f.accounts.alice.get(task.id)), oldTarget = w.targetId;
+  f.accounts.bob.delete(oldTarget);
+  w = await refreshed(f, w.id);
+  assert.equal(w.taskAnomaly, true); assert.equal(w.status, 'submitted');
+  const version = w.version;
+  w = await refreshed(f, w.id);
+  assert.equal(w.version, version, 'unchanged anomaly refreshes do not generate events or revisions');
+  assert.equal(w.events.filter(event => event.type === 'task-anomaly').length, 1);
+  await assert.rejects(act(f, w, 'offline', 'restore-workflow'), { status: 403 });
+  w = await act(f, w, 'bob', 'restore-workflow');
+  assert.equal(w.taskAnomaly, false); assert.equal(w.status, 'submitted'); assert.notEqual(w.targetId, oldTarget);
+  assert.equal(w.events.find(event => event.type === 'submit').comment, '解题结果已提交');
+  assert.equal(w.events.find(event => event.type === 'submit').files[0].id, fileId);
+  assert.deepEqual(f.accounts.alice.get(task.id), original, 'surviving original is untouched');
+  assert.deepEqual(taskFields(f.accounts.bob.get(w.targetId)), w.fields);
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+});
+
+test('recovery of both public counterparts survives a lost creation response and a store restart', async () => {
+  const f = await fixture(), publicTask = await f.create('公共发布任务');
+  let w = await claim(f, publicTask);
+  f.accounts.alice.delete(w.reviewerTaskId); f.accounts.bob.delete(w.targetId);
+  w = await refreshed(f, w.id);
+  f.loseCreate();
+  const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'restore-workflow' };
+  w = await f.store.workflowCommand('alice', command);
+  assert.ok(w.syncError); assert.equal(w.status, 'working'); assert.equal(f.accounts.alice.size, 1);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await f.store.workflowCommand('alice', command);
+  assert.equal(w.taskAnomaly, false); assert.equal(w.status, 'working');
+  assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.creates, 4);
+  await f.store.workflowCommand('alice', command);
+  assert.equal(f.counts.creates, 4, 'successful restoration replay is idempotent');
+  assert.equal((await f.store.snapshot('alice')).buffer[0].id, publicTask.id);
+  f.accounts.bob.delete(w.targetId); w = await refreshed(f, w.id);
+  await f.store.workflowCommand('alice', command);
+  assert.equal(f.counts.creates, 4, 'old restoration request cannot restore a later anomaly');
+});
+
+test('surviving task external edits still invalidate approval after counterpart restoration', async () => {
+  const f = await fixture(), task = await personal(f);
+  let w = await claim(f, task); w = await act(f, w, 'bob', 'submit', { comment: 'original result' });
+  f.accounts.alice.get(task.id).title = '滴答中修改后的要求'; f.accounts.bob.delete(w.targetId);
+  w = await refreshed(f, w.id); w = await act(f, w, 'bob', 'restore-workflow');
+  assert.equal(w.status, 'submitted');
+  await assert.rejects(act(f, w, 'alice', 'approve'), /任务在提交后发生变化/);
+});
+
+test('account and detail errors never mark tasks missing or create replacements', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  const inbox = f.gateway.inbox, get = f.gateway.get;
+  f.gateway.inbox = async owner => { if (owner === 'bob') throw new Error('authorization expired'); return inbox(owner); };
+  w = await refreshed(f, w.id); assert.ok(w.syncError); assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
+  f.gateway.inbox = inbox; f.accounts.bob.delete(w.targetId);
+  f.gateway.get = async (owner, id) => { if (owner === 'bob') throw new Error('timeout'); return get(owner, id); };
+  w = await refreshed(f, w.id); assert.match(w.syncError, /timeout/); assert.ok(!w.taskAnomaly);
+  f.gateway.get = get; w = await refreshed(f, w.id); assert.equal(w.taskAnomaly, true);
+  f.gateway.inbox = async owner => { if (owner === 'alice') throw new Error('offline'); return inbox(owner); };
+  w = await act(f, w, 'bob', 'restore-workflow'); assert.match(w.syncError, /offline/); assert.equal(f.counts.creates, 1);
+});
+
+test('normal inbox tasks, self collections and archived workflows do not trigger linked detail checks', async () => {
+  const f = await fixture(); await personal(f); const board = await f.create('自己的任务'); await claim(f, board, 'alice');
+  let w = await claim(f, await f.create('已结束')); w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'done');
+  let calls = 0; f.gateway.get = async () => { calls++; throw new Error('unexpected'); };
+  await f.store.snapshot('bob'); assert.equal(calls, 0);
+});
+
+test('present active workflow tasks reuse inbox data without extra detail lookups', async () => {
+  const f = await fixture(), task = await personal(f); await claim(f, task);
+  let calls = 0; f.gateway.get = async () => { calls++; throw new Error('unexpected'); };
+  await f.store.snapshot('alice'); assert.equal(calls, 0);
+});
+
+test('moved task association is saved and later workflow edits use its discovered project', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.alice.get(task.id).projectId = 'new-list';
+  const inbox = f.gateway.inbox, update = f.gateway.update;
+  f.gateway.inbox = async owner => { const data = await inbox(owner); data.tasks = data.tasks.filter(task => task.projectId === data.projectId); return data; };
+  f.gateway.locate = f.gateway.get;
+  w = await refreshed(f, w.id); assert.ok(!w.taskAnomaly); assert.equal(w.events.filter(event => event.type === 'task-relocated').length, 1);
+  let project;
+  f.gateway.update = async (owner, id, fields, version, projectId) => { if (owner === 'alice') project = projectId; await update(owner, id, fields, version); };
+  w = await act(f, w, 'offline', 'update-workflow', { fields: { title: '继续编辑' } });
+  assert.equal(project, 'new-list'); assert.equal(w.error, ''); assert.equal(f.counts.creates, 1);
+});
+
+test('concurrent restorations cannot create duplicate replacements', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.bob.delete(w.targetId); w = await refreshed(f, w.id);
+  const results = await Promise.allSettled([act(f, w, 'bob', 'restore-workflow'), act(f, w, 'alice', 'restore-workflow')]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.creates, 2);
+});
+
+test('completed Dida task is not treated as missing and no automatic replacement or approval occurs', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.bob.get(w.targetId).status = 2;
+  const inbox = f.gateway.inbox;
+  f.gateway.inbox = async owner => { const data = await inbox(owner); data.tasks = data.tasks.filter(task => !task.status); return data; };
+  w = await refreshed(f, w.id);
+  assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
+});
 async function personal(f, fields = {}) {
   const task = { id: 'original-task', projectId: 'inbox-alice', ...taskFields({ title: '共同复习', ...fields }) };
   f.accounts.alice.set(task.id, task);

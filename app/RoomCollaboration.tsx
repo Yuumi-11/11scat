@@ -122,7 +122,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       operation = data.operation; workflow = data.workflow;
       if (workflow && command.action !== "update-workflow") { setWorkflowId(workflow.id); setWorkflowOpen(true); }
       setUncertain(null);
-      if (workflow?.error) setError(workflow.error);
+      if (workflow?.error || workflow?.syncError) setError(workflow.syncError || workflow.error);
       else if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
       else setNotice(operation?.status === "cancelled" ? "已取消未完成的操作" : "已保存");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "请求结果未确认，请核对并重试"); }
@@ -138,7 +138,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       void onChanged();
     }
     if (operation?.status === "done" || operation?.status === "cancelled") setDraftId(current => current === command.id ? null : current);
-    return workflow ? !workflow.error : operation?.status === "done";
+    return workflow ? !workflow.error && !workflow.syncError : operation?.status === "done";
   }
   const unavailable = busy || !!uncertain;
   const ownerName = (owner: string | null) => owner === null ? "任务板" : snapshot?.members.find(member => member.id === owner)?.name || "成员";

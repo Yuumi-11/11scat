@@ -25,4 +25,11 @@ test('workflow detail offers settings to every member and direct completion only
   const overview = archived => renderToStaticMarkup(createElement(WorkflowList, { workflows, archived, setArchived() {}, select() {}, name: id => id }));
   const active = overview(false); assert.ok(active.includes('我认领的事项')); assert.ok(active.includes('他人认领的事项')); assert.ok(!active.includes('归档事项示例')); assert.ok(active.includes('已完成归档'));
   const archive = overview(true); assert.ok(archive.includes('归档事项示例')); assert.ok(!archive.includes('我认领的事项')); assert.ok(!archive.includes('他人认领的事项')); assert.ok(archive.includes('未完成流程'));
+  workflow.taskAnomaly = true;
+  for (const member of ['alice', 'bob', 'charlie']) {
+    const html = render(member, 'submitted');
+    assert.equal(html.includes('恢复任务</button>'), member !== 'charlie');
+    assert.ok(html.includes('保留当前待审批进度和已提交材料'));
+    assert.ok(!html.includes('>通过</button>')); assert.ok(!html.includes('>提交完成</button>'));
+  }
 });

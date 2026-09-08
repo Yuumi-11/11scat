@@ -5,7 +5,7 @@ import { Archive, ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, 
 import type { ClaimWorkflow, CollaborationSnapshot, WorkflowCommand, WorkflowFile } from "./collaboration-types";
 
 export const workflowStatus: Record<ClaimWorkflow["status"], string> = { creating: "正在建立", working: "进行中", submitted: "待审批", rejected: "已打回", approving: "正在确认完成", done: "已完成" };
-const eventLabels: Record<string, string> = { claimed: "安排认领", submit: "提交完成", approve: "审批通过", reject: "打回修改", completed: "完成同步", "owner-complete": "发布者直接完成", updating: "修改详情", updated: "详情已同步", "update-replaced": "详情修改已替代" };
+const eventLabels: Record<string, string> = { claimed: "安排认领", submit: "提交完成", approve: "审批通过", reject: "打回修改", completed: "完成同步", "owner-complete": "发布者直接完成", updating: "修改详情", updated: "详情已同步", "update-replaced": "详情修改已替代", "task-anomaly": "任务状态异常", "task-relocated": "关联位置已更新", "restore-requested": "恢复任务", "tasks-restored": "任务已恢复" };
 export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onClose, retryUncertain, onEdit }: { snapshot: CollaborationSnapshot; initialId: string | null; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; onClose: () => void; onEdit: (workflow: ClaimWorkflow) => void; retryUncertain?: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState(initialId);
@@ -25,15 +25,15 @@ export function WorkflowList({ workflows, archived, setArchived, select, name }:
     <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已完成归档 <span>{workflows.filter(item => item.status === "done").length}</span></>}</button></div>
     <div className="coop-workflow-list">
       {!visible.length && <p className="coop-empty">{archived ? "暂无已完成的归档任务" : "暂无未完成的工作流程"}</p>}
-      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong>{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{workflowStatus[item.status]}</span></button>)}
+      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong>{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{item.taskAnomaly ? "任务状态异常" : workflowStatus[item.status]}</span></button>)}
     </div>
   </>;
 }
 function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back, edit }: { workflow: ClaimWorkflow; identityId: string; name: (id: string) => string; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; back: () => void; edit: () => void }) {
   const [comment, setComment] = useState(""), [files, setFiles] = useState<WorkflowFile[]>([]), [uploading, setUploading] = useState(false), [fileError, setFileError] = useState("");
   const uploadLock = useRef(false), input = useRef<HTMLInputElement>(null);
-  const submit = !workflow.editPending && workflow.claimantId === identityId && ["working", "rejected"].includes(workflow.status);
-  const review = !workflow.editPending && workflow.reviewerId === identityId && workflow.status === "submitted";
+  const submit = !workflow.taskAnomaly && !workflow.editPending && workflow.claimantId === identityId && ["working", "rejected"].includes(workflow.status);
+  const review = !workflow.taskAnomaly && !workflow.editPending && workflow.reviewerId === identityId && workflow.status === "submitted";
   const retry = workflow.editPending || (workflow.status === "creating" && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || (workflow.status === "approving" && workflow.reviewerId === identityId);
   const disabled = busy || uploading;
   async function upload(selected: File[]) {
@@ -59,8 +59,9 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={edit}>详细设置</button>{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}</div>
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>
     {workflow.fields.content && <p className="coop-workflow-description">{workflow.fields.content}</p>}
-    <ol className="coop-workflow-events">{workflow.events.map(event => <li key={event.id}><div><strong>{name(event.actorId)} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.comment}</p>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
-    {(workflow.error || error || fileError) && <p className="coop-feedback error" role="alert">{fileError || error || workflow.error}</p>}
+    <ol className="coop-workflow-events">{workflow.events.map(event => <li key={event.id}><div><strong>{event.actorId ? name(event.actorId) : "系统"} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.comment}</p>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
+    {(workflow.error || workflow.syncError || error || fileError) && <p className="coop-feedback error" role="alert">{fileError || error || workflow.syncError || workflow.error}</p>}
+    {workflow.taskAnomaly && <div className="coop-recovery"><p>关联任务缺失。恢复只补回缺失任务，保留当前{workflowStatus[workflow.status]}进度和已提交材料。</p>{[workflow.claimantId, workflow.reviewerId].includes(identityId) && <button type="button" disabled={disabled} onClick={() => void act("restore-workflow")}><RotateCcw size={15} />恢复任务</button>}</div>}
     {(submit || review) && <div className="coop-workflow-compose" onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={event => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}>
       <label htmlFor={`comment-${workflow.id}`}>{review ? "审批评语" : "完成说明"}</label><textarea id={`comment-${workflow.id}`} rows={3} value={comment} maxLength={10000} disabled={disabled} onChange={event => setComment(event.target.value)} placeholder={review ? "可附上修改建议，或将附件拖到这里" : "可填写说明，或将附件拖到这里"} />
       <div className="coop-workflow-files">{files.map(file => <span key={file.id}><Paperclip size={13} />{file.name}<button type="button" disabled={disabled} aria-label={`移除附件 ${file.name}`} onClick={() => setFiles(current => current.filter(item => item.id !== file.id))}><X size={13} /></button></span>)}</div>

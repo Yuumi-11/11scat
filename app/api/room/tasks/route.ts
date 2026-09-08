@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
     const command = JSON.parse(text);
     if (!command || typeof command !== "object") return json({ error: "操作无效" }, 400);
     if (command.action === "legacy-reset") return json(await store.resetLegacy(actor));
-    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow"].includes(command.action)) {
+    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow", "restore-workflow"].includes(command.action)) {
       const workflow = command.action === "claim" ? await store.claim(actor, command) : await store.workflowCommand(actor, command);
       if (isPersonalCollection(workflow)) return json({ operation: collectionOperation(workflow) }, workflow.error ? 202 : 200);
-      return json({ workflow }, workflow.error ? 202 : 200);
+      return json({ workflow }, workflow.error || workflow.syncError ? 202 : 200);
     }
     const result = command.action === "recover" ? await store.recover() : command.action === "resume" || command.action === "cancel"
       ? await store.resume(actor, typeof command.id === "string" ? command.id : "", command.action === "cancel")

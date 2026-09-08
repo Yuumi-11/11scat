@@ -94,3 +94,41 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
     if (previousSecret === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previousSecret;
   }
 });
+
+test('workflow lookup repairs exact moved IDs, bounds account searches and rejects malformed or failed responses', async () => {
+  await mkdir('codex-generated/test-data', { recursive: true });
+  const dir = await mkdtemp(path.resolve('codex-generated/test-data/workflow-provider-'));
+  const previousDir = process.env.DATA_DIR, previousSecret = process.env.TICKTICK_STORAGE_SECRET, originalFetch = globalThis.fetch;
+  process.env.DATA_DIR = dir; process.env.TICKTICK_STORAGE_SECRET = 'synthetic-test-key';
+  try {
+    await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, users: { alice: { nickname: 'Alice', ticktickToken: encryptToken('token-alice') } } }));
+    const output = path.join(dir, 'provider.mjs');
+    await build({ entryPoints: ['app/api/room/tasks/provider.ts'], bundle: true, platform: 'node', format: 'esm', outfile: output, logLevel: 'silent' });
+    const { gateway } = await import(pathToFileURL(output).href);
+    let searchCount = 0, failure = null, task = { id: 'moved', projectId: 'other-list', status: 0, ...taskFields({ title: 'original' }) };
+    globalThis.fetch = async (url, init) => {
+      assert.equal(init.headers.Authorization, 'Bearer token-alice');
+      const route = new URL(url).pathname.replace('/open/v1', '');
+      if (route === '/project/inbox/data') return Response.json({ project: { id: 'inbox-alice' }, tasks: [], columns: [] });
+      if (route === '/task/filter') { searchCount++; if (failure) return failure(); return Response.json([task]); }
+      if (route === '/project/other-list/task/moved/complete') { task.status = 2; return new Response(null, { status: 204 }); }
+      if (route === '/project/other-list/task/moved') return Response.json(task);
+      if (route === '/task/moved') { task = { ...task, ...JSON.parse(init.body) }; return Response.json(task); }
+      return new Response(null, { status: 404 });
+    };
+    assert.equal(await gateway.get('alice', 'moved'), null, 'ordinary lookup retains inbox scope');
+    assert.equal((await gateway.locate('alice', 'moved')).projectId, 'other-list');
+    assert.equal(await gateway.locate('alice', 'absent'), null); assert.equal(searchCount, 1);
+    await gateway.update('alice', 'moved', taskFields({ title: 'updated' }), remoteVersion(task), 'other-list');
+    assert.equal(task.title, 'updated'); assert.equal(task.projectId, 'other-list');
+    await gateway.complete('alice', 'moved', 'other-list'); assert.equal(task.status, 2);
+    for (const result of [() => new Response(null, { status: 401 }), () => new Response(null, { status: 429 }), () => new Response(null, { status: 500 }), () => new Response('broken-json'), () => Response.json({ tasks: [] })]) {
+      failure = result; await gateway.inbox('alice');
+      await assert.rejects(gateway.locate('alice', 'absent'));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = previousDir;
+    if (previousSecret === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previousSecret;
+  }
+});
