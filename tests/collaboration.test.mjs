@@ -95,11 +95,44 @@ test('public reviewer stays the publisher after another user edits it, board sta
   assert.equal((await f.store.revision()).bufferCount, 0);
 });
 
-test('publisher claiming own public task creates one task and completes it once', async () => {
+test('self-collection creates one ordinary unfinished inbox task without workflow labels and allows a later normal claim', async () => {
   const f = await fixture(), task = await f.create('自己认领'); let completes = 0;
   const complete = f.gateway.complete; f.gateway.complete = async (...args) => { completes++; await complete(...args); };
-  let w = await claim(f, task, 'alice'); assert.equal(w.targetId, w.reviewerTaskId); assert.equal(f.counts.creates, 1);
-  w = await act(f, w, 'alice', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done'); assert.equal(completes, 1);
+  const command = { id: randomUUID(), action: 'claim', source: source(task), destination: 'alice' };
+  const receipt = await f.store.claim('alice', command); assert.equal(f.counts.creates, 1); assert.equal(completes, 0);
+  let snapshot = await f.store.snapshot('alice'); assert.equal(snapshot.buffer.length, 0); assert.equal(snapshot.workflows.length, 0);
+  const inboxTask = snapshot.members.find(member => member.id === 'alice').tasks[0]; assert.equal(inboxTask.id, receipt.targetId); assert.ok(!inboxTask.workflowId); assert.ok(!inboxTask.pending); assert.ok(!f.accounts.alice.get(inboxTask.id).status);
+  f.store = new CollaborationStore(f.dir, f.gateway); await f.store.claim('alice', command); assert.equal(f.counts.creates, 1);
+  let w = await claim(f, inboxTask, 'bob'); assert.equal(w.source.ownerId, 'alice'); assert.equal(w.reviewerId, 'alice'); assert.equal(w.status, 'working');
+  snapshot = await f.store.snapshot('bob'); assert.equal(snapshot.workflows.length, 1);
+  w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done'); assert.equal(completes, 2);
+});
+
+test('failed self-collection retains a recoverable public task and resumes creation without exposing an approval workflow', async () => {
+  const f = await fixture(), task = await f.create('网络中断'); f.loseCreate();
+  const receipt = await claim(f, task, 'alice'); assert.equal(receipt.status, 'creating');
+  const pending = await f.store.snapshot('alice'); assert.equal(pending.workflows.length, 0); assert.equal(pending.buffer[0].pending, receipt.id); assert.equal(pending.operations.find(op => op.id === receipt.id).action, 'collect');
+  await assert.rejects(f.store.resume('bob', receipt.id), { status: 403 });
+  await assert.rejects(f.store.resume('alice', receipt.id, true), /创建请求/);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  assert.equal((await f.store.resume('alice', receipt.id)).status, 'done'); assert.equal(f.counts.creates, 1);
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+});
+
+test('an ordinary self-collected task completes through the personal endpoint without self-approval', async () => {
+  const f = await fixture(), task = await f.create('个人任务'), receipt = await claim(f, task, 'alice');
+  let calls = 0;
+  await f.store.personalCompletion('alice', receipt.targetId, async () => { calls++; await f.gateway.complete('alice', receipt.targetId); });
+  assert.equal(calls, 1); assert.equal((await f.store.snapshot('alice')).workflows.length, 0);
+});
+
+test('previous self-approval records become ordinary inbox tasks without marking them complete', async () => {
+  const f = await fixture(), task = await f.create('旧个人任务'), receipt = await claim(f, task, 'alice');
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  state.workflows[receipt.id].status = 'working'; state.buffer[task.id] = { fields: taskFields(task), version: 1, publisherId: 'alice' }; await writeFile(file, JSON.stringify(state));
+  await f.store.resetLegacy('alice'); const snapshot = await f.store.snapshot('alice'); assert.equal(snapshot.buffer.length, 0); assert.equal(snapshot.workflows.length, 0);
+  assert.ok(!snapshot.members.find(member => member.id === 'alice').tasks[0].workflowId); assert.ok(!f.accounts.alice.get(receipt.targetId).status);
+  const version = snapshot.revision; await f.store.resetLegacy('alice'); assert.equal((await f.store.snapshot('alice')).revision, version);
 });
 
 test('concurrent claims serialize, command replay is idempotent, IDs cannot be reused with different content', async () => {

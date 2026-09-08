@@ -12,7 +12,7 @@ test('workflow detail offers settings to every member and direct completion only
   await mkdir('codex-generated/test-data', { recursive: true });
   const dir = await mkdtemp(path.resolve('codex-generated/test-data/workflow-ui-')), output = path.join(dir, 'component.mjs');
   await build({ entryPoints: ['app/ClaimWorkflows.tsx'], bundle: true, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', outfile: output, logLevel: 'silent' });
-  const { ClaimWorkflows } = await import(pathToFileURL(output).href);
+  const { ClaimWorkflows, WorkflowList } = await import(pathToFileURL(output).href);
   const workflow = { id: 'workflow', title: '测试', reviewerId: 'alice', claimantId: 'bob', fields: taskFields({ title: '测试' }), status: 'working', events: [] };
   const render = (identityId, status = 'working', editPending = false) => renderToStaticMarkup(createElement(ClaimWorkflows, { initialId: workflow.id, busy: false, error: '', onClose() {}, onEdit() {}, perform() {}, snapshot: { identityId, members: ['alice', 'bob', 'charlie'].map(id => ({ id, name: id })), workflows: [{ ...workflow, status, editPending }] } }));
   for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done']) {
@@ -21,4 +21,8 @@ test('workflow detail offers settings to every member and direct completion only
   }
   assert.ok(render('bob').includes('提交完成')); assert.ok(!render('bob', 'working', true).includes('提交完成'));
   assert.ok(render('charlie', 'working', true).includes('核对并继续'));
+  const workflows = [{ ...workflow, id: 'mine', title: '我认领的事项' }, { ...workflow, id: 'theirs', title: '他人认领的事项', claimantId: 'alice', reviewerId: 'bob' }, { ...workflow, id: 'done', title: '归档事项示例', status: 'done' }];
+  const overview = archived => renderToStaticMarkup(createElement(WorkflowList, { workflows, archived, setArchived() {}, select() {}, name: id => id }));
+  const active = overview(false); assert.ok(active.includes('我认领的事项')); assert.ok(active.includes('他人认领的事项')); assert.ok(!active.includes('归档事项示例')); assert.ok(active.includes('已完成归档'));
+  const archive = overview(true); assert.ok(archive.includes('归档事项示例')); assert.ok(!archive.includes('我认领的事项')); assert.ok(!archive.includes('他人认领的事项')); assert.ok(archive.includes('未完成流程'));
 });

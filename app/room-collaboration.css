@@ -153,3 +153,4 @@
 @media (max-width: 500px) { .coop-workflows { padding: 15px; } .coop-workflow-heading { align-items: start; } }
 
 .coop-loading-toolbar { display: flex; justify-content: flex-end; }
+.coop-workflow-navigation { display: flex; justify-content: flex-end; margin: 0 0 12px; }

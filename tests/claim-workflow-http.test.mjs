@@ -58,6 +58,15 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     response = await call('alice', '/api/ticktick/complete', { projectId: 'inbox-alice', taskId: direct.reviewerTaskId }); assert.equal(response.status, 200);
     const completed = (await response.json()).workflow; assert.equal(completed.status, 'done'); assert.ok(completed.events.some(event => event.type === 'owner-complete'));
     const directlyDone = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(directlyDone.alice[direct.reviewerTaskId].status, 2); assert.equal(directlyDone.bob[direct.targetId].status, 2);
+    await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '自己收取的任务' } });
+    const personalPublic = (await (await call('alice')).json()).buffer.find(task => task.title === '自己收取的任务');
+    const collect = { id: randomUUID(), action: 'claim', source: { ownerId: null, taskId: personalPublic.id, version: personalPublic.version }, destination: 'alice' };
+    response = await call('alice', '/api/room/tasks', collect); const collected = await response.json(); assert.equal(response.status, 200); assert.equal(collected.operation.action, 'collect'); assert.equal(collected.operation.status, 'done'); assert.ok(!collected.workflow);
+    assert.equal((await call('alice', '/api/room/tasks', collect)).status, 200);
+    const afterCollection = await (await call('alice')).json(); assert.ok(!afterCollection.workflows.some(item => item.id === collect.id)); assert.ok(!afterCollection.buffer.some(item => item.id === personalPublic.id));
+    const ordinary = afterCollection.members.find(member => member.id === 'alice').tasks.find(item => item.title === '自己收取的任务'); assert.ok(ordinary); assert.ok(!ordinary.workflowId); assert.ok(!ordinary.pending);
+    response = await call('bob', '/api/room/tasks', { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: ordinary.id, version: ordinary.version }, destination: 'bob' });
+    assert.equal(response.status, 200); const laterClaim = (await response.json()).workflow; assert.equal(laterClaim.reviewerId, 'alice'); assert.equal(laterClaim.status, 'working');
     assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
   } finally { child.kill(); }
 });

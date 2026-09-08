@@ -25,6 +25,10 @@ type Operation = OperationView & {
   creation?: { state: "new" | "sent" | "received"; beforeIds?: string[] };
 };
 type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation>; workflows: Record<string, Workflow>; legacyCleanup?: { title: string; message: string }[]; legacyReset?: boolean };
+export const isPersonalCollection = (workflow: ClaimWorkflow) => workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId;
+export function collectionOperation(workflow: ClaimWorkflow): OperationView {
+  return { id: workflow.id, actorId: workflow.events[0]?.actorId || workflow.claimantId, title: workflow.title, action: "collect", from: null, to: workflow.claimantId, status: workflow.status === "done" && !workflow.editPending ? "done" : "pending", error: workflow.error, createdAt: workflow.createdAt, updatedAt: workflow.updatedAt };
+}
 export class CollaborationError extends Error {
   status: number;
   diagnostic?: string;
@@ -159,13 +163,16 @@ export class CollaborationStore {
     })));
     const state = await this.read();
     const pending = Object.values(state.operations).filter(op => op.status === "pending");
-    const lock = (task: RoomTask) => ({ ...task, workflowId: this.taskWorkflow(state, task.ownerId, task.id)?.id, pending: pending.find(op => (op.source?.ownerId === task.ownerId && op.source.taskId === task.id) || (op.to === task.ownerId && op.targetId === task.id))?.id });
+    const lock = (task: RoomTask) => {
+      const workflow = this.taskWorkflow(state, task.ownerId, task.id), collecting = workflow && isPersonalCollection(workflow);
+      return { ...task, workflowId: !collecting ? workflow?.id : undefined, pending: collecting ? workflow.id : pending.find(op => (op.source?.ownerId === task.ownerId && op.source.taskId === task.id) || (op.to === task.ownerId && op.targetId === task.id))?.id };
+    };
     return {
       identityId, revision: state.revision,
       buffer: Object.entries(state.buffer).filter(([, task]) => !task.completedAt).map(([id, task]) => lock({ ...task.fields, id, ownerId: null, version: String(task.version), publisherId: task.publisherId })),
       members: results.map(member => ({ ...member, tasks: member.tasks.map(lock) })),
-      operations: Object.values(state.operations).sort((a, b) => b.updatedAt - a.updatedAt).filter((op, index) => op.status === "pending" || index < 30).map(op => this.publicOperation(op)),
-      workflows: Object.values(state.workflows).sort((a, b) => b.updatedAt - a.updatedAt).map(workflow => this.publicWorkflow(workflow)),
+      operations: [...Object.values(state.operations).map(op => this.publicOperation(op)), ...Object.values(state.workflows).filter(isPersonalCollection).map(workflow => collectionOperation(this.publicWorkflow(workflow)))].sort((a, b) => b.updatedAt - a.updatedAt).filter((op, index) => op.status === "pending" || index < 30),
+      workflows: Object.values(state.workflows).filter(workflow => !isPersonalCollection(workflow)).sort((a, b) => b.updatedAt - a.updatedAt).map(workflow => this.publicWorkflow(workflow)),
       legacyCleanup: state.legacyCleanup || [],
     };
   }
@@ -215,7 +222,12 @@ export class CollaborationStore {
       if (workflow.source.ownerId === null && workflow.reviewerId !== workflow.claimantId) await this.ensureWorkflowTask(state, workflow, true);
       await this.ensureWorkflowTask(state, workflow);
       if (workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId) workflow.reviewerTaskId = workflow.targetId;
-      workflow.status = "working"; workflow.error = "";
+      if (isPersonalCollection(workflow) && !workflow.edit) {
+        // This receipt only makes creation retryable; no approval or completion occurs.
+        delete state.buffer[workflow.source.taskId];
+        workflow.status = "done";
+      } else workflow.status = "working";
+      workflow.error = "";
     } catch (error) { workflow.error = error instanceof Error ? error.message : "认领任务暂未建立，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
   }
@@ -229,6 +241,7 @@ export class CollaborationStore {
       const state = await this.read(), signature = fingerprint({ actor, command }), existing = state.workflows[command.id];
       if (existing) {
         if (existing.signature !== signature) throw new CollaborationError("操作编号已使用");
+        if (isPersonalCollection(existing)) return this.finishCollection(state, existing);
         return existing.status === "creating" ? this.startWorkflow(state, existing) : this.publicWorkflow(existing);
       }
       if (this.taskWorkflow(state, source.ownerId, source.taskId)) throw new CollaborationError("此任务已经有人认领");
@@ -252,6 +265,16 @@ export class CollaborationStore {
       state.workflows[workflow.id] = workflow; await this.saveWorkflow(state, workflow);
       return this.startWorkflow(state, workflow);
     });
+  }
+  private async finishCollection(state: State, workflow: Workflow) {
+    if (workflow.edit) { await this.finishWorkflowEdit(state, workflow); if (workflow.edit) return this.publicWorkflow(workflow); }
+    if (workflow.status === "approving") { const result = await this.finishApproval(state, workflow); if (result.status !== "done") return result; }
+    if (workflow.status === "creating") return this.startWorkflow(state, workflow);
+    if (state.buffer[workflow.source.taskId] || workflow.status !== "done") {
+      delete state.buffer[workflow.source.taskId]; workflow.status = "done"; workflow.error = "";
+      await this.saveWorkflow(state, workflow);
+    }
+    return this.publicWorkflow(workflow);
   }
   private async workflowSides(state: State, workflow: Workflow) {
     const source = workflow.source.ownerId
@@ -353,6 +376,7 @@ export class CollaborationStore {
       if (!command || !/^[a-f0-9-]{36}$/i.test(command.id) || !/^[a-f0-9-]{36}$/i.test(command.workflowId) || !Number.isSafeInteger(command.version)) throw new CollaborationError("流程参数无效", 400);
       const state = await this.read(), workflow = state.workflows[command.workflowId];
       if (!workflow) throw new CollaborationError("流程不存在", 404);
+      if (isPersonalCollection(workflow)) throw new CollaborationError("自己的任务直接放入收集箱，不使用审批流程", 409);
       const signature = fingerprint({ actor, command }), prior = workflow.events.find(event => event.id === command.id);
       if (prior) {
         if (prior.signature !== signature) throw new CollaborationError("操作编号已使用");
@@ -429,7 +453,7 @@ export class CollaborationStore {
       }
       // A lost HTTP response can leave an old checkbox visible after the workflow
       // finished. Read back that occurrence before falling through to ordinary completion.
-      const completed = Object.values(state.workflows).filter(item => item.status === "done" && (
+      const completed = Object.values(state.workflows).filter(item => !isPersonalCollection(item) && item.status === "done" && (
         (item.source.ownerId === actor && item.source.taskId === taskId) ||
         (item.reviewerId === actor && item.reviewerTaskId === taskId) ||
         (item.claimantId === actor && item.targetId === taskId)
@@ -446,6 +470,14 @@ export class CollaborationStore {
     return this.serial(async () => {
       await this.requireMember(actor); const state = await this.read();
       const result = clearLegacyRecords(state);
+      for (const workflow of Object.values(state.workflows).filter(isPersonalCollection)) {
+        if (workflow.status === "creating" || workflow.status === "approving" || workflow.edit) continue;
+        if (workflow.status !== "done" || state.buffer[workflow.source.taskId]) {
+          // Existing self-claims become ordinary inbox tasks without changing Dida status.
+          delete state.buffer[workflow.source.taskId]; workflow.status = "done"; workflow.error = "";
+          workflow.version++; workflow.updatedAt = Date.now(); state.revision++; result.changed = true;
+        }
+      }
       if (result.changed) await this.write(state);
       return { issues: [], removed: result.removed };
     });
@@ -493,6 +525,13 @@ export class CollaborationStore {
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("操作编号无效", 400);
       if (!(await this.gateway.members()).some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
       const state = await this.read(), op = state.operations[id];
+      const collection = state.workflows[id];
+      if (!op && collection && isPersonalCollection(collection)) {
+        if (actorId !== collection.claimantId) throw new CollaborationError("只有任务发布者能继续放入自己的收集箱", 403);
+        if (collection.status === "done" && !collection.edit) return collectionOperation(collection);
+        if (cancel) throw new CollaborationError("创建请求已提交，需先确认收集箱中的任务，请点击继续", 409);
+        return collectionOperation(await this.finishCollection(state, collection));
+      }
       if (!op) throw new CollaborationError("操作不存在", 404);
       if (op.action === "move") throw new CollaborationError("旧转移已停用，请使用旧记录清理");
       if (op.status !== "pending") return this.publicOperation(op);

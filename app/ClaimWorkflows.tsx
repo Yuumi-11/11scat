@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { Archive, ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, X } from "lucide-react";
 import type { ClaimWorkflow, CollaborationSnapshot, WorkflowCommand, WorkflowFile } from "./collaboration-types";
 
 export const workflowStatus: Record<ClaimWorkflow["status"], string> = { creating: "正在建立", working: "进行中", submitted: "待审批", rejected: "已打回", approving: "正在确认完成", done: "已完成" };
@@ -9,17 +9,25 @@ const eventLabels: Record<string, string> = { claimed: "安排认领", submit: "
 export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onClose, retryUncertain, onEdit }: { snapshot: CollaborationSnapshot; initialId: string | null; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; onClose: () => void; onEdit: (workflow: ClaimWorkflow) => void; retryUncertain?: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState(initialId);
+  const [archived, setArchived] = useState(false);
   useEffect(() => { const element = dialog.current, previous = document.activeElement; element?.showModal(); return () => { element?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }; }, []);
   const workflow = snapshot.workflows.find(item => item.id === selected);
   const name = (id: string) => snapshot.members.find(member => member.id === id)?.name || "成员";
   return <dialog ref={dialog} className="coop-workflows" aria-label="认领工作流程" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }} onKeyDown={event => event.stopPropagation()}>
-    <header><h3><ClipboardCheck size={20} />工作流程</h3><button className="coop-icon" type="button" aria-label="关闭工作流程" disabled={busy} onClick={onClose}><X size={20} /></button></header>
+    <header><h3><ClipboardCheck size={20} />{archived ? "已完成归档" : "工作流程"}</h3><button className="coop-icon" type="button" aria-label="关闭工作流程" disabled={busy} onClick={onClose}><X size={20} /></button></header>
     {retryUncertain && <div className="coop-recovery">上次请求结果未确认。<button type="button" disabled={busy} onClick={retryUncertain}>核对并重试</button></div>}
-    {workflow ? <WorkflowDetail key={workflow.id} workflow={workflow} identityId={snapshot.identityId} name={name} busy={busy || !!retryUncertain} error={error} perform={perform} edit={() => onEdit(workflow)} back={() => setSelected(null)} /> : <div className="coop-workflow-list">
-      {!snapshot.workflows.length && <p className="coop-empty">认领任务后，进度和审批记录会保存在这里。</p>}
-      {snapshot.workflows.map(item => <button type="button" key={item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{workflowStatus[item.status]}</span></button>)}
-    </div>}
+    {workflow ? <WorkflowDetail key={workflow.id} workflow={workflow} identityId={snapshot.identityId} name={name} busy={busy || !!retryUncertain} error={error} perform={perform} edit={() => onEdit(workflow)} back={() => setSelected(null)} /> : <WorkflowList workflows={snapshot.workflows} archived={archived} setArchived={setArchived} select={setSelected} name={name} />}
   </dialog>;
+}
+export function WorkflowList({ workflows, archived, setArchived, select, name }: { workflows: ClaimWorkflow[]; archived: boolean; setArchived: (value: boolean) => void; select: (id: string) => void; name: (id: string) => string }) {
+  const visible = workflows.filter(item => archived ? item.status === "done" : item.status !== "done");
+  return <>
+    <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已完成归档 <span>{workflows.filter(item => item.status === "done").length}</span></>}</button></div>
+    <div className="coop-workflow-list">
+      {!visible.length && <p className="coop-empty">{archived ? "暂无已完成的归档任务" : "暂无未完成的工作流程"}</p>}
+      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong>{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{workflowStatus[item.status]}</span></button>)}
+    </div>
+  </>;
 }
 function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back, edit }: { workflow: ClaimWorkflow; identityId: string; name: (id: string) => string; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; back: () => void; edit: () => void }) {
   const [comment, setComment] = useState(""), [files, setFiles] = useState<WorkflowFile[]>([]), [uploading, setUploading] = useState(false), [fileError, setFileError] = useState("");
@@ -46,7 +54,7 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     if (await perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action, comment, attachments: files.map(file => file.id) })) { setComment(""); setFiles([]); }
   }
   return <div className="coop-workflow-detail">
-    <button type="button" className="coop-workflow-back" disabled={disabled} onClick={back}><ArrowLeft size={15} />全部流程</button>
+    <button type="button" className="coop-workflow-back" disabled={disabled} onClick={back}><ArrowLeft size={15} />返回列表</button>
     <div className="coop-workflow-heading"><h4>{workflow.title}</h4><span className={`coop-workflow-status ${workflow.status}`}>{workflowStatus[workflow.status]}</span></div>
     <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={edit}>详细设置</button>{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}</div>
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>

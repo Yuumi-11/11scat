@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser } from "../../identity/store";
-import { CollaborationError } from "./store";
+import { CollaborationError, collectionOperation, isPersonalCollection } from "./store";
 import { store } from "./service";
 
 export const runtime = "nodejs";
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     if (command.action === "legacy-reset") return json(await store.resetLegacy(actor));
     if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow"].includes(command.action)) {
       const workflow = command.action === "claim" ? await store.claim(actor, command) : await store.workflowCommand(actor, command);
+      if (isPersonalCollection(workflow)) return json({ operation: collectionOperation(workflow) }, workflow.error ? 202 : 200);
       return json({ workflow }, workflow.error ? 202 : 200);
     }
     const result = command.action === "recover" ? await store.recover() : command.action === "resume" || command.action === "cancel"
