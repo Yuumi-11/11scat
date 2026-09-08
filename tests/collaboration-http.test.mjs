@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -10,6 +10,8 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
   await mkdir('codex-generated/test-data', { recursive: true });
   const dir = await mkdtemp(path.resolve('codex-generated/test-data/cooperation-http-'));
   await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, users: { alice: { nickname: 'Alice' }, bob: { nickname: 'Bob' }, offline: { nickname: 'Offline' } } }));
+  const legacyFile = path.join(dir, 'room-collaboration.json');
+  await writeFile(legacyFile, JSON.stringify({ version: 1, revision: 0, buffer: {}, workflows: {}, operations: { obsolete: { action: 'move', status: 'pending' } }, legacyCleanup: [{ title: 'old warning' }], legacyReset: true }));
   const secret = randomUUID(), socket = createServer();
   await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port;
@@ -36,6 +38,10 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
     assert.equal(unlinkedDiagnostics.status, 401);
     assert.ok([307, 401].includes((await fetch(`${origin}/api/room/tasks`, { redirect: 'manual' })).status));
     assert.equal((await call('unknown')).status, 401);
+    assert.ok(JSON.parse(await readFile(legacyFile, 'utf8')).operations.obsolete);
+    assert.equal((await fetch(`${origin}/api/room/tasks?revision=1`, { headers: { Cookie: cookie('alice') } })).status, 200);
+    const migrated = JSON.parse(await readFile(legacyFile, 'utf8'));
+    assert.deepEqual(migrated.operations, {}); assert.ok(!('legacyCleanup' in migrated));
     const inspectPath = `${origin}/api/room/tasks?diagnose=${randomUUID()}`;
     assert.ok([307, 401].includes((await fetch(inspectPath, { redirect: 'manual' })).status));
     assert.equal((await fetch(inspectPath, { headers: { Cookie: cookie('unknown') }, redirect: 'manual' })).status, 401);

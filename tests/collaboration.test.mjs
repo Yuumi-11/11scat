@@ -195,10 +195,10 @@ async function legacy(f, task, targetId, extra = {}) {
   const state = { version: 1, revision: 0, buffer: {}, operations: { [id]: { id, actorId: 'bob', action: 'move', title: task.title, from: 'alice', to: 'bob', source: source(task), targetId, fields: taskFields(task), status: 'pending', phase: 'prepared', error: '', updatedAt: Date.now(), ...extra } } };
   await writeFile(file, JSON.stringify(state)); return id;
 }
-test('legacy reset removes identified unchanged receiver task, preserves original and deletes old records idempotently', async () => {
+test('legacy reset deletes transfer records idempotently while preserving inbox tasks', async () => {
   const f = await fixture(), task = await personal(f); f.accounts.bob.set('known', { ...taskFields(task), id: 'known', projectId: 'inbox-bob' }); await legacy(f, task, 'known');
-  assert.deepEqual((await f.store.resetLegacy('alice')).issues, []); assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 0);
-  assert.equal((await f.store.snapshot('alice')).operations.length, 0); await f.store.resetLegacy('bob'); assert.equal(f.counts.removes, 1);
+  assert.deepEqual((await f.store.resetLegacy('alice')).issues, []); assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1);
+  assert.equal((await f.store.snapshot('alice')).operations.length, 0); await f.store.resetLegacy('bob'); assert.equal(f.counts.removes, 0);
 });
 test('legacy reset never infers missing created IDs from a matching title, and protects changed or missing-source tasks', async () => {
   for (const scenario of ['unknown-id', 'changed', 'missing-source']) {
@@ -206,8 +206,8 @@ test('legacy reset never infers missing created IDs from a matching title, and p
     await legacy(f, task, scenario === 'unknown-id' ? 'old-random-id' : 'known');
     if (scenario === 'changed') f.accounts.bob.get('known').title = 'user edited';
     if (scenario === 'missing-source') f.accounts.alice.clear();
-    const result = await f.store.resetLegacy('alice'); assert.equal(result.issues.length, 1); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.removes, 0);
-    assert.equal((await f.store.snapshot('alice')).operations.length, scenario === 'unknown-id' ? 0 : 1);
+    const result = await f.store.resetLegacy('alice'); assert.equal(result.issues.length, 0); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.removes, 0);
+    assert.equal((await f.store.snapshot('alice')).operations.length, 0);
   }
 });
 test('legacy destructive routes stay disabled and public edits reject stale or invalid fields', async () => {

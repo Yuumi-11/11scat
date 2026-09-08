@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
 
 export type RemoteTask = Partial<TaskFields> & { id: string; projectId: string; status?: number; parentId?: string; [key: string]: unknown };
@@ -350,26 +351,9 @@ export class CollaborationStore {
   resetLegacy(actor: string) {
     return this.serial(async () => {
       await this.requireMember(actor); const state = await this.read();
-      if (state.legacyReset) return { issues: state.legacyCleanup || [] };
-      const issues: { title: string; message: string }[] = [];
-      for (const op of Object.values(state.operations).filter(item => item.action === "move" && item.status === "pending")) {
-        try {
-          const source = await this.source(state, op.source!);
-          if (!source) throw new CollaborationError("来源任务缺失，尚未自动复原");
-          if (op.to) {
-            const target = await this.gateway.get(op.to, op.targetId);
-            if (target) {
-              if (target.status || !sameFields(target, op.fields)) throw new CollaborationError("接收方任务已变化，未删除");
-              await this.gateway.checkTransfer(op.to, target); await this.gateway.remove(op.to, op.targetId);
-            } else if ((await this.candidates(state, op)).length) {
-              issues.push({ title: op.title, message: "原任务已保留；接收方存在同内容任务，但旧记录未保存其实际编号，未自动删除" });
-            }
-          } else if (state.buffer[op.targetId]?.stagedBy === op.id) delete state.buffer[op.targetId];
-          delete state.operations[op.id]; state.revision++; await this.write(state);
-        } catch (error) { issues.push({ title: op.title, message: error instanceof Error ? error.message : "旧记录清理未完成" }); }
-      }
-      state.legacyCleanup = issues; state.legacyReset = !Object.values(state.operations).some(op => op.action === "move" && op.status === "pending");
-      state.revision++; await this.write(state); return { issues };
+      const result = clearLegacyRecords(state);
+      if (result.changed) await this.write(state);
+      return { issues: [], removed: result.removed };
     });
   }
   execute(actorId: string, command: CollaborationCommand) {

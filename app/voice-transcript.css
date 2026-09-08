@@ -1,0 +1,9 @@
+.voice-player .voice-transcript { flex: 0 0 100%; grid-column: 1 / -1; min-width: 0; }
+.voice-player .voice-transcript button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; min-height: 32px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--theme-soft); color: var(--theme-accent-dark); font-size: 12px; cursor: pointer; }
+.voice-player .voice-transcript button:disabled { opacity: .65; cursor: progress; }
+.voice-transcript button:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
+.voice-transcript-text, .voice-transcript p { margin: 6px 0 0; font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.voice-transcript-text { max-height: 240px; overflow: auto; user-select: text; }
+.voice-transcript-spinner { animation: voice-transcript-spin 1s linear infinite; }
+@keyframes voice-transcript-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .voice-transcript-spinner { animation: none; } }

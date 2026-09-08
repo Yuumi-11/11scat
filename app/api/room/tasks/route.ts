@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
   const id = await identity();
   if (!id) return json({ error: "请先登录自习室" }, 401);
   try {
+    // Migrate when the active server receives member traffic. Deployment candidates
+    // share the data mount, so startup/health checks must never mutate this store.
+    await store.resetLegacy(id);
     const diagnostic = request.nextUrl.searchParams.get("diagnose");
     return json(diagnostic !== null ? await store.inspectTransfer(id, diagnostic) : request.nextUrl.searchParams.has("revision") ? await store.revision() : await store.snapshot(id));
   }

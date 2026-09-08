@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { claimVoice, playVoice, releaseVoice } from "./voice-playback-controller";
+import { VoiceTranscript } from "./VoiceTranscript";
+import "./voice-transcript.css";
 
 function time(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
@@ -65,5 +67,6 @@ export function AudioPlayer({ src, name }: { src: string; name: string }) {
         }} />
     </div>
     {error && <span className="voice-player-error" role="alert">{error}<a href={src} download={name}>下载原语音</a></span>}
+    <VoiceTranscript key={src} src={src} />
   </div>;
 }

@@ -142,3 +142,9 @@ export async function listMessages(before: number | null, limit: number) {
   const messages = visible.filter((message) => message.createdAt >= boundaryTime);
   return { messages, nextCursor: start > 0 && messages[0] ? String(messages[0].createdAt) : null };
 }
+
+export async function sentAudioAttachment(id: string): Promise<StoredAttachment | null> {
+  await mutationQueue;
+  const store = await readStore();
+  return store.messages.find(message => !message.recalled && message.attachment?.id === id && message.attachment.kind === "audio")?.attachment || null;
+}
