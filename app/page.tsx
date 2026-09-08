@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
+import { createMediaRecovery, mediaCallReusable } from "./media-recovery";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
 import { INITIAL_BOARD_EPOCH, normalizeBoardStroke, normalizeBoardText, normalizeBoard, sortBoardStrokes, mergeBoard } from "./board-state";
@@ -276,6 +277,7 @@ export default function Home() {
   const outgoingCallsRef = useRef(new Map<string, MediaConnection>());
   const incomingCallsRef = useRef(new Map<string, MediaConnection>());
   const callPeerRef = useRef<(peerId: string, media: MediaStream, source: MediaSource) => void>(() => undefined);
+  const recoverPublishedMediaRef = useRef<(source: MediaSource) => void>(() => undefined);
   const displayNameRef = useRef("");
   const identityIdRef = useRef("");
   const memberNamesRef = useRef<Record<string, string>>({});
@@ -963,7 +965,19 @@ export default function Home() {
     const peerRemovalTimers = new Map<string, number>();
     const pendingPeerIds = new Set<string>();
     const mediaProgress = new Map<MediaConnection, { frames: number; changedAt: number; checking: boolean }>();
-    const mediaRepairAt = new Map<string, number>();
+    const mediaRecovery = createMediaRecovery({
+      peers: () => Array.from(connections.keys()),
+      canSend: (peerId) => !disposed && Boolean(localPeer?.open && connections.get(peerId)?.open),
+      stream: (source) => source === "screen" ? screenStreamRef.current : cameraStreamRef.current,
+      restart: (peerId, media, source) => {
+        const key = `${source}:${peerId}`;
+        const old = outgoingCalls.get(key);
+        outgoingCalls.delete(key);
+        old?.close();
+        callPeer(peerId, media, source);
+      },
+    });
+    recoverPublishedMediaRef.current = (source) => mediaRecovery.request(source);
     const connectionTimers = new Set<number>();
     let reconnectStartedAt = 0;
     let localDeviceId = "";
@@ -1101,9 +1115,17 @@ export default function Home() {
       void syncRoomPresence();
       presenceTimer = window.setInterval(() => {
         recoverRoomConnection();
+        mediaRecovery.flush();
         connections.forEach((connection) => {
           const state = connection.peerConnection?.connectionState;
           if (state === "failed" || state === "closed") connection.close();
+          else if (connection.open) {
+            // Closed media calls no longer appear in incomingCalls/getStats.
+            // Reconcile even those missing calls, without replacing pending offers.
+            connection.send({ type: "media-request" });
+            if (cameraStreamRef.current) callPeer(connection.peer, cameraStreamRef.current, "camera");
+            if (screenStreamRef.current) callPeer(connection.peer, screenStreamRef.current, "screen");
+          }
         });
         incomingCalls.forEach((call, key) => {
           const progress = mediaProgress.get(call) || { frames: -1, changedAt: Date.now(), checking: false };
@@ -1177,6 +1199,7 @@ export default function Home() {
     };
 
     const removePeer = (peerId: string) => {
+      mediaRecovery.forget(peerId);
       const removalTimer = peerRemovalTimers.get(peerId);
       if (removalTimer !== undefined) window.clearTimeout(removalTimer);
       peerRemovalTimers.delete(peerId);
@@ -1232,7 +1255,8 @@ export default function Home() {
       if (!localPeer?.open || !connections.get(peerId)?.open) return;
       const key = `${source}:${peerId}`;
       const existing = outgoingCalls.get(key);
-      if (existing?.open) return;
+      if (!media.getVideoTracks().some((track) => track.readyState === "live")) return;
+      if (mediaCallReusable(existing)) return;
       existing?.close();
 
       const call = localPeer.call(peerId, media, { metadata: { source, name: displayNameRef.current, identityId: identityIdRef.current } });
@@ -1371,12 +1395,8 @@ export default function Home() {
         if (message.type === "media-request") {
           const request = payload as { repair?: boolean; source?: string };
           if (request.repair === true && (request.source === "screen" || request.source === "camera")) {
-            const key = `${request.source}:${peerId}`;
-            if (Date.now() - (mediaRepairAt.get(key) || 0) < 10_000) return;
-            mediaRepairAt.set(key, Date.now());
-            const old = outgoingCalls.get(key);
-            outgoingCalls.delete(key);
-            old?.close();
+            mediaRecovery.request(request.source, peerId);
+            return;
           }
           if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
           if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
@@ -1556,6 +1576,10 @@ export default function Home() {
       hiddenSince = 0;
       if (duration < 3000 || Date.now() - lastMediaResume < 5000) return;
       lastMediaResume = Date.now();
+      // This page is also a publisher. Remote requests alone repair the wrong
+      // direction when our own screen sender was suspended in the background.
+      mediaRecovery.request("screen");
+      mediaRecovery.request("camera");
       // Re-request even when the old MediaConnection still reports open.
       connections.forEach((connection) => {
         if (!connection.open) return;
@@ -1597,6 +1621,7 @@ export default function Home() {
       window.removeEventListener("online", recoverWhenActive);
       window.removeEventListener("pageshow", recoverWhenActive);
       callPeerRef.current = () => undefined;
+      recoverPublishedMediaRef.current = () => undefined;
       connections.forEach((connection) => connection.close());
       outgoingCalls.forEach((call) => call.close());
       incomingCalls.forEach((call) => call.close());
@@ -1635,6 +1660,10 @@ export default function Home() {
     if (stream) {
       dataConnectionsRef.current.forEach((_connection, peerId) => callPeerRef.current(peerId, stream, "screen"));
     }
+    const track = stream?.getVideoTracks()[0];
+    const onUnmute = () => recoverPublishedMediaRef.current("screen");
+    track?.addEventListener("unmute", onUnmute);
+    return () => track?.removeEventListener("unmute", onUnmute);
   }, [stream]);
 
   const toggleTask = async (task: Task) => {
