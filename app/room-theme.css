@@ -1,21 +1,21 @@
 /* Shared design tokens. Components use these aliases, including portal dialogs. */
 :root {
-  --theme-seed: #416b9e;
-  --theme-accent: #416b9e;
-  --theme-accent-dark: #29496f;
-  --theme-accent-hover: #345e90;
+  --theme-seed: #536d8c;
+  --theme-accent: #4d6786;
+  --theme-accent-dark: #364960;
+  --theme-accent-hover: #415a78;
   --on-accent: #ffffff;
-  --theme-soft: #d0e4fd;
-  --page: #e8f2ff;
-  --panel: #fbfdff;
-  --soft: #e2edfc;
-  --ink: #1b222c;
-  --muted: #525c69;
-  --line: #c0ccdb;
-  --line-strong: #707f91;
-  --shadow-rgb: 24 34 47;
-  --shadow: 0 4px 24px rgb(24 34 47 / 7%);
-  --overlay: rgb(24 34 47 / 40%);
+  --theme-soft: #dee9f6;
+  --page: #eff3f8;
+  --panel: #fdfeff;
+  --soft: #f4f7fb;
+  --ink: #24272a;
+  --muted: #585b5f;
+  --line: #d2d6db;
+  --line-strong: #7d8084;
+  --shadow-rgb: 31 34 37;
+  --shadow: 0 4px 24px rgb(31 34 37 / 7%);
+  --overlay: rgb(31 34 37 / 40%);
   --indigo: var(--theme-accent);
   --indigo-soft: var(--theme-soft);
   --danger: #b13e4c;
@@ -56,7 +56,7 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .tile-badge.board, .tile-badge.invite { color: var(--theme-accent-dark); background: var(--theme-soft); }
 .participant-invite .invite-preview { background: transparent; }
 .share-canvas { min-height: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
-.share-canvas::before { opacity: .45; background-size: 32px 32px; }
+.share-canvas::before { opacity: .45; background-image: linear-gradient(rgb(var(--shadow-rgb) / 5%) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--shadow-rgb) / 5%) 1px, transparent 1px); background-size: 32px 32px; }
 .empty-share { gap: 0; max-width: 420px; }
 .empty-share .share-glyph { display: grid; place-items: center; width: 76px; height: 76px; margin: 0 0 22px; border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 8px 30px rgb(var(--shadow-rgb) / 5%); color: var(--theme-accent-dark); background: var(--panel); }
 .share-glyph::after { display: none; }
@@ -183,7 +183,8 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .theme-preset { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel); font-size: 13px; }
 .theme-preset.active { color: var(--theme-accent-dark); border-color: var(--theme-accent-dark); background: var(--theme-soft); }
 .theme-preset > svg { margin-left: auto; }
-.theme-color-dot { flex: 0 0 20px; height: 20px; border: 1px solid rgb(var(--shadow-rgb) / 18%); border-radius: 50%; }
+.theme-preset-swatches { display: flex; flex: 0 0 36px; height: 22px; overflow: hidden; border: 1px solid rgb(var(--shadow-rgb) / 18%); border-radius: 6px; }
+.theme-preset-swatches > span { flex: 1; }
 .custom-theme-form { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .custom-theme-form.active { border-color: var(--theme-accent-dark); }
 .custom-theme-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
@@ -285,3 +286,9 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 
 .voice-play-toggle { flex-basis: 44px; touch-action: manipulation; }
 .voice-player-error a { margin-left: 6px; color: var(--theme-accent-dark); text-decoration: underline; }
+
+/* Keep interactive media controls in the selected palette as well. */
+.media-nav:hover { background: var(--theme-accent); color: var(--on-accent); }
+.segmented button { color: var(--muted); }
+.segmented button.active { color: var(--theme-accent-dark); background: var(--panel); box-shadow: 0 2px 7px rgb(var(--shadow-rgb) / 8%); }
+.room-controls .camera-on, .room-controls .share-on { box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent) 12%, transparent); }

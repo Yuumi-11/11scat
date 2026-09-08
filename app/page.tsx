@@ -2284,7 +2284,7 @@ export default function Home() {
       <header className="topbar">
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
-          <RoomCollaboration identityId={identityId} onChanged={loadTasks} />
+          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘
@@ -2407,8 +2407,8 @@ export default function Home() {
 
         <aside className="side-panel panel">
           <div className={sideView === "tasks" ? "side-tabs has-task-range" : "side-tabs"} aria-label="侧栏内容">
-            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />聊天室</button>
-            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />任务板</button>
+            <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />传纸条</button>
+            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />同桌</button>
             {sideView === "tasks" && <button
               className="task-range-switch"
               type="button"

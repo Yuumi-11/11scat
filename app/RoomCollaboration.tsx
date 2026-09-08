@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { CircleAlert, CalendarDays, CalendarOff, Check, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
+import { CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { InlineTaskTitle } from "./InlineTaskTitle";
 import { collaborationDate, splitCollaborationTasks } from "./collaboration-view";
 import { CollaborationRecovery } from "./CollaborationRecovery";
+import { createPublicTaskNotice } from "./public-task-notice";
 
 import { ClaimWorkflows, workflowStatus } from "./ClaimWorkflows";
 
@@ -25,7 +26,9 @@ const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { time
 export function RoomCollaboration({ identityId, onChanged }: { identityId: string; onChanged: () => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
-  const [bufferCount, setBufferCount] = useState(0);
+  const [publicNotice, setPublicNotice] = useState({ memberId: identityId, count: 0 });
+  const unseenCount = publicNotice.memberId === identityId ? publicNotice.count : 0;
+  const noticeTracker = useMemo(() => createPublicTaskNotice(() => window.localStorage, identityId), [identityId]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -58,11 +61,13 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "协作区读取失败");
       if (id !== generation.current) return null;
-      setSnapshot(data); setBufferCount(data.buffer.length); revision.current = data.revision;
+      setSnapshot(data);
+      setPublicNotice({ memberId: identityId, count: noticeTracker.observe(data.buffer.map((task: RoomTask) => task.id), !!dialog.current?.open && !document.hidden) });
+      revision.current = data.revision;
       return data as CollaborationSnapshot;
     } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "协作区暂时无法读取"); return null; }
     finally { if (id === generation.current) { fetching.current = false; setLoading(false); } }
-  }, []);
+  }, [identityId, noticeTracker]);
 
   useEffect(() => {
     if (!identityId) return;
@@ -75,7 +80,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         if (!response.ok) return;
         const data = await response.json();
         if (stopped) return;
-        setBufferCount(data.bufferCount);
+        if (revision.current !== null && data.revision < revision.current) return;
+        if (Array.isArray(data.bufferIds) && data.bufferIds.every((id: unknown) => typeof id === "string")) {
+          setPublicNotice({ memberId: identityId, count: noticeTracker.observe(data.bufferIds) });
+        }
         if (revision.current !== null && revision.current !== data.revision) { void onChanged(); if (open) void load(); }
         revision.current = data.revision;
       } catch { /* Try again on the next poll or focus. */ }
@@ -83,9 +91,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     };
     const first = setTimeout(() => void poll(), 0), timer = setInterval(() => void poll(), 5000);
     const focus = () => void poll();
-    window.addEventListener("focus", focus); window.addEventListener("online", focus);
-    return () => { stopped = true; clearTimeout(first); clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("online", focus); };
-  }, [identityId, open, onChanged, load]);
+    const visible = () => { if (!document.hidden) { void poll(); if (open && !locked.current && !drag.current) void load(); } };
+    window.addEventListener("focus", focus); window.addEventListener("online", focus); document.addEventListener("visibilitychange", visible);
+    return () => { stopped = true; clearTimeout(first); clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("online", focus); document.removeEventListener("visibilitychange", visible); };
+  }, [identityId, open, onChanged, load, noticeTracker]);
   useEffect(() => {
     if (!open) return;
     const element = dialog.current, button = trigger.current;
@@ -225,7 +234,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
   }
   const pending = snapshot?.operations.filter(operation => operation.status === "pending") || [];
   return <>
-    <button ref={trigger} className="room-collaboration-trigger" type="button" disabled={!identityId} title="打开自习室协作区" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); setError(""); }}><UsersRound size={18} aria-hidden="true" /><span>协作区</span>{bufferCount > 0 && <i>{bufferCount}</i>}</button>
+    <button ref={trigger} className="room-collaboration-trigger" type="button" disabled={!identityId} title={unseenCount ? `任务板 · ${unseenCount} 项新公共任务` : "打开任务板"} aria-label={unseenCount ? `任务板，${unseenCount} 项新公共任务` : "任务板"} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); setError(""); }}><ClipboardList size={18} aria-hidden="true" /><span>任务板</span>{unseenCount > 0 && <i aria-hidden="true">{unseenCount > 99 ? "99+" : unseenCount}</i>}</button>
     {open && createPortal(<dialog ref={dialog} tabIndex={-1} className="room-collaboration-dialog" aria-label="自习室任务协作" onCancel={event => { event.preventDefault(); if (editor) { if (!locked.current) setEditor(null); } else close(); }} onKeyDown={event => {
       event.stopPropagation();
       if (editor && event.key === "Tab") {

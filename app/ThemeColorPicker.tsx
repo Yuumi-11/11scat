@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { normalizeThemeColor, THEME_PRESETS, type ThemeName } from "./theme-palette";
+import { createThemePalette, normalizeThemeColor, THEME_PRESETS, type ThemeName } from "./theme-palette";
+
+const previews = Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, createThemePalette(preset.color)]));
 
 export function ThemeColorPicker({ theme, color, choosePreset, chooseCustom }: {
   theme: ThemeName; color: string;
@@ -17,7 +19,7 @@ export function ThemeColorPicker({ theme, color, choosePreset, chooseCustom }: {
         className={`theme-preset${theme === name ? " active" : ""}`} type="button" key={name}
         onClick={() => { choosePreset(name as keyof typeof THEME_PRESETS); setDraft(null); setError(""); }}
         aria-label={`${preset.name}主题`} aria-pressed={theme === name} title={`${preset.name}主题`}
-      ><span className="theme-color-dot" style={{ background: preset.color }} />{preset.name}{theme === name && <Check size={14} aria-hidden="true" />}</button>)}
+      ><span className="theme-preset-swatches" aria-hidden="true"><span style={{ background: previews[name]["--page"] }} /><span style={{ background: previews[name]["--theme-soft"] }} /><span style={{ background: previews[name]["--theme-accent"] }} /></span>{preset.name}{theme === name && <Check size={14} aria-hidden="true" />}</button>)}
     </div>
     <form className={`custom-theme-form${theme === "custom" ? " active" : ""}`} onSubmit={event => {
       event.preventDefault();
@@ -33,6 +35,6 @@ export function ThemeColorPicker({ theme, color, choosePreset, chooseCustom }: {
       </div>
       {error && <p id="custom-theme-error" role="alert" className="error-message">{error}</p>}
     </form>
-    <p className="theme-color-help">背景、卡片和文字会一起配色，按钮明暗会自动调整以保持清晰。选择会保存在当前浏览器。</p>
+    <p className="theme-color-help">背景保留轻微冷暖色调，按钮和选中状态随主色搭配。过亮的颜色会适当加深，让文字清晰可读；选择保存在当前浏览器。</p>
   </div>;
 }

@@ -130,7 +130,11 @@ export class CollaborationStore {
     const locked = new Set(Object.values(state.operations).filter(other => other.id !== op.id && other.status === "pending").flatMap(other => [other.to === op.to ? other.targetId : "", other.source?.ownerId === op.to ? other.source.taskId : ""]));
     return inbox.tasks.filter(task => !task.status && !locked.has(task.id) && !op.creation?.beforeIds?.includes(task.id) && sameFields(task, op.fields));
   }
-  async revision() { const state = await this.read(); return { revision: state.revision, bufferCount: Object.values(state.buffer).filter(task => !task.stagedBy && !task.completedAt).length }; }
+  async revision() {
+    const state = await this.read();
+    const bufferIds = Object.entries(state.buffer).filter(([, task]) => !task.stagedBy && !task.completedAt).map(([id]) => id);
+    return { revision: state.revision, bufferCount: bufferIds.length, bufferIds };
+  }
   inspectTransfer(actorId: string, id: string) {
     return this.serial(async () => {
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("操作编号无效", 400);

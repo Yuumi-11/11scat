@@ -30,6 +30,25 @@ async function fixture() {
 }
 const source = task => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
 
+test('lightweight task notices expose active IDs without querying external inboxes', async () => {
+  const f = await fixture();
+  const a = await f.create('first'), b = await f.create('second');
+  const before = await f.store.revision();
+  assert.deepEqual(new Set(before.bufferIds), new Set([a.id, b.id]));
+  await f.store.execute('alice', { id: randomUUID(), action: 'update', source: source(a), fields: { title: 'edited title' } });
+  assert.deepEqual((await f.store.revision()).bufferIds, before.bufferIds);
+  await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(b) });
+  const c = await f.create('replacement');
+  f.gateway.inbox = async () => { throw new Error('must not query Dida for a badge'); };
+  const after = await f.store.revision();
+  assert.equal(after.bufferCount, before.bufferCount);
+  assert.deepEqual(new Set(after.bufferIds), new Set([a.id, c.id]));
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  state.buffer[a.id].stagedBy = 'pending'; state.buffer[c.id].completedAt = Date.now();
+  await writeFile(file, JSON.stringify(state));
+  assert.deepEqual((await f.store.revision()).bufferIds, []);
+});
+
 test('reading either member inbox never creates transfers and preserves task ownership', async () => {
   const f = await fixture();
   f.accounts.bob.set('original-bob-task', { id: 'original-bob-task', projectId: 'inbox-bob', ...taskFields({ title: 'already in Bob inbox' }) });
