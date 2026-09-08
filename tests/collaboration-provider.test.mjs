@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { encryptToken } from '../app/api/ticktick/crypto.ts';
 import { remoteVersion, taskFields } from '../app/api/room/tasks/store.ts';
 
-test('Dida provider scopes each request to the owner inbox and reconciles stable task IDs', async () => {
+test('Dida provider works with Open API credentials despite V2 rejection and scopes transfers to the owner inbox', async () => {
   await mkdir('codex-generated/test-data', { recursive: true });
   const dir = await mkdtemp(path.resolve('codex-generated/test-data/cooperation-provider-'));
   const previousDir = process.env.DATA_DIR, previousSecret = process.env.TICKTICK_STORAGE_SECRET;
@@ -26,7 +26,8 @@ test('Dida provider scopes each request to the owner inbox and reconciles stable
       const route = new URL(url).pathname, method = init.method || 'GET';
       const body = init.body ? JSON.parse(init.body) : null;
       requests.push({ owner, route, method, body });
-      if (route === '/api/v2/batch/check/0') return Response.json({ inboxId: `inbox-${owner}` });
+      if (route === '/api/v2/batch/check/0') return new Response(null, { status: 401 });
+      if (route === '/open/v1/project/inbox/data') return Response.json({ project: { id: `inbox-${owner}` }, tasks: [...accounts[owner].values(), { id: 'outside', projectId: 'other-list' }] });
       if (route === '/open/v1/task/batch') {
         for (const task of body.add) { assert.equal(task.projectId, `inbox-${owner}`); accounts[owner].set(task.id, structuredClone(task)); }
         return Response.json({ id2etag: {} });
@@ -71,6 +72,7 @@ test('Dida provider scopes each request to the owner inbox and reconciles stable
     assert.equal(accounts.bob.size, 0);
     await gateway.inbox('alice');
     assert.ok(requests.some(request => request.owner === 'alice'));
+    assert.equal(requests.filter(request => request.route.startsWith('/api/v2/')).length, 0);
     assert.equal(requests.filter(request => request.owner === 'alice' && request.method !== 'GET').length, 0);
   } finally {
     globalThis.fetch = originalFetch;

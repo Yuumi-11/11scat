@@ -654,6 +654,7 @@ export default function Home() {
       if (!Array.isArray(data.tasks) || !Array.isArray(data.projects)) throw new Error("滴答返回的数据格式异常");
       const remoteTasks: Task[] = data.tasks.map((task: Task) => ({ ...task, source: "ticktick" }));
       setConnected(true);
+      if (typeof data.inboxError === "string") setSyncError(data.inboxError);
       setTasks((current) => [...remoteTasks, ...current.filter((task) => task.source === "local")]);
       return true;
     } catch (error) {

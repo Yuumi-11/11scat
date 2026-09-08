@@ -1,21 +1,22 @@
 import { getUser, listRoomMembers } from "../../identity/store";
 import { decryptToken } from "../../ticktick/crypto";
-import { tickFetch, tickV2Snapshot } from "../../ticktick/client";
+import { tickFetch, tickInboxData, TickApiError } from "../../ticktick/client";
 import { CollaborationError, remoteVersion, sameFields, type Gateway, type RemoteTask } from "./store";
 import type { TaskFields } from "../../../collaboration-types";
 
-type Context = { token: string; projectId: string; encrypted: string; expires: number };
+type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number };
 const contexts = new Map<string, Context>();
-async function context(owner: string): Promise<Context> {
+async function context(owner: string, refreshInbox = false): Promise<Context> {
   const user = await getUser(owner);
   if (!user?.ticktickToken) throw new CollaborationError("该成员尚未连接滴答清单", 422);
   const cached = contexts.get(owner);
-  if (cached?.encrypted === user.ticktickToken && cached.expires > Date.now()) return cached;
+  if (!refreshInbox && cached?.encrypted === user.ticktickToken && cached.expires > Date.now()) return cached;
   let token: string;
   try { token = decryptToken(user.ticktickToken); } catch { throw new CollaborationError("该成员需要重新连接滴答清单", 422); }
-  const snapshot = await tickV2Snapshot(token);
-  if (!snapshot?.inboxId || !/^[A-Za-z0-9_-]{1,100}$/.test(snapshot.inboxId)) throw new CollaborationError("暂时无法识别该成员的收集箱，请重新连接滴答后重试", 422);
-  const next = { token, projectId: snapshot.inboxId, encrypted: user.ticktickToken, expires: Date.now() + 15000 };
+  let inbox;
+  try { inbox = await tickInboxData<RemoteTask>(token); }
+  catch (error) { throw new CollaborationError(error instanceof TickApiError ? error.message : "收集箱暂时无法读取，请稍后刷新", error instanceof TickApiError && [401, 403].includes(error.status) ? 422 : 502); }
+  const next = { token, ...inbox, encrypted: user.ticktickToken, expires: Date.now() + 15000 };
   contexts.set(owner, next); return next;
 }
 async function request(owner: string, route: string, init?: RequestInit, missing = false) {
@@ -29,10 +30,8 @@ const payload = (fields: TaskFields) => ({ ...fields, startDate: fields.startDat
 export const gateway: Gateway = {
   async members() { return Promise.all((await listRoomMembers()).map(async member => ({ ...member, connected: !!(await getUser(member.id))?.ticktickToken }))); },
   async inbox(owner) {
-    const account = await context(owner);
-    const data = await request(owner, "/project/{inbox}/data");
-    if (!Array.isArray(data?.tasks)) throw new CollaborationError("收集箱内容读取失败", 502);
-    return { projectId: account.projectId, tasks: data.tasks.filter((task: RemoteTask) => task.projectId === account.projectId) as RemoteTask[] };
+    const account = await context(owner, true);
+    return { projectId: account.projectId, tasks: account.tasks };
   },
   async get(owner, id) {
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) throw new CollaborationError("任务编号无效", 400);

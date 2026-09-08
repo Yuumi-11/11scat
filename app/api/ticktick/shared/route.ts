@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser } from "../../identity/store";
 import { decryptToken } from "../crypto";
-import { tickFetch, tickV2Snapshot } from "../client";
+import { tickFetch, tickInboxData, TickApiError } from "../client";
 import { createSharedTask, markSharedTasksRead, SharedTaskError, unreadSharedTasks } from "../shared-store";
 
 const noStore = { "Cache-Control": "private, no-store" };
@@ -35,9 +35,7 @@ export async function POST(request: Request) {
   catch { return NextResponse.json({ error: "对方需要重新连接滴答清单。" }, { status: 422 }); }
   try {
     // Reads may be retried freely. Resolve the recipient's inbox before recording a write attempt.
-    const snapshot = await tickV2Snapshot(token);
-    const inboxId = snapshot?.inboxId;
-    if (typeof inboxId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(inboxId)) return NextResponse.json({ error: "暂时无法读取对方收集箱，请让对方重新连接滴答后重试。" }, { status: 422 });
+    const { projectId: inboxId } = await tickInboxData(token);
     const record = await createSharedTask({ id: body.id, senderId, recipientId, senderName: sender.nickname || "成员", title }, async () => {
       const response = await tickFetch("/task", token, { method: "POST", body: JSON.stringify({ title, projectId: inboxId, timeZone: "Asia/Shanghai", isAllDay: true }) });
       if (!response.ok) throw new SharedTaskError(response.status < 500 ? "滴答未接受待办，请检查对方连接后重试。" : "滴答暂时无法确认结果，请先查看对方收集箱。", response.status < 500 ? 422 : 502);
@@ -47,6 +45,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ task: record }, { status: 201, headers: noStore });
   } catch (error) {
+    if (error instanceof TickApiError) return NextResponse.json({ error: error.message }, { status: [401, 403].includes(error.status) ? 422 : 502 });
     return NextResponse.json({ error: error instanceof SharedTaskError ? error.message : "提交结果未确认，请先让对方查看收集箱，避免重复添加。" }, { status: error instanceof SharedTaskError ? error.status : 502 });
   }
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp } from 'node:fs/promises';
 import path from 'node:path';
-import { filterTasksByView, tickFetch, tickV2Snapshot } from '../app/api/ticktick/client.ts';
+import { filterTasksByView, tickFetch, tickInboxData } from '../app/api/ticktick/client.ts';
 
 test('today, week and undated views separate dates and retain every undated task', () => {
   const tasks = [
@@ -24,11 +24,11 @@ test('recipient credentials resolve the inbox and create an undated task', async
   const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
-    return Response.json(url.includes('/batch/check/') ? { inboxId: 'inbox-recipient' } : { id: 'created' });
+    return Response.json(url.endsWith('/project/inbox/data') ? { project: { id: 'inbox-recipient' }, tasks: [] } : { id: 'created' });
   };
   try {
-    const snapshot = await tickV2Snapshot('recipient-token');
-    await tickFetch('/task', 'recipient-token', { method: 'POST', body: JSON.stringify({ title: '中文待办', projectId: snapshot.inboxId }) });
+    const inbox = await tickInboxData('recipient-token');
+    await tickFetch('/task', 'recipient-token', { method: 'POST', body: JSON.stringify({ title: '中文待办', projectId: inbox.projectId }) });
     assert.equal(calls[0].init.headers.Authorization, 'Bearer recipient-token');
     assert.equal(calls[1].init.headers.Authorization, 'Bearer recipient-token');
     assert.deepEqual(JSON.parse(calls[1].init.body), { title: '中文待办', projectId: 'inbox-recipient' });

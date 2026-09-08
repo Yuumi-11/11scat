@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "../store";
 
-import { tickFetch, tickV2Snapshot, filterTasksByView, type TickProject, type TickTask, type TaskView } from "../client";
+import { tickFetch, tickInboxData, filterTasksByView, type TickProject, type TickTask, type TaskView } from "../client";
 
 export async function GET(request: Request) {
   const token = await accessToken();
@@ -11,14 +11,16 @@ export async function GET(request: Request) {
 
   const projects: TickProject[] = await projectResponse.json();
   const activeProjects = projects.filter((project) => !project.closed);
-  const snapshot = await tickV2Snapshot(token);
-  const inboxId = typeof snapshot?.inboxId === "string"
-    ? snapshot.inboxId
-    : (process.env.TICKTICK_INBOX_ID || "");
+  let inbox: { projectId: string; tasks: TickTask[] } | null = null;
+  let inboxError = "";
+  try { inbox = await tickInboxData(token); }
+  catch (error) { inboxError = error instanceof Error ? error.message : "收集箱暂时无法读取"; }
+  const inboxId = inbox?.projectId || "";
   const projectsToRead = inboxId && !activeProjects.some((project) => project.id === inboxId)
     ? [...activeProjects, { id: inboxId, name: "收集箱" }]
     : activeProjects;
   const datasetResponses = await Promise.all(projectsToRead.map(async (project) => {
+    if (inbox && project.id === inbox.projectId) return { ok: true as const, projectId: inbox.projectId, tasks: inbox.tasks };
     const response = await tickFetch(`/project/${encodeURIComponent(project.id)}/data`, token);
     if (!response.ok) return { ok: false as const, projectId: project.id, tasks: [] as TickTask[] };
     const data = await response.json().catch(() => null);
@@ -30,12 +32,8 @@ export async function GET(request: Request) {
   }
 
   const projectNames = new Map(projectsToRead.map((project) => [project.id, project.name]));
-  const inboxFallbackTasks = inboxId
-    ? [...(snapshot?.syncTaskBean?.add || []), ...(snapshot?.syncTaskBean?.update || [])]
-      .filter((task) => task.projectId === inboxId)
-    : [];
   const uniqueTasks = new Map<string, TickTask>();
-  for (const task of [...datasetResponses.flatMap((dataset) => dataset.tasks), ...inboxFallbackTasks]) {
+  for (const task of datasetResponses.flatMap((dataset) => dataset.tasks)) {
     if (task && typeof task.id === "string") uniqueTasks.set(task.id, task);
   }
   const requestedView = new URL(request.url).searchParams.get("view");
@@ -51,6 +49,7 @@ export async function GET(request: Request) {
     }));
   return NextResponse.json({
     view,
+    ...(inboxError ? { inboxError } : {}),
     projects: projectsToRead.map(({ id, name }) => ({ id, name })),
     tasks,
   });
