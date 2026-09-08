@@ -2114,7 +2114,7 @@ export default function Home() {
 
   const startMessageLongPress = (event: React.PointerEvent, messageId: string) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if ((event.target as Element).closest("button")) return;
+    if ((event.target as Element).closest("button, a, audio, input, .voice-player")) { clearLongPressTimer(); longPressTriggeredRef.current = false; return; }
     clearLongPressTimer();
     longPressTriggeredRef.current = false;
     longPressOriginRef.current = { x: event.clientX, y: event.clientY };
@@ -2201,6 +2201,20 @@ export default function Home() {
       setChatSending(sendingChatIdsRef.current.size > 0);
       if (!sendingChatIdsRef.current.size) setChatUploadProgress(null);
     }
+  };
+
+  const sendVoice = (file: File) => {
+    const now = Date.now();
+    const message: ChatMessage = {
+      id: crypto.randomUUID(), body: "", replyTo: chatQuote || undefined,
+      identityId: identityIdRef.current, sender: displayNameRef.current || displayName,
+      time: beijingTimeFormatter.format(now), createdAt: now, own: true, delivery: "sending",
+    };
+    const item: OutgoingChat = { message, file };
+    outgoingChatRef.current.set(message.id, item);
+    setChatQuote(null); setChatImageError(""); scrollAfterSendRef.current = true;
+    setMessages(current => mergeChatMessages([message], current));
+    void deliverChat(item);
   };
 
   const sendMessage = (event: FormEvent) => {
@@ -2421,6 +2435,7 @@ export default function Home() {
                   onPointerUp={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
                   onContextMenu={(event) => {
+                    if ((event.target as Element).closest("audio, .voice-player")) return;
                     event.preventDefault();
                     clearLongPressTimer();
                     longPressTriggeredRef.current = false;
@@ -2429,6 +2444,7 @@ export default function Home() {
                     setMessageMenuId(message.id);
                   }}
                   onClickCapture={(event) => {
+                    if ((event.target as Element).closest("audio, .voice-player")) { longPressTriggeredRef.current = false; return; }
                     if (!longPressTriggeredRef.current) return;
                     if ((event.target as Element).closest(".message-action-menu")) {
                       longPressTriggeredRef.current = false;
@@ -2499,7 +2515,7 @@ export default function Home() {
                 <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" title="发送图片或文件">
                   <Paperclip size={20} aria-hidden="true" />
                 </button>
-                <VoiceRecorder onRecorded={selectChatImage} onError={setChatImageError} />
+                <VoiceRecorder onRecorded={sendVoice} onError={setChatImageError} />
                 <textarea
                   value={chatDraft}
                   onChange={(event) => setChatDraft(event.target.value)}

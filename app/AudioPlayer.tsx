@@ -41,8 +41,8 @@ export function AudioPlayer({ src, name }: { src: string; name: string }) {
       setError("语音暂时无法播放，请点击重试。");
     });
   };
-  return <div className="voice-player" role="group" aria-label={`语音：${name}`}>
-    <audio ref={ref} preload="metadata" playsInline src={`${src}${src.includes("?") ? "&" : "?"}playback=1`}
+  return <div className="voice-player" onPointerDown={event => event.stopPropagation()} onContextMenu={event => event.stopPropagation()} role="group" aria-label={`语音：${name}`}>
+    <audio ref={ref} preload="none" playsInline src={`${src}${src.includes("?") ? "&" : "?"}playback=1`}
       onLoadedMetadata={sync} onDurationChange={sync} onTimeUpdate={sync} onSeeked={sync}
       onPlay={() => { if (ref.current && !ref.current.paused) claimVoice(ref.current); setPlaying(!ref.current?.paused); }} onPlaying={() => setLoading(false)}
       onWaiting={() => setLoading(true)} onCanPlay={() => setLoading(false)}
@@ -64,6 +64,6 @@ export function AudioPlayer({ src, name }: { src: string; name: string }) {
           setPosition(next);
         }} />
     </div>
-    {error && <span className="voice-player-error" role="alert">{error}</span>}
+    {error && <span className="voice-player-error" role="alert">{error}<a href={src} download={name}>下载原语音</a></span>}
   </div>;
 }

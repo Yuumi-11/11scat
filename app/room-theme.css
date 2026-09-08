@@ -279,3 +279,9 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
 }
+.voice-recording { color: var(--theme-accent-dark); }
+.voice-recording button { width: 44px; height: 44px; background: var(--panel); touch-action: manipulation; }
+.voice-recording button[aria-label="删除录音，不发送"] { color: var(--danger); }
+
+.voice-play-toggle { flex-basis: 44px; touch-action: manipulation; }
+.voice-player-error a { margin-left: 6px; color: var(--theme-accent-dark); text-decoration: underline; }

@@ -20,17 +20,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const metadata = JSON.parse(await readFile(path.join(fileDirectory, `${id}.json`), "utf8")) as { name?: unknown; mimeType?: unknown };
     let filePath = path.join(fileDirectory, `${id}.bin`);
+    let name = typeof metadata.name === "string" ? metadata.name : "file";
     let mimeType = typeof metadata.mimeType === "string" ? metadata.mimeType : "application/octet-stream";
     if (new URL(_request.url).searchParams.get("playback") === "1" && mimeType.startsWith("audio/")) {
-      try {
-        filePath = await compatibleAudio(filePath);
-        mimeType = "audio/mp4";
-      } catch {
-        return NextResponse.json({ error: "语音处理失败，请稍后重试" }, { status: 503, headers: { "Retry-After": "3", "Cache-Control": "no-store" } });
-      }
+      try { filePath = await compatibleAudio(filePath); mimeType = "audio/mp4"; name = name.replace(/\.[^.]+$/, "") + ".m4a"; }
+      catch { return NextResponse.json({ error: "语音兼容版本暂未准备完成，请稍后重试或下载原文件" }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "5" } }); }
     }
     const fileStat = await stat(filePath);
-    const name = typeof metadata.name === "string" ? metadata.name : "file";
     const encodedName = encodeURIComponent(name).replace(/['()]/g, escape);
     const range = parseByteRange(_request.headers.get("range"), fileStat.size);
     if (range === "invalid") return new NextResponse(null, { status: 416, headers: { "Content-Range": `bytes */${fileStat.size}` } });
