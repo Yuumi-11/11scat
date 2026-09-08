@@ -21,6 +21,11 @@ globalThis.fetch = async (input, init = {}) => {
     save(); return Response.json({ id2etag: ids });
   }
   if (route.endsWith('/comments')) return Response.json([]);
+  if (route.startsWith('/task/') && method === 'POST') {
+    const id = route.slice('/task/'.length);
+    if (!tasks[id]) return new Response(null, { status: 404 });
+    tasks[id] = { ...tasks[id], ...JSON.parse(init.body) }; save(); return Response.json(tasks[id]);
+  }
   const match = route.match(/^\/project\/([^/]+)\/task\/([^/]+)(\/complete)?$/);
   if (match && match[1] === `inbox-${owner}`) {
     const id = match[2];

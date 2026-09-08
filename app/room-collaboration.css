@@ -68,6 +68,7 @@
 .priority-5 .coop-priority { color: var(--danger); }
 .priority-3 .coop-priority { color: #796122; }
 .room-collaboration-dialog .coop-claim { margin-left: auto; border: 0; border-radius: 6px; padding: 3px 8px; color: var(--theme-accent-dark); background: var(--theme-soft); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.room-collaboration-dialog .coop-task-top > .coop-claim { flex-shrink: 0; margin-left: 0; min-height: 25px; padding: 3px 6px; }
 .coop-new-task { min-width: 0; min-height: 77px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border: 1px dashed color-mix(in srgb, var(--theme-accent) 55%, var(--line)); border-radius: 11px; color: var(--theme-accent-dark); background: transparent; }
 .coop-new-task:hover:not(:disabled), .coop-new-task.editing { background: var(--theme-soft); border-color: var(--theme-accent); }
 .coop-new-task > svg { flex-shrink: 0; }

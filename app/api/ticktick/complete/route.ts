@@ -16,10 +16,10 @@ export async function POST(request: Request) {
   const token = await accessToken();
   if (!token) return new NextResponse("Not connected", { status: 401 });
   if (typeof body.projectId !== "string" || typeof body.taskId !== "string") return new NextResponse("Invalid task", { status: 400 });
-  try { return await store.personalCompletion(identityId, body.taskId, async () => {
+  try { const result = await store.personalCompletion(identityId, body.taskId, async () => {
   const response = await fetch(`https://api.dida365.com/open/v1/project/${encodeURIComponent(body.projectId)}/task/${encodeURIComponent(body.taskId)}/complete`, {
     method: "POST", headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
   return new NextResponse(null, { status: response.ok ? 204 : response.status });
-  }); } catch (error) { return NextResponse.json({ error: error instanceof CollaborationError ? error.message : "完成状态没有同步成功" }, { status: error instanceof CollaborationError ? error.status : 503 }); }
+  }); return result instanceof Response ? result : NextResponse.json({ workflow: result }); } catch (error) { return NextResponse.json({ error: error instanceof CollaborationError ? error.message : "完成状态没有同步成功" }, { status: error instanceof CollaborationError ? error.status : 503 }); }
 }

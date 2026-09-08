@@ -28,8 +28,9 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const claim = { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: sourceTask.id, version: sourceTask.version }, destination: 'bob' };
     let response = await call('bob', '/api/room/tasks', claim); assert.equal(response.status, 200); let w = (await response.json()).workflow; assert.equal(w.status, 'working');
     const act = async (actor, action, extra = {}) => call(actor, '/api/room/tasks', { id: randomUUID(), workflowId: w.id, version: w.version, action, ...extra });
-    response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 409); assert.match((await response.json()).error, /审批/);
-    response = await call('alice', '/api/ticktick/complete', { projectId: 'inbox-alice', taskId: sourceTask.id }); assert.equal(response.status, 409);
+    response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 403); assert.match((await response.json()).error, /审批/);
+    response = await act('bob', 'update-workflow', { fields: { content: 'HTTP 修改详情' } }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    const edited = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(edited.alice.original.content, 'HTTP 修改详情'); assert.equal(edited.bob[w.targetId].content, 'HTTP 修改详情');
     const upload = (actor, body, headers = {}) => fetch(`${origin}/api/room/tasks/files?workflow=${w.id}&name=${encodeURIComponent('评语.txt')}`, { method: 'POST', body, headers: { Cookie: cookie(actor), Origin: origin, ...headers }, redirect: 'manual' });
     assert.equal((await upload('alice', 'draft')).status, 403);
     assert.equal((await upload('bob', 'draft', { Origin: 'https://foreign.example' })).status, 403);
@@ -49,6 +50,14 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     response = await act('bob', 'submit'); w = (await response.json()).workflow;
     response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow; assert.equal(w.status, 'done');
     const final = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(final.alice.original.status, 2); assert.equal(final.bob[w.targetId].status, 2);
+    // A fresh public workflow verifies the original publisher's ordinary sidebar checkbox.
+    await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '直接完成测试' } });
+    const publicTask = (await (await call('bob')).json()).buffer[0];
+    response = await call('bob', '/api/room/tasks', { id: randomUUID(), action: 'claim', source: { ownerId: null, taskId: publicTask.id, version: publicTask.version }, destination: 'bob' });
+    const direct = (await response.json()).workflow;
+    response = await call('alice', '/api/ticktick/complete', { projectId: 'inbox-alice', taskId: direct.reviewerTaskId }); assert.equal(response.status, 200);
+    const completed = (await response.json()).workflow; assert.equal(completed.status, 'done'); assert.ok(completed.events.some(event => event.type === 'owner-complete'));
+    const directlyDone = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(directlyDone.alice[direct.reviewerTaskId].status, 2); assert.equal(directlyDone.bob[direct.targetId].status, 2);
     assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
   } finally { child.kill(); }
 });

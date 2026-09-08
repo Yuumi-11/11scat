@@ -144,10 +144,109 @@ test('website completion, edit and delete cannot bypass an active workflow; unre
   for (const owner of ['alice', 'bob']) {
     const owned = (await f.store.snapshot(owner)).members.find(member => member.id === owner).tasks[0];
     for (const action of ['complete', 'delete', 'update']) await assert.rejects(f.store.execute(owner, { id: randomUUID(), action, source: source(owned), fields: { title: 'bypass' } }), /流程/);
-    await assert.rejects(f.store.personalCompletion(owner, owned.id, () => assert.fail('must not complete')), /审批/);
+    if (owner === 'bob') await assert.rejects(f.store.personalCompletion(owner, owned.id, () => assert.fail('must not complete')), /审批/);
   }
   assert.equal(await f.store.personalCompletion('bob', 'unrelated', async () => 'allowed'), 'allowed');
   await assert.rejects(claim(f, task), /已经有人认领/); assert.equal(f.counts.creates, 1);
+});
+
+test('unclaimed tasks can be completed by another member without creating a workflow', async () => {
+  const f = await fixture(), task = await personal(f), publicTask = await f.create('public');
+  await f.store.execute('bob', { id: randomUUID(), action: 'complete', source: source(task) });
+  await f.store.execute('bob', { id: randomUUID(), action: 'complete', source: source(publicTask) });
+  assert.equal(f.accounts.alice.get(task.id).status, 2);
+  const snapshot = await f.store.snapshot('alice'); assert.equal(snapshot.workflows.length, 0); assert.equal(snapshot.buffer.length, 0);
+});
+
+test('original owner or publisher directly completes in working, submitted and rejected states with both inboxes and an event', async () => {
+  for (const publicTask of [false, true]) for (const status of ['working', 'submitted', 'rejected']) {
+    const f = await fixture(), task = publicTask ? await f.create('public') : await personal(f);
+    let w = await claim(f, task);
+    if (status !== 'working') w = await act(f, w, 'bob', 'submit');
+    if (status === 'rejected') w = await act(f, w, 'alice', 'reject');
+    await assert.rejects(act(f, w, 'bob', 'owner-complete'), { status: 403 });
+    await assert.rejects(act(f, w, 'offline', 'owner-complete'), { status: 403 });
+    const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'owner-complete' };
+    w = await f.store.workflowCommand('alice', command); assert.equal(w.status, 'done');
+    assert.equal(f.accounts.alice.get(publicTask ? w.reviewerTaskId : task.id).status, 2); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    assert.equal(w.events.filter(event => event.type === 'owner-complete').length, 1);
+    assert.equal((await f.store.workflowCommand('alice', command)).events.filter(event => event.type === 'completed').length, 1);
+    assert.equal((await f.store.snapshot('bob')).buffer.length, 0);
+  }
+});
+
+test('sidebar original owner completes linked workflow without calling the ordinary single-task endpoint', async () => {
+  const f = await fixture(), task = await personal(f); const w = await claim(f, task);
+  await assert.rejects(f.store.personalCompletion('bob', w.targetId, async () => assert.fail('claimant bypass')), /审批/);
+  const done = await f.store.personalCompletion('alice', task.id, async () => assert.fail('single-task callback'));
+  assert.equal(done.status, 'done'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  await f.store.personalCompletion('alice', task.id, async () => assert.fail('duplicate completion after lost HTTP response'));
+  // A changed next occurrence remains an ordinary task after the previous workflow ends.
+  Object.assign(f.accounts.alice.get(task.id), { status: 0, dueDate: '2026-09-18T00:00:00Z' });
+  assert.equal(await f.store.personalCompletion('alice', task.id, async () => 'next occurrence'), 'next occurrence');
+});
+
+test('all room members can synchronize workflow details and submitted work requires a new submission', async () => {
+  const f = await fixture(), task = await f.create('public'); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit'); const oldVersion = w.version;
+  await assert.rejects(act(f, w, 'stranger', 'update-workflow', { fields: { title: 'no' } }), { status: 403 });
+  w = await act(f, w, 'offline', 'update-workflow', { fields: { title: '新标题', content: '新说明', priority: 5, dueDate: '2026-09-15T12:00:00+0800' } });
+  assert.equal(w.status, 'working'); assert.equal(w.editPending, false);
+  for (const remote of [f.accounts.alice.get(w.reviewerTaskId), f.accounts.bob.get(w.targetId)]) { assert.equal(remote.title, '新标题'); assert.equal(remote.priority, 5); assert.equal(remote.content, '新说明'); }
+  assert.equal((await f.store.snapshot('alice')).buffer[0].title, '新标题');
+  await assert.rejects(act(f, w, 'alice', 'approve', { version: oldVersion }), /已更新/);
+  await assert.rejects(act(f, w, 'alice', 'approve'), /状态/);
+  w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '完成后补充' } }); assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.get(w.reviewerTaskId).content, '完成后补充'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+});
+
+test('lost detail update response resumes after restart without overwriting newer edits or repeating acknowledged writes', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task), writes = 0;
+  const update = f.gateway.update; let fail = true;
+  f.gateway.update = async (...args) => { writes++; await update(...args); if (fail) { fail = false; throw new Error('lost update response'); } };
+  const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'update-workflow', fields: { title: '更新' } };
+  w = await f.store.workflowCommand('bob', command); assert.equal(w.editPending, true);
+  await assert.rejects(act(f, w, 'bob', 'submit'), /同步/);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await f.store.workflowCommand('bob', command); assert.equal(w.editPending, false); assert.equal(writes, 2);
+  await f.store.workflowCommand('bob', command); assert.equal(writes, 2);
+  // Two editors using the same snapshot cannot silently overwrite one another.
+  const results = await Promise.allSettled([act(f, w, 'alice', 'update-workflow', { fields: { content: 'A' } }), act(f, w, 'bob', 'update-workflow', { fields: { content: 'B' } })]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+});
+
+test('details can be saved while creation is uncertain and retried by any member without extra task creation', async () => {
+  const f = await fixture(), task = await personal(f); f.loseCreate();
+  let w = await claim(f, task); assert.equal(w.status, 'creating');
+  w = await act(f, w, 'offline', 'update-workflow', { fields: { content: '新的说明' } });
+  assert.equal(w.status, 'working'); assert.equal(w.editPending, false); assert.equal(f.counts.creates, 1); assert.equal(f.accounts.bob.get(w.targetId).content, '新的说明');
+});
+
+test('partial completion can be edited and resumed without completing the acknowledged side twice', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task); const complete = f.gateway.complete;
+  let failed = false, sourceCalls = 0;
+  f.gateway.complete = async (owner, id) => { if (owner === 'alice') sourceCalls++; if (owner === 'bob' && !failed) { failed = true; throw new Error('offline'); } return complete(owner, id); };
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'approving');
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '更新后的说明' } }); assert.equal(w.editPending, false);
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'done'); assert.equal(sourceCalls, 1); assert.equal(f.accounts.bob.get(w.targetId).content, '更新后的说明');
+});
+
+test('changing repeat settings cannot bypass protection after an uncertain recurring completion', async () => {
+  const f = await fixture(), task = await personal(f, { repeatFlag: 'RRULE:FREQ=DAILY' }); let w = await claim(f, task), calls = 0;
+  f.gateway.complete = async () => { calls++; throw new Error('unknown completion result'); };
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'approving');
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { repeatFlag: '' } }); assert.equal(w.editPending, false);
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'approving'); assert.match(w.error, /重复任务/); assert.equal(calls, 1);
+});
+
+test('explicit new settings can resolve a detail sync conflict while stale requests stay rejected', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task); const update = f.gateway.update; let first = true;
+  f.gateway.update = async (...args) => { if (first) { first = false; f.accounts.bob.get(w.targetId).content = '外部修改'; throw new Error('connection interrupted'); } await update(...args); };
+  w = await act(f, w, 'alice', 'update-workflow', { fields: { content: '第一次修改' } }); assert.equal(w.editPending, true);
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.equal(w.editPending, true); assert.match(w.error, /同步期间被修改/);
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '核对后的修改' } }); assert.equal(w.editPending, false);
+  assert.equal(f.accounts.alice.get(task.id).content, '核对后的修改'); assert.equal(f.accounts.bob.get(w.targetId).content, '核对后的修改');
+  assert.ok(w.events.some(event => event.type === 'update-replaced'));
 });
 
 test('stale approvals and out of workflow manual completions are rejected without polling or reopening', async () => {

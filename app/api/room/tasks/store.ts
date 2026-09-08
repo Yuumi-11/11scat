@@ -17,7 +17,8 @@ export type Gateway = {
 };
 type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; completedAt?: number };
 type Creation = { state: "new" | "sent" | "received"; beforeIds?: string[] };
-type Workflow = ClaimWorkflow & { signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean }; submitted?: { source: string; target: string } };
+type WorkflowEdit = { id: string; fields: TaskFields; targets?: { owner: string; id: string; before: string; done: boolean }[] };
+type Workflow = ClaimWorkflow & { signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean; repeating?: boolean }; submitted?: { source: string; target: string }; edit?: WorkflowEdit };
 type Operation = OperationView & {
   signature: string; source?: TaskSource; fields: TaskFields; targetId: string;
   phase: "prepared" | "destination-ready" | "source-removed";
@@ -177,7 +178,7 @@ export class CollaborationStore {
   }
   private publicWorkflow(workflow: Workflow): ClaimWorkflow {
     const { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields, status, version, createdAt, updatedAt, error, events } = workflow;
-    return { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields, status, version, createdAt, updatedAt, error, events: events.map(({ id, actorId, type, at, comment, files }) => ({ id, actorId, type, at, comment, files })) };
+    return { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields: workflow.edit?.fields || fields, status, version, createdAt, updatedAt, error, editPending: !!workflow.edit, events: events.map(({ id, actorId, type, at, comment, files }) => ({ id, actorId, type, at, comment, files })) };
   }
   private async saveWorkflow(state: State, workflow: Workflow) {
     workflow.updatedAt = Date.now(); workflow.version++; state.revision++; await this.write(state);
@@ -274,7 +275,8 @@ export class CollaborationStore {
         if (task.status !== 2) {
           if (task.status || remoteVersion(task) !== workflow.submitted![side]) throw new CollaborationError("任务在提交后发生变化，暂未勾选，请核对后重试");
           const sent = side === "source" ? "sourceSent" : "targetSent";
-          if (approval[sent] && workflow.fields.repeatFlag) throw new CollaborationError("重复任务的完成响应未确认，已停止重复勾选，请核对滴答中的本次任务");
+          if (approval[sent] && (approval.repeating || workflow.fields.repeatFlag)) throw new CollaborationError("重复任务的完成响应未确认，已停止重复勾选，请核对滴答中的本次任务");
+          approval.repeating ||= !!workflow.fields.repeatFlag;
           approval[sent] = true; await this.saveWorkflow(state, workflow);
           await this.gateway.complete(owner, id);
         }
@@ -288,6 +290,63 @@ export class CollaborationStore {
     } catch (error) { workflow.error = error instanceof Error ? error.message : "完成状态尚未同步，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
   }
+  private async finishWorkflowEdit(state: State, workflow: Workflow) {
+    const edit = workflow.edit!;
+    try {
+      if (workflow.status === "creating") {
+        await this.startWorkflow(state, workflow);
+        if (workflow.status === "creating") return this.publicWorkflow(workflow);
+      }
+      if (!edit.targets) {
+        const sides = await this.workflowSides(state, workflow);
+        edit.targets = [{ owner: workflow.reviewerId, id: workflow.source.ownerId ? workflow.source.taskId : workflow.reviewerTaskId!, before: remoteVersion(sides.source), done: false }];
+        if (workflow.claimantId !== workflow.reviewerId || workflow.targetId !== edit.targets[0].id) edit.targets.push({ owner: workflow.claimantId, id: workflow.targetId, before: remoteVersion(sides.target), done: false });
+        await this.saveWorkflow(state, workflow);
+      }
+      for (const target of edit.targets) {
+        if (target.done) continue;
+        const task = await this.gateway.get(target.owner, target.id);
+        if (!task) throw new CollaborationError("关联任务缺失，详情修改已保存，请恢复任务后重试同步");
+        if (!sameFields(task, edit.fields)) {
+          if (remoteVersion(task) !== target.before) throw new CollaborationError("关联任务在同步期间被修改，已暂停覆盖，请核对后重试");
+          await this.gateway.update(target.owner, target.id, edit.fields, target.before);
+        }
+        target.done = true; await this.saveWorkflow(state, workflow);
+      }
+      const sides = await this.workflowSides(state, workflow);
+      if (!sameFields(sides.source, edit.fields) || !sameFields(sides.target, edit.fields)) throw new CollaborationError("关联任务详情暂未一致，请核对后重试");
+      if (workflow.source.ownerId === null) {
+        const task = state.buffer[workflow.source.taskId];
+        task.fields = edit.fields; task.version++;
+      }
+      if (workflow.approval) workflow.approval.repeating ||= !!workflow.fields.repeatFlag;
+      workflow.fields = edit.fields; workflow.title = edit.fields.title;
+      if (workflow.status === "submitted") { workflow.status = "working"; delete workflow.submitted; }
+      // Explicit edits during partially completed approval update the expected fields,
+      // but preserve acknowledged/sent completion markers, including repeating tasks.
+      if (workflow.status === "approving") workflow.submitted = { source: remoteVersion(sides.source), target: remoteVersion(sides.target) };
+      const event = workflow.events.find(item => item.id === edit.id)!;
+      event.type = "updated";
+      event.comment = "任务详情已同步到关联任务；待审批任务需按最新内容重新提交";
+      delete workflow.edit; workflow.error = "";
+    } catch (error) { workflow.error = error instanceof Error ? error.message : "任务详情尚未同步完成，请重试"; }
+    await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
+  }
+  private async completeByOwner(state: State, workflow: Workflow, actor: string, id: string, signature: string) {
+    if (actor !== workflow.reviewerId) throw new CollaborationError("只有原任务所属成员或公共任务发布者能直接完成；认领者请提交审批", 403);
+    if (workflow.edit) { await this.finishWorkflowEdit(state, workflow); if (workflow.edit) return this.publicWorkflow(workflow); }
+    if (workflow.status === "creating") { await this.startWorkflow(state, workflow); if (workflow.status === "creating") return this.publicWorkflow(workflow); }
+    if (workflow.status === "done") return this.publicWorkflow(workflow);
+    if (workflow.status === "approving") return this.finishApproval(state, workflow);
+    const sides = await this.workflowSides(state, workflow);
+    if ([sides.source, sides.target].some(task => task.status && task.status !== 2)) throw new CollaborationError("关联任务状态暂不支持完成，请刷新后重试");
+    workflow.submitted = { source: remoteVersion(sides.source), target: remoteVersion(sides.target) };
+    workflow.approval = { sourceDone: sides.source.status === 2, targetDone: sides.target.status === 2 };
+    workflow.status = "approving"; workflow.error = "";
+    workflow.events.push({ id, signature, actorId: actor, type: "owner-complete", at: Date.now(), comment: "原任务所属成员或发布者已直接标记完成，正在同步双方任务", files: [] });
+    await this.saveWorkflow(state, workflow);
+    return this.finishApproval(state, workflow);
+  }
   workflowCommand(actor: string, command: WorkflowCommand) {
     return this.serial(async () => {
       await this.requireMember(actor);
@@ -297,15 +356,32 @@ export class CollaborationStore {
       const signature = fingerprint({ actor, command }), prior = workflow.events.find(event => event.id === command.id);
       if (prior) {
         if (prior.signature !== signature) throw new CollaborationError("操作编号已使用");
+        if (workflow.edit?.id === command.id) return this.finishWorkflowEdit(state, workflow);
+        if (workflow.edit) return this.publicWorkflow(workflow);
         return workflow.status === "approving" && actor === workflow.reviewerId ? this.finishApproval(state, workflow) : this.publicWorkflow(workflow);
       }
       if (workflow.version !== command.version) throw new CollaborationError("流程已更新，请刷新后操作");
+      if (command.action === "update-workflow") {
+        const fields = { ...(workflow.edit?.fields || workflow.fields), ...validateFields(command.fields) };
+        if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);
+        if (workflow.edit) {
+          const replaced = workflow.events.find(item => item.id === workflow.edit!.id);
+          if (replaced) { replaced.type = "update-replaced"; replaced.comment = "此修改由后续详情设置替代"; }
+        }
+        workflow.edit = { id: command.id, fields };
+        workflow.events.push({ id: command.id, signature, actorId: actor, type: "updating", at: Date.now(), comment: "已保存详情修改，正在同步关联任务", files: [] });
+        await this.saveWorkflow(state, workflow);
+        return this.finishWorkflowEdit(state, workflow);
+      }
+      if (command.action === "owner-complete") return this.completeByOwner(state, workflow, actor, command.id, signature);
       if (command.action === "retry-workflow") {
+        if (workflow.edit) return this.finishWorkflowEdit(state, workflow);
         if (![workflow.claimantId, workflow.reviewerId].includes(actor)) throw new CollaborationError("只有流程参与者能重试", 403);
         if (workflow.status === "creating") return this.startWorkflow(state, workflow);
         if (workflow.status === "approving" && actor === workflow.reviewerId) return this.finishApproval(state, workflow);
         throw new CollaborationError("此流程无需重试");
       }
+      if (workflow.edit) throw new CollaborationError("任务详情正在同步，请同步完成后提交或审批");
       if (!["submit", "approve", "reject"].includes(command.action)) throw new CollaborationError("流程操作无效", 400);
       const submit = command.action === "submit";
       if (actor !== (submit ? workflow.claimantId : workflow.reviewerId)) throw new CollaborationError(submit ? "只有认领者能提交完成" : "只有原任务所属用户或发布者能审批", 403);
@@ -339,12 +415,30 @@ export class CollaborationStore {
     const workflow = (await this.read()).workflows[workflowId];
     if (!workflow) throw new CollaborationError("流程不存在", 404);
     if (file && file.actorId !== actor && !workflow.events.some(event => event.files.some(item => item.id === file.id))) throw new CollaborationError("附件尚未提交", 403);
-    if (upload && !((actor === workflow.claimantId && ["working", "rejected"].includes(workflow.status)) || (actor === workflow.reviewerId && workflow.status === "submitted"))) throw new CollaborationError("当前账号不能为此流程添加附件", 403);
+    if (upload && (workflow.edit || !((actor === workflow.claimantId && ["working", "rejected"].includes(workflow.status)) || (actor === workflow.reviewerId && workflow.status === "submitted")))) throw new CollaborationError("当前账号不能为此流程添加附件", 403);
     return true;
   }
   personalCompletion<T>(actor: string, taskId: string, complete: () => Promise<T>) {
     return this.serial(async () => {
-      if (this.taskWorkflow(await this.read(), actor, taskId)) throw new CollaborationError("此任务需要审批，请在协作区提交完成或审批");
+      const state = await this.read(), workflow = this.taskWorkflow(state, actor, taskId);
+      if (workflow) {
+        await this.requireMember(actor);
+        const result = await this.completeByOwner(state, workflow, actor, randomUUID(), fingerprint({ actor, taskId, version: workflow.version }));
+        if (result.error) throw new CollaborationError(result.error);
+        return result;
+      }
+      // A lost HTTP response can leave an old checkbox visible after the workflow
+      // finished. Read back that occurrence before falling through to ordinary completion.
+      const completed = Object.values(state.workflows).filter(item => item.status === "done" && (
+        (item.source.ownerId === actor && item.source.taskId === taskId) ||
+        (item.reviewerId === actor && item.reviewerTaskId === taskId) ||
+        (item.claimantId === actor && item.targetId === taskId)
+      )).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (completed) {
+        const current = await this.gateway.get(actor, taskId);
+        const side = completed.claimantId === actor && completed.targetId === taskId ? "target" : "source";
+        if (!current || current.status === 2 || remoteVersion(current) === completed.submitted?.[side]) return this.publicWorkflow(completed);
+      }
       return complete();
     });
   }

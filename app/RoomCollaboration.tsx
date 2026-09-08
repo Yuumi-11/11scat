@@ -13,7 +13,7 @@ import { CollaborationRecovery } from "./CollaborationRecovery";
 import { ClaimWorkflows, workflowStatus } from "./ClaimWorkflows";
 
 type RequestCommand = WorkflowCommand | { id: string; action: "legacy-reset" } | CollaborationCommand | { id: string; action: "resume" | "cancel" } | { id: string; action: "recover"; target: { id: string; version: string } };
-type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
+type Editor = { workflow?: ClaimWorkflow; task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
 const taskKey = (task: RoomTask) => `${task.ownerId || "buffer"}:${task.id}`;
 const taskSource = (task: RoomTask) => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
 const dateInput = (date: string | null, allDay: boolean) => date ? new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0, allDay ? 10 : 16) : "";
@@ -111,7 +111,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       const data = await response.json();
       if (!response.ok) { if (response.status < 500) setUncertain(null); throw new Error(data.error || "操作未完成"); }
       operation = data.operation; workflow = data.workflow;
-      if (workflow) { setWorkflowId(workflow.id); setWorkflowOpen(true); }
+      if (workflow && command.action !== "update-workflow") { setWorkflowId(workflow.id); setWorkflowOpen(true); }
       setUncertain(null);
       if (workflow?.error) setError(workflow.error);
       else if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
@@ -120,7 +120,8 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     finally {
       const next = await load(true);
       workflow ||= next?.workflows.find(item => item.id === command.id || item.events.some(event => event.id === command.id) || (command.action === "retry-workflow" && item.id === command.workflowId && item.version !== command.version));
-      if (workflow) { setUncertain(null); setWorkflowId(workflow.id); setWorkflowOpen(true); }
+      if (workflow) { setUncertain(null); if (command.action !== "update-workflow") { setWorkflowId(workflow.id); setWorkflowOpen(true); } }
+      if (workflow && command.action === "update-workflow") setEditor(current => current?.workflow?.id === workflow!.id ? { ...current, workflow } : current);
       const known = next?.operations.find(item => item.id === command.id);
       if (known) { setUncertain(null); operation ||= known; }
       if (operation?.status === "done") { setError(""); setNotice("已保存"); }
@@ -138,9 +139,11 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     await perform({ id: crypto.randomUUID(), action: "claim", source: taskSource(task), destination: owner || null });
   };
   const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setRecoveryOpen(false); setWorkflowOpen(false); setInlineTask(null); setDraftId(null); setKeyboardDrag(null); setHoverOwner(null); setGhost(null); drag.current = null; } };
-  const edit = (task: RoomTask) => {
+  const edit = (task: RoomTask, selectedWorkflow?: ClaimWorkflow) => {
+    const workflow = selectedWorkflow || snapshot?.workflows.find(item => item.id === task.workflowId);
+    if (workflow) task = { ...task, ...workflow.fields };
     setDeleteArmed(false); setError(""); setKeyboardDrag(null); setHoverOwner(null);
-    setEditor({ task, title: task.title, content: task.content, priority: task.priority, start: dateInput(task.startDate, task.isAllDay), due: dateInput(task.dueDate, task.isAllDay), allDay: task.isAllDay, tags: task.tags.join(", "), repeat: task.repeatFlag, reminders: task.reminders });
+    setEditor({ workflow, task, title: task.title, content: task.content, priority: task.priority, start: dateInput(task.startDate, task.isAllDay), due: dateInput(task.dueDate, task.isAllDay), allDay: task.isAllDay, tags: task.tags.join(", "), repeat: task.repeatFlag, reminders: task.reminders });
   };
   function pointerMove(event: PointerEvent<HTMLButtonElement>) {
     const current = drag.current;
@@ -174,7 +177,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
     const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
-    const cardLocked = unavailable || !!workflow || pending || !!inlineTask || !!draftId;
+    const controlsLocked = unavailable || pending || !!inlineTask || !!draftId;
+    const cardLocked = controlsLocked || !!workflow;
+    const compactClaim = task.ownerId !== null && !collaborationDate(task);
+    const claimButton = !workflow && task.ownerId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
     return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
       <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动安排任务；键盘可按空格、方向键，再按 Enter 放下"} aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
         onBlur={() => { setKeyboardDrag(null); setHoverOwner(null); }}
@@ -196,10 +202,11 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
           const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
           if (done) setInlineTask(null); return done;
         }} /> : <button className="coop-task-title" type="button" disabled={unavailable || pending || !!inlineTask || !!draftId} title={workflow ? "查看工作流程" : "点击修改标题"} onClick={() => { if (workflow) showWorkflow(); else { setInlineTask(task); setError(""); } }}>{task.title}</button>}
-        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => workflow ? showWorkflow() : edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
-        <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={cardLocked} onClick={() => void perform({ id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
-      {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (task.ownerId !== identityId && canDrop(identityId))) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
-        {!workflow && task.ownerId !== identityId && canDrop(identityId) && <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
+        {compactClaim && claimButton}
+        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
+        <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked || (!!workflow && workflow.reviewerId !== identityId)} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
+      {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
+        {!compactClaim && claimButton}
       </div>}
       {workflow && <button type="button" className={`coop-workflow-badge ${workflow.status}`} onClick={showWorkflow}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</button>}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
@@ -231,7 +238,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       {!snapshot && <div className="coop-loading-toolbar"><button type="button" className="coop-icon coop-close" disabled={busy || !!editor} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></div>}
       <div className="coop-layout" aria-busy={loading || busy}>{snapshot ? <>{column(null, "任务板", snapshot.buffer)}<div ref={membersPane} className="coop-members">{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</div></> : <div className="coop-empty"><p>{loading ? "正在读取…" : "暂时无法读取任务"}</p><button type="button" className="coop-icon" disabled={loading} aria-label="重新读取任务" onClick={() => { setError(""); void load(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button>{uncertain && <button type="button" onClick={() => setRecoveryOpen(true)}>查看待处理操作</button>}</div>}</div>
       {!editor && !recoveryOpen && !workflowOpen && (error || notice || busy) && <div className={`coop-toast${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}<span>{error || (busy ? "正在保存…" : notice)}</span>{(pending.length > 0 || uncertain) && <button type="button" onClick={() => setRecoveryOpen(true)}>查看</button>}{!busy && <button type="button" aria-label="收起提示" onClick={() => { setError(""); setNotice(""); }}><X size={14} /></button>}</div>}
-      {workflowOpen && snapshot && <ClaimWorkflows snapshot={snapshot} initialId={workflowId} busy={busy} error={error} perform={perform} retryUncertain={uncertain ? () => void perform(uncertain) : undefined} onClose={() => setWorkflowOpen(false)} />}
+      {workflowOpen && snapshot && <ClaimWorkflows snapshot={snapshot} initialId={workflowId} busy={busy} error={error} perform={perform} retryUncertain={uncertain ? () => void perform(uncertain) : undefined} onClose={() => setWorkflowOpen(false)} onEdit={workflow => { setWorkflowOpen(false); edit({ ...workflow.fields, id: workflow.source.taskId, ownerId: workflow.source.ownerId, version: workflow.source.version, workflowId: workflow.id }, workflow); }} />}
       {recoveryOpen && <CollaborationRecovery busy={busy} onClose={() => setRecoveryOpen(false)}>
         {error && <p className="coop-feedback error" role="status">{error}</p>}
         {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
@@ -243,7 +250,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       <span className="coop-sr-only" aria-live="polite">{keyboardDrag ? `正在移动 ${keyboardDrag.task.title}，目标 ${ownerName(keyboardDrag.owner || null)}，方向键选择，Enter 放下，Esc 取消` : ""}</span>
       {editor && <div className="coop-editor-backdrop"><form className="coop-editor" aria-label="编辑协作任务" onSubmit={event => {
         event.preventDefault();
-        void perform({ id: crypto.randomUUID(), action: "update", source: taskSource(editor.task), fields: { title: editor.title, content: editor.content, priority: editor.priority,
+        void perform({ id: crypto.randomUUID(), ...(editor.workflow ? { action: "update-workflow" as const, workflowId: editor.workflow.id, version: editor.workflow.version } : { action: "update" as const, source: taskSource(editor.task) }), fields: { title: editor.title, content: editor.content, priority: editor.priority,
           startDate: editor.allDay === editor.task.isAllDay && editor.start === dateInput(editor.task.startDate, editor.task.isAllDay) ? editor.task.startDate : apiDate(editor.start, editor.allDay),
           dueDate: editor.allDay === editor.task.isAllDay && editor.due === dateInput(editor.task.dueDate, editor.task.isAllDay) ? editor.task.dueDate : apiDate(editor.due, editor.allDay, true),
           isAllDay: editor.allDay, timeZone: editor.task.timeZone, tags: editor.tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean), repeatFlag: editor.repeat, reminders: editor.reminders } }).then(done => { if (done) setEditor(null); });
@@ -255,7 +262,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         <label>标签<input value={editor.tags} placeholder="用逗号分隔" disabled={unavailable} onChange={event => setEditor({ ...editor, tags: event.target.value })} /></label>
         <div className="coop-editor-row"><label>重复<select value={editor.repeat} disabled={unavailable} onChange={event => setEditor({ ...editor, repeat: event.target.value })}><option value="">不重复</option><option value="RRULE:FREQ=DAILY;INTERVAL=1">每天</option><option value="RRULE:FREQ=WEEKLY;INTERVAL=1">每周</option><option value="RRULE:FREQ=MONTHLY;INTERVAL=1">每月</option>{editor.repeat && !["RRULE:FREQ=DAILY;INTERVAL=1", "RRULE:FREQ=WEEKLY;INTERVAL=1", "RRULE:FREQ=MONTHLY;INTERVAL=1"].includes(editor.repeat) && <option value={editor.repeat}>保留现有重复规则</option>}</select></label><label>提醒<select value={editor.reminders.length > 1 ? "custom" : editor.reminders[0] || ""} disabled={unavailable} onChange={event => { if (event.target.value !== "custom") setEditor({ ...editor, reminders: event.target.value ? [event.target.value] : [] }); }}><option value="">不提醒</option><option value="TRIGGER:PT0S">到时间提醒</option><option value="TRIGGER:-PT15M">提前 15 分钟</option><option value="TRIGGER:-PT1H">提前 1 小时</option>{(editor.reminders.length > 1 || (editor.reminders[0] && !["TRIGGER:PT0S", "TRIGGER:-PT15M", "TRIGGER:-PT1H"].includes(editor.reminders[0]))) && <option value={editor.reminders.length > 1 ? "custom" : editor.reminders[0]}>保留现有提醒</option>}</select></label></div>
         {error && <p className="coop-feedback error" role="alert">{error}</p>}
-        <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || !editor.title.trim()}>保存修改</button></div>
+        <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable || !!editor.workflow} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || !editor.title.trim()}>保存修改</button></div>
       </form></div>}
       {ghost && <div className="coop-drag-ghost" style={{ left: Math.min(ghost.x, window.innerWidth - 220), top: Math.min(ghost.y, window.innerHeight - 70) }}><GripVertical size={17} />{ghost.title}</div>}
       </div>
