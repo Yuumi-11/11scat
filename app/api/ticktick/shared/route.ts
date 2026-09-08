@@ -36,6 +36,7 @@ export async function POST(request: Request) {
   try {
     // Reads may be retried freely. Resolve the recipient's inbox before recording a write attempt.
     const { projectId: inboxId } = await tickInboxData(token);
+    if (inboxId === "inbox") return NextResponse.json({ error: "对方收集箱为空且未返回具体编号，请先在其收集箱添加一项后刷新。" }, { status: 422 });
     const record = await createSharedTask({ id: body.id, senderId, recipientId, senderName: sender.nickname || "成员", title }, async () => {
       const response = await tickFetch("/task", token, { method: "POST", body: JSON.stringify({ title, projectId: inboxId, timeZone: "Asia/Shanghai", isAllDay: true }) });
       if (!response.ok) throw new SharedTaskError(response.status < 500 ? "滴答未接受待办，请检查对方连接后重试。" : "滴答暂时无法确认结果，请先查看对方收集箱。", response.status < 500 ? 422 : 502);

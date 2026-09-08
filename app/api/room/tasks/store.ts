@@ -150,6 +150,7 @@ export class CollaborationStore {
             if (source.ownerId && current.remote) await this.gateway.checkTransfer(source.ownerId, current.remote);
             if (command.destination) {
               const target = await this.gateway.inbox(command.destination);
+              if (target.projectId === "inbox") throw new CollaborationError("该成员收集箱为空且滴答未返回具体编号，请先在其收集箱添加一项后刷新再分配", 422);
               if (current.remote?.projectId === target.projectId) throw new CollaborationError("两位成员连接的是同一个收集箱，无需转移");
             }
           }

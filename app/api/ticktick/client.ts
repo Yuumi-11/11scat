@@ -32,8 +32,13 @@ export class TickApiError extends Error {
   constructor(message: string, status = 502, diagnostic?: string) { super(message); this.status = status; this.diagnostic = diagnostic; }
 }
 
-// Open API resolves "inbox" for the bearer account, including an empty inbox.
-// Use the returned real project ID for subsequent task writes and ownership checks.
+const knownInboxes = new Map<string, string>();
+const concreteProjectId = (value: unknown): value is string => typeof value === "string" && value !== "inbox" && /^[A-Za-z0-9_-]{1,100}$/.test(value);
+
+// Inbox responses may omit project entirely. Only infer an ID when every task
+// returned by this account-scoped endpoint agrees; never pick the first of several.
+// An empty, previously unseen inbox can be displayed using the read alias, but
+// callers must resolve a concrete ID before attempting any task write.
 export async function tickInboxData<T extends { id: string; projectId: string } = TickTask>(token: string): Promise<{ projectId: string; tasks: T[] }> {
   let response: Response;
   try {
@@ -41,8 +46,28 @@ export async function tickInboxData<T extends { id: string; projectId: string } 
   } catch { throw new TickApiError("滴答收集箱暂时无法连接，请稍后刷新"); }
   if (!response.ok) throw new TickApiError(response.status === 401 ? "滴答授权已失效，请重新连接" : response.status === 403 ? "滴答授权缺少收集箱读取权限" : response.status === 429 ? "滴答请求较频繁，请稍后刷新" : "滴答收集箱暂时无法读取，请稍后刷新", response.status);
   const data = await response.json().catch(() => null);
-  const projectId = data?.project?.id;
-  if (typeof projectId !== "string" || projectId === "inbox" || !/^[A-Za-z0-9_-]{1,100}$/.test(projectId) || !Array.isArray(data.tasks)) throw new TickApiError("滴答收集箱格式暂不兼容，请查看连接诊断", 502, JSON.stringify({ version: 2, endpoint: "/project/inbox/data", status: response.status, shape: inboxResponseShape(data) }, null, 2));
+  const invalid = () => new TickApiError("滴答收集箱格式暂不兼容，请查看连接诊断", 502, JSON.stringify({ version: 2, endpoint: "/project/inbox/data", status: response.status, shape: inboxResponseShape(data) }, null, 2));
+  if (!Array.isArray(data?.tasks)) throw invalid();
+  let projectId: string | undefined = concreteProjectId(data?.project?.id) ? data.project.id : undefined;
+  if (!projectId && data.tasks.length) {
+    const ids = data.tasks.map((task: unknown) => record(task).projectId);
+    if (!ids.every(concreteProjectId) || new Set(ids).size !== 1 || data.tasks.some((task: unknown) => typeof record(task).id !== "string")) throw invalid();
+    projectId = ids[0];
+  }
+  if (!projectId && !data.tasks.length) {
+    projectId = knownInboxes.get(token);
+    if (!projectId) {
+      try {
+        const metadata = await tickFetch("/project/inbox", token);
+        const project = metadata.ok ? await metadata.json().catch(() => null) : null;
+        if (concreteProjectId(project?.id)) projectId = project.id;
+      } catch { /* Empty read remains valid even if optional metadata is unavailable. */ }
+    }
+    if (!projectId) return { projectId: "inbox", tasks: [] };
+  }
+  if (!projectId) throw invalid();
+  knownInboxes.delete(token); knownInboxes.set(token, projectId);
+  if (knownInboxes.size > 100) knownInboxes.delete(knownInboxes.keys().next().value!);
   return { projectId, tasks: data.tasks.filter((task: T | null) => task && typeof task.id === "string" && task.projectId === projectId) };
 }
 

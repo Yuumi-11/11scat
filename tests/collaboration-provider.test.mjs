@@ -27,7 +27,8 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
       const body = init.body ? JSON.parse(init.body) : null;
       requests.push({ owner, route, method, body });
       if (route === '/api/v2/batch/check/0') return new Response(null, { status: 401 });
-      if (route === '/open/v1/project/inbox/data') return Response.json({ project: { id: `inbox-${owner}` }, tasks: [...accounts[owner].values(), { id: 'outside', projectId: 'other-list' }] });
+      if (route === '/open/v1/project/inbox/data') return Response.json({ tasks: [...accounts[owner].values()], columns: [] });
+      if (route === '/open/v1/project/inbox') return Response.json({ id: `inbox-${owner}` });
       if (route === '/open/v1/task/batch') {
         for (const task of body.add) { assert.equal(task.projectId, `inbox-${owner}`); accounts[owner].set(task.id, structuredClone(task)); }
         return Response.json({ id2etag: {} });

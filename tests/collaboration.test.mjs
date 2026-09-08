@@ -38,6 +38,16 @@ test('collaboration includes the captured redacted diagnostic for the member who
   assert.equal(snapshot.members.find(member => member.id === 'bob').diagnostic, diagnostic);
   assert.equal(snapshot.members.find(member => member.id === 'alice').diagnostic, undefined);
 });
+
+test('an unresolved empty destination is rejected before a transfer is recorded or either account is written', async () => {
+  const f = await fixture(), task = await f.create('保留在缓冲区'), inbox = f.gateway.inbox;
+  f.gateway.inbox = async owner => owner === 'bob' ? { projectId: 'inbox', tasks: [] } : inbox(owner);
+  await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' }), { status: 422 });
+  assert.equal(f.counts.creates, 0); assert.equal(f.counts.removes, 0);
+  const snapshot = await f.store.snapshot('alice');
+  assert.equal(snapshot.buffer.length, 1);
+  assert.equal(snapshot.operations.filter(op => op.status === 'pending').length, 0);
+});
 test('buffer claims serialize across users, creation retries dedupe and tasks can be reassigned or returned', async () => {
   const f = await fixture();
   const command = { id: randomUUID(), action: 'create', fields: { title: '共同整理笔记', priority: 3 } };

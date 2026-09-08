@@ -7,6 +7,33 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { tickInboxData } from '../app/api/ticktick/client.ts';
 
+test('reported 24-task response without project metadata resolves its unique account-specific inbox and retains every task', async () => {
+  const original = globalThis.fetch;
+  const tasks = Array.from({ length: 24 }, (_, index) => ({ id: `task-${index}`, projectId: 'reported-account-inbox', title: `任务 ${index}`, content: '保留原有内容', priority: 3 }));
+  const data = { tasks, columns: [] };
+  globalThis.fetch = async url => { assert.ok(url.endsWith('/project/inbox/data')); return Response.json(data); };
+  try {
+    const inbox = await tickInboxData('reported-shape-token');
+    assert.equal(inbox.projectId, 'reported-account-inbox');
+    assert.deepEqual(inbox.tasks, tasks);
+    data.tasks = [];
+    assert.deepEqual(await tickInboxData('reported-shape-token'), { projectId: 'reported-account-inbox', tasks: [] });
+  } finally { globalThis.fetch = original; }
+});
+
+test('unseen empty inboxes use optional metadata and never reuse another account ID when metadata is unavailable', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith('/project/inbox/data')) return Response.json({ tasks: [], columns: [] });
+    assert.ok(url.endsWith('/project/inbox'));
+    return init.headers.Authorization === 'Bearer empty-metadata-token' ? Response.json({ id: 'empty-metadata-inbox' }) : new Response(null, { status: 404 });
+  };
+  try {
+    assert.deepEqual(await tickInboxData('empty-metadata-token'), { projectId: 'empty-metadata-inbox', tasks: [] });
+    assert.deepEqual(await tickInboxData('different-empty-token'), { projectId: 'inbox', tasks: [] });
+  } finally { globalThis.fetch = original; }
+});
+
 test('official inbox lookup handles empty accounts and never guesses an ID from another task or environment', async () => {
   const originalFetch = globalThis.fetch, previous = process.env.TICKTICK_INBOX_ID;
   process.env.TICKTICK_INBOX_ID = 'foreign-inbox';
@@ -50,7 +77,7 @@ test('task board reads normal projects and the official inbox without V2 and rep
     if (url.endsWith('/api/v2/batch/check/0')) return new Response(null, { status: 401 });
     if (url.endsWith('/project')) return Response.json([{ id: 'study', name: '学习' }]);
     if (url.endsWith('/project/study/data')) return Response.json({ tasks: [{ id: 'study-task', projectId: 'study', title: '清单任务' }] });
-    if (url.endsWith('/project/inbox/data')) return Response.json({ project: { id: 'board-inbox' }, tasks: [{ id: 'inbox-task', projectId: 'board-inbox', title: '收集箱任务' }] }, { status: inboxStatus });
+    if (url.endsWith('/project/inbox/data')) return Response.json({ tasks: [{ id: 'inbox-task', projectId: 'board-inbox', title: '收集箱任务' }], columns: [] }, { status: inboxStatus });
     assert.fail(`unexpected request: ${url}`);
   };
   try {
