@@ -57,6 +57,7 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
     assert.ok(snapshot.members.every(member => !member.connected));
     assert.equal(snapshot.buffer.length, 1);
     const task = snapshot.buffer[0], source = { ownerId: null, taskId: task.id, version: task.version };
+    assert.equal((await call('bob', { id: randomUUID(), action: 'complete', source })).status, 403);
     assert.equal((await call('bob', { id: randomUUID(), action: 'update', source, fields: { title: '另一成员修改', priority: 5 } })).status, 200);
     assert.equal((await call('alice', { id: randomUUID(), action: 'delete', source })).status, 409);
     const next = (await (await call('alice')).json()).buffer[0];

@@ -179,6 +179,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
     const controlsLocked = unavailable || pending || !!inlineTask || !!draftId;
     const cardLocked = controlsLocked || !!workflow;
+    const canComplete = (workflow?.reviewerId || task.ownerId || task.publisherId) === identityId;
     const compactClaim = task.ownerId !== null && !collaborationDate(task);
     const claimButton = !workflow && task.ownerId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
     return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
@@ -204,7 +205,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         }} /> : <button className="coop-task-title" type="button" disabled={unavailable || pending || !!inlineTask || !!draftId} title={workflow ? "查看工作流程" : "点击修改标题"} onClick={() => { if (workflow) showWorkflow(); else { setInlineTask(task); setError(""); } }}>{task.title}</button>}
         {compactClaim && claimButton}
         <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
-        <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked || (!!workflow && workflow.reviewerId !== identityId)} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
+        {canComplete && <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button>}</div>
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}

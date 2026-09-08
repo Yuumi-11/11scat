@@ -450,6 +450,10 @@ export class CollaborationStore {
       return { issues: [], removed: result.removed };
     });
   }
+  private requireCompletionOwner(state: State, actor: string, source?: TaskSource) {
+    const owner = source?.ownerId || (source ? state.buffer[source.taskId]?.publisherId : undefined);
+    if (!owner || actor !== owner) throw new CollaborationError("只有原任务所属成员或公共任务发布者能勾选完成；其他成员可以编辑信息", 403);
+  }
   execute(actorId: string, command: CollaborationCommand) {
     return this.serial(async () => {
       if (!command || typeof command.id !== "string" || !/^[a-f0-9-]{36}$/i.test(command.id) || !["create", "update", "move", "complete", "delete"].includes(command.action)) throw new CollaborationError("协作操作无效", 400);
@@ -460,12 +464,14 @@ export class CollaborationStore {
       let op = state.operations[command.id];
       if (op) {
         if (op.signature !== signature) throw new CollaborationError("操作编号已被使用");
+        if (op.action === "complete" && op.status === "pending") this.requireCompletionOwner(state, actorId, op.source);
         if (op.status !== "pending") return this.publicOperation(op);
       } else {
         let fields = taskFields({}); const source = command.source;
         if (command.action === "create") { fields = taskFields(validateFields(command.fields)); if (!fields.title) throw new CollaborationError("请填写任务标题", 400); }
         else {
           if (!source || (source.ownerId !== null && !members.some(member => member.id === source!.ownerId)) || typeof source.taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(source.taskId) || typeof source.version !== "string") throw new CollaborationError("任务来源无效", 400);
+          if (command.action === "complete") this.requireCompletionOwner(state, actorId, source);
           if (this.taskWorkflow(state, source.ownerId, source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
           if (Object.values(state.operations).some(item => item.status === "pending" && ((item.source?.ownerId === source!.ownerId && item.source.taskId === source!.taskId) || (item.to === source!.ownerId && item.targetId === source!.taskId)))) throw new CollaborationError("任务正在处理中，请先完成或取消之前的操作");
           const current = await this.source(state, source);
@@ -490,7 +496,10 @@ export class CollaborationStore {
       if (!op) throw new CollaborationError("操作不存在", 404);
       if (op.action === "move") throw new CollaborationError("旧转移已停用，请使用旧记录清理");
       if (op.status !== "pending") return this.publicOperation(op);
-      if (!cancel) return this.run(state, op);
+      if (!cancel) {
+        if (op.action === "complete") this.requireCompletionOwner(state, actorId, op.source);
+        return this.run(state, op);
+      }
       const current = op.source ? await this.source(state, op.source) : null;
       if (op.action === "update" && current && sameFields(current.fields, op.fields)) { await this.finish(state, op); return this.publicOperation(op); }
       else if ((op.action === "delete" && !current) || (op.action === "complete" && current?.remote?.status === 2)) { await this.finish(state, op); return this.publicOperation(op); }
@@ -501,6 +510,7 @@ export class CollaborationStore {
     throw new CollaborationError("旧转移已停用，请重新认领", 409);
   }
   private async run(state: State, op: Operation) {
+    if (op.action === "complete") this.requireCompletionOwner(state, op.actorId, op.source);
     try {
       if (op.source && this.taskWorkflow(state, op.source.ownerId, op.source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
       if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1, publisherId: op.actorId };

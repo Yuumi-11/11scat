@@ -150,12 +150,31 @@ test('website completion, edit and delete cannot bypass an active workflow; unre
   await assert.rejects(claim(f, task), /已经有人认领/); assert.equal(f.counts.creates, 1);
 });
 
-test('unclaimed tasks can be completed by another member without creating a workflow', async () => {
+test('unrelated members cannot complete unclaimed tasks but can edit; original owners and publishers can complete', async () => {
   const f = await fixture(), task = await personal(f), publicTask = await f.create('public');
-  await f.store.execute('bob', { id: randomUUID(), action: 'complete', source: source(task) });
-  await f.store.execute('bob', { id: randomUUID(), action: 'complete', source: source(publicTask) });
+  for (const item of [task, publicTask]) {
+    await assert.rejects(f.store.execute('bob', { id: randomUUID(), action: 'complete', source: source(item) }), { status: 403 });
+    await f.store.execute('bob', { id: randomUUID(), action: 'update', source: source(item), fields: { content: '其他成员可以编辑' } });
+  }
+  assert.ok(!f.accounts.alice.get(task.id).status);
+  const updated = await f.store.snapshot('alice');
+  await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(updated.members.find(member => member.id === 'alice').tasks[0]) });
+  await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(updated.buffer[0]) });
   assert.equal(f.accounts.alice.get(task.id).status, 2);
   const snapshot = await f.store.snapshot('alice'); assert.equal(snapshot.workflows.length, 0); assert.equal(snapshot.buffer.length, 0);
+});
+
+test('completion retries cannot be initiated by unrelated members or replay unauthorized historical pending operations', async () => {
+  const f = await fixture(), task = await personal(f); const complete = f.gateway.complete;
+  let calls = 0; f.gateway.complete = async () => { calls++; throw new Error('offline'); };
+  const command = { id: randomUUID(), action: 'complete', source: source(task) };
+  assert.equal((await f.store.execute('alice', command)).status, 'pending');
+  await assert.rejects(f.store.resume('bob', command.id), { status: 403 }); assert.equal(calls, 1);
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  state.operations[command.id].actorId = 'bob'; await writeFile(file, JSON.stringify(state));
+  await assert.rejects(f.store.resume('alice', command.id), { status: 403 }); assert.equal(calls, 1);
+  state.operations[command.id].actorId = 'alice'; await writeFile(file, JSON.stringify(state)); f.gateway.complete = complete;
+  assert.equal((await f.store.resume('alice', command.id)).status, 'done');
 });
 
 test('original owner or publisher directly completes in working, submitted and rejected states with both inboxes and an event', async () => {
