@@ -5,6 +5,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { parseByteRange } from "../../../../byte-range";
 import { currentIdentityId } from "../../../identity/session";
+import { compatibleAudio } from "../../../../audio-playback";
 
 export const runtime = "nodejs";
 
@@ -18,10 +19,18 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (!/^[0-9a-f-]{36}$/i.test(id)) return new NextResponse("Not found", { status: 404 });
   try {
     const metadata = JSON.parse(await readFile(path.join(fileDirectory, `${id}.json`), "utf8")) as { name?: unknown; mimeType?: unknown };
-    const filePath = path.join(fileDirectory, `${id}.bin`);
+    let filePath = path.join(fileDirectory, `${id}.bin`);
+    let mimeType = typeof metadata.mimeType === "string" ? metadata.mimeType : "application/octet-stream";
+    if (new URL(_request.url).searchParams.get("playback") === "1" && mimeType.startsWith("audio/")) {
+      try {
+        filePath = await compatibleAudio(filePath);
+        mimeType = "audio/mp4";
+      } catch {
+        return NextResponse.json({ error: "语音处理失败，请稍后重试" }, { status: 503, headers: { "Retry-After": "3", "Cache-Control": "no-store" } });
+      }
+    }
     const fileStat = await stat(filePath);
     const name = typeof metadata.name === "string" ? metadata.name : "file";
-    const mimeType = typeof metadata.mimeType === "string" ? metadata.mimeType : "application/octet-stream";
     const encodedName = encodeURIComponent(name).replace(/['()]/g, escape);
     const range = parseByteRange(_request.headers.get("range"), fileStat.size);
     if (range === "invalid") return new NextResponse(null, { status: 416, headers: { "Content-Range": `bytes */${fileStat.size}` } });

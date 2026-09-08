@@ -1,5 +1,7 @@
 "use client";
 
+import { AudioPlayer } from "./AudioPlayer";
+
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
@@ -2423,7 +2425,7 @@ export default function Home() {
                     <CloudSaveButton state={chatCloudUploads[message.attachment.id]} onClick={() => void uploadChatImageToCloud(message.attachment!)} />
                   </div>}
                   {message.attachment?.kind === "audio" && <div className="message-audio">
-                    <audio controls preload="metadata" src={message.attachment.url} aria-label={message.attachment.name}>当前浏览器无法播放这条语音。</audio>
+                    <AudioPlayer key={message.attachment.url} src={message.attachment.url} name={message.attachment.name} />
                     <CloudSaveButton state={chatCloudUploads[message.attachment.id]} onClick={() => void uploadChatImageToCloud(message.attachment!)} />
                   </div>}
                   {message.attachment?.kind === "file" && <a className="message-file" href={message.attachment.url} download={message.attachment.name}>
