@@ -1,14 +1,30 @@
 # 11scat-web deployment
 
-The Git repository is now `yuumiqwq/duo-space`. Its canonical image location
-remains `ghcr.io/yuumi-11/11scat-web`, matching the restricted VPS deployer and
-rollback allowlist. Repository moves must not silently change the image location;
-moving the package requires coordinating all three configurations and permissions.
+The Git repository is now `yuumiqwq/duo-space`. Its image location is now
+`ghcr.io/yuumiqwq/11scat-web`: the transferred repository's Actions token cannot
+publish to the old owner's package. The workflow, VPS deployer, and rollback
+allowlist are updated together in this repository. Existing images under
+`ghcr.io/yuumi-11/11scat-web` remain valid rollback targets.
 
 GitHub Actions builds each `main` commit and pushes two GHCR tags:
 
-- `ghcr.io/yuumi-11/11scat-web:<full-git-sha>` (immutable deployment tag)
-- `ghcr.io/yuumi-11/11scat-web:latest` (current branch head)
+- `ghcr.io/yuumiqwq/11scat-web:<full-git-sha>` (immutable deployment tag)
+- `ghcr.io/yuumiqwq/11scat-web:latest` (current branch head)
+
+## Required VPS migration after the repository transfer
+
+An operator with normal VPS SSH access must replace the three installed scripts
+`/opt/11scat-web/ci-deploy.sh`, `/opt/11scat-web/deploy.sh`, and
+`/opt/11scat-web/rollback.sh` with this repository's corresponding `deploy/`
+files, preserving their executable permissions. Keep the existing forced-command
+SSH restriction, `identity.env`, deployment state, and `/opt/11scat-data` intact.
+Then rerun the failed `deploy` job for the desired exact commit.
+
+The CI key can invoke deployment only; it cannot install these script updates.
+Until the operator updates the installed files, the old deployer still attempts
+to pull from the old package location and automatic deployment will fail before
+replacing the running application. Repository synchronization and image publishing
+can succeed independently of this VPS migration.
 
 The VPS does not build application images and does not retain source releases or
 deployment archives. Persistent application data remains at

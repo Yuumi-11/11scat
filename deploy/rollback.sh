@@ -19,8 +19,8 @@ source "$STATE_FILE"
 : "${CURRENT_IMAGE:?Missing CURRENT_IMAGE in deploy-state}"
 : "${PREVIOUS_IMAGE:?Missing PREVIOUS_IMAGE in deploy-state}"
 
-case "$CURRENT_IMAGE" in 11scat-web:*|ghcr.io/yuumi-11/11scat-web:*) ;; *) echo "Unsafe current image reference" >&2; exit 3;; esac
-case "$PREVIOUS_IMAGE" in 11scat-web:*|ghcr.io/yuumi-11/11scat-web:*) ;; *) echo "Unsafe previous image reference" >&2; exit 3;; esac
+case "$CURRENT_IMAGE" in 11scat-web:*|ghcr.io/yuumi-11/11scat-web:*|ghcr.io/yuumiqwq/11scat-web:*) ;; *) echo "Unsafe current image reference" >&2; exit 3;; esac
+case "$PREVIOUS_IMAGE" in 11scat-web:*|ghcr.io/yuumi-11/11scat-web:*|ghcr.io/yuumiqwq/11scat-web:*) ;; *) echo "Unsafe previous image reference" >&2; exit 3;; esac
 
 health_check() {
   local url="$1"

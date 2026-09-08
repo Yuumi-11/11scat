@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/yuumi-11/11scat-web}"
+IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-ghcr.io/yuumiqwq/11scat-web}"
 VERSION="${1:-}"
 APP_DIR="${APP_DIR:-/opt/11scat-web}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/identity.env}"

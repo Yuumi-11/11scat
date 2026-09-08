@@ -27,5 +27,5 @@ export DOCKER_CONFIG="$docker_config"
 printf '%s' "$token" | docker login ghcr.io --username "$actor" --password-stdin >/dev/null
 token=""
 
-IMAGE_REPOSITORY=ghcr.io/yuumi-11/11scat-web \
+IMAGE_REPOSITORY=ghcr.io/yuumiqwq/11scat-web \
   /opt/11scat-web/deploy.sh "$version"
