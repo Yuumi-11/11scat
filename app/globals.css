@@ -989,7 +989,10 @@ body { overflow: hidden; }
   background: var(--theme-soft);
 }
 .activity-box label,
-.activity-box strong { color: var(--theme-accent-dark); font-size: 13px; font-weight: 750; white-space: nowrap; }
+.activity-box strong,
+.activity-box input { font-family: inherit; font-size: 13px; font-weight: 750; }
+.activity-box label,
+.activity-box strong { color: var(--theme-accent-dark); white-space: nowrap; }
 .activity-box input {
   width: 100%;
   min-width: 0;
@@ -998,7 +1001,6 @@ body { overflow: hidden; }
   padding: 6px 2px;
   color: var(--ink);
   background: transparent;
-  font-size: 13px;
   outline: none;
 }
 .activity-box input::placeholder { color: var(--theme-accent); opacity: .48; }

@@ -2056,7 +2056,7 @@ export default function Home() {
     activitySavingRef.current = false;
     activityRef.current = nextActivity;
     setActivity(nextActivity);
-    setActivitySaveStatus("已保存");
+    setActivitySaveStatus("");
     void roomRef.current?.localParticipant.publishData(
       new TextEncoder().encode(JSON.stringify({ type: "activity", activity: nextActivity })),
       { reliable: true },
@@ -2530,7 +2530,7 @@ export default function Home() {
                 <div className="activity-heading"><form className="activity-box" onSubmit={submitActivity}>
                   <label htmlFor="activity-input">我正在</label>
                   <input id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
-                  <small id="activity-save-status" role="status">{activitySaveStatus}</small>
+                  {activitySaveStatus && <small id="activity-save-status" role="status">{activitySaveStatus}</small>}
                 </form><NewMemberTasks identityId={identityId} onChanged={loadTasks} /></div>
                 <div className="task-person-list">
                   {!syncing && !connected ? (
