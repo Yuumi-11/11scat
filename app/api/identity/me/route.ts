@@ -6,7 +6,20 @@ export async function GET() {
   const identityId = await currentIdentityId();
   if (!identityId) return new NextResponse("Unauthorized", { status: 401 });
   const user = await getUser(identityId);
-  return NextResponse.json({ identityId, nickname: user?.nickname || "" });
+  return NextResponse.json({ identityId, nickname: user?.nickname || "", activity: user?.activity || "" });
+}
+
+export async function PATCH(request: Request) {
+  const identityId = await currentIdentityId();
+  if (!identityId) return new NextResponse("Unauthorized", { status: 401 });
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.activity !== "string") return new NextResponse("Invalid activity", { status: 400 });
+  const user = await updateUser(identityId, (current) => ({
+    ...current,
+    activity: body.activity.trim().slice(0, 80),
+    updatedAt: new Date().toISOString(),
+  }));
+  return NextResponse.json({ activity: user.activity });
 }
 
 export async function POST(request: Request) {

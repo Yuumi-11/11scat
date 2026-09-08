@@ -3,6 +3,7 @@ import path from "node:path";
 
 export type UserRecord = {
   nickname?: string;
+  activity?: string;
   ticktickToken?: string;
   updatedAt: string;
 };

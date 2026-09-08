@@ -252,6 +252,8 @@ export default function Home() {
   const showBellChat = useCallback(() => setSideView("chat"), []);
   const [memberTasks, setMemberTasks] = useState<Record<string, SharedTask[]>>({});
   const [activity, setActivity] = useState("");
+  const [activitySaveStatus, setActivitySaveStatus] = useState("");
+  const activitySavingRef = useRef(false);
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -799,13 +801,15 @@ export default function Home() {
       try {
         const response = await fetch("/api/identity/me", { cache: "no-store" });
         if (!response.ok) throw new Error("profile unavailable");
-        const data = await response.json() as { identityId?: unknown; nickname?: unknown };
+        const data = await response.json() as { identityId?: unknown; nickname?: unknown; activity?: unknown };
         const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
         const fullIdentityId = typeof data.identityId === "string" ? data.identityId.trim().slice(0, 64) : "";
         const identityName = fullIdentityId.slice(0, 24);
         if (!disposed) {
           identityIdRef.current = fullIdentityId;
           setIdentityId(fullIdentityId);
+          activityRef.current = typeof data.activity === "string" ? data.activity.trim().slice(0, 80) : "";
+          setActivity(activityRef.current);
           setDisplayName(nickname || identityName || "成员");
           setJoined(true);
         }
@@ -830,7 +834,6 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => { activityRef.current = activity.trim().slice(0, 80); }, [activity]);
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -864,6 +867,7 @@ export default function Home() {
     };
     room.on(RoomEvent.ParticipantConnected, () => {
       refreshMembers();
+      void room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: "activity", activity: activityRef.current })), { reliable: true }).catch(() => undefined);
       broadcastRoomMessage({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] });
     });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
@@ -943,6 +947,7 @@ export default function Home() {
         const { token, url } = await response.json() as { token: string; url: string };
         await room.connect(url, token);
         if (disposed) return;
+        void room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: "activity", activity: activityRef.current })), { reliable: true }).catch(() => undefined);
         setInviteUrl(`${window.location.origin}${window.location.pathname}`);
         setRoomStatus("ready");
         setRoomError("");
@@ -2027,18 +2032,41 @@ export default function Home() {
     }
   };
 
-  const submitActivity = (event: FormEvent) => {
+  const submitActivity = async (event: FormEvent) => {
     event.preventDefault();
+    if (activitySavingRef.current) return;
+    const input = event.currentTarget.querySelector("input") as HTMLInputElement | null;
     const nextActivity = activity.trim().slice(0, 80);
+    activitySavingRef.current = true;
+    setActivitySaveStatus("正在保存…");
+    try {
+      const response = await fetch("/api/identity/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activity: nextActivity }),
+        signal: AbortSignal.timeout(15_000),
+        keepalive: true,
+      });
+      if (!response.ok) throw new Error("save failed");
+    } catch {
+      activitySavingRef.current = false;
+      setActivitySaveStatus("保存失败，请按 Enter 重试");
+      return;
+    }
+    activitySavingRef.current = false;
+    activityRef.current = nextActivity;
     setActivity(nextActivity);
+    setActivitySaveStatus("已保存");
     void roomRef.current?.localParticipant.publishData(
       new TextEncoder().encode(JSON.stringify({ type: "activity", activity: nextActivity })),
       { reliable: true },
-    );
+    ).catch(() => undefined);
     dataConnectionsRef.current.forEach((connection) => {
-      if (connection.open) connection.send({ type: "activity", activity: nextActivity });
+      try {
+        if (connection.open) connection.send({ type: "activity", activity: nextActivity });
+      } catch { /* The saved activity is sent again on reconnect. */ }
     });
-    (event.currentTarget.querySelector("input") as HTMLInputElement | null)?.blur();
+    input?.blur();
   };
 
   const clearChatImage = () => {
@@ -2501,7 +2529,8 @@ export default function Home() {
               <section className="task-person-card self-task-card" aria-label="我的任务">
                 <div className="activity-heading"><form className="activity-box" onSubmit={submitActivity}>
                   <label htmlFor="activity-input">我正在</label>
-                  <input id="activity-input" value={activity} onChange={(event) => setActivity(event.target.value)} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 同步" />
+                  <input id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
+                  <small id="activity-save-status" role="status">{activitySaveStatus}</small>
                 </form><NewMemberTasks identityId={identityId} onChanged={loadTasks} /></div>
                 <div className="task-person-list">
                   {!syncing && !connected ? (
