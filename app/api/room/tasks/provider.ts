@@ -4,7 +4,7 @@ import { tickFetch, tickInboxData, TickApiError } from "../../ticktick/client";
 import { CollaborationError, remoteVersion, sameFields, verificationIssue, type Gateway, type RemoteTask } from "./store";
 import type { TaskFields } from "../../../collaboration-types";
 
-type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]> };
+type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]>; projects?: Promise<string[]> };
 const contexts = new Map<string, Context>();
 async function context(owner: string, refreshInbox = false): Promise<Context> {
   const user = await getUser(owner);
@@ -58,7 +58,19 @@ export const gateway: Gateway = {
       return data as RemoteTask[];
     });
     const candidate = (await account.search).find(task => task.id === id);
-    return candidate ? gateway.get(owner, id, candidate.projectId) : null;
+    if (candidate) return gateway.get(owner, id, candidate.projectId);
+    // A capped filter is not exhaustive. On the uncommon missing-ID path,
+    // check the same ID in each accessible project before offering recovery.
+    account.projects ||= request(owner, "/project").then(data => {
+      if (!Array.isArray(data) || data.some(project => !project || typeof project.id !== "string" || !validId(project.id))) throw new CollaborationError("滴答清单列表不完整，请稍后重试", 502);
+      return [...new Set([account.projectId, ...data.map(project => project.id as string)])];
+    });
+    const projects = (await account.projects).filter(project => project !== (projectId || account.projectId) && project !== "inbox");
+    for (let index = 0; index < projects.length; index += 3) {
+      const tasks = await Promise.all(projects.slice(index, index + 3).map(project => gateway.get(owner, id, project)));
+      const found = tasks.find(Boolean); if (found) return found;
+    }
+    return null;
   },
   async create(owner, id, fields, receipt) {
     const existing = await gateway.get(owner, id);

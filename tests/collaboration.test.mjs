@@ -187,6 +187,71 @@ test('completed Dida task is not treated as missing and no automatic replacement
   w = await refreshed(f, w.id);
   assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
 });
+
+test('public and workflow unread records are per member, persist across devices and never query Dida on acknowledgement', async () => {
+  const f = await fixture(), board = await f.create('通知测试');
+  assert.equal((await f.store.revision('alice')).notices.length, 0);
+  const publicNotice = (await f.store.revision('bob')).notices[0]; assert.equal(publicNotice.taskId, board.id);
+  let w = await claim(f, board);
+  w = await act(f, w, 'alice', 'nudge');
+  let notices = (await f.store.revision('bob')).notices;
+  assert.equal(notices.length, 2); assert.equal(notices.filter(item => item.eventType === 'nudge').length, 1);
+  f.gateway.inbox = async () => { throw new Error('notification reads must not query Dida'); };
+  f.gateway.get = async () => { throw new Error('notification reads must not query Dida'); };
+  const revision = (await f.store.revision()).revision;
+  const noticesBefore = (await f.store.revision('bob')).noticeVersion;
+  await f.store.markNoticesRead('bob', [publicNotice.id]);
+  const noticesAfter = (await f.store.revision('bob')).noticeVersion;
+  assert.ok(noticesAfter > noticesBefore, 'browser can reject stale notification snapshots');
+  await f.store.markNoticesRead('bob', [publicNotice.id]);
+  assert.equal((await f.store.revision('bob')).noticeVersion, noticesAfter);
+  notices = (await f.store.revision('bob')).notices; assert.equal(notices.length, 1); assert.equal(notices[0].eventType, 'nudge');
+  assert.equal((await f.store.revision()).revision, revision, 'reading notices does not trigger remote board refreshes');
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  assert.equal((await f.store.revision('bob')).notices.length, 1);
+  assert.equal((await f.store.revision('alice')).notices.filter(item => item.eventType === 'claimed').length, 1);
+  await f.store.markNoticesRead('bob', (await f.store.revision('alice')).notices.map(item => item.id));
+  assert.equal((await f.store.revision('alice')).notices.length, 1, 'one user cannot consume another user unread records');
+});
+
+test('nudges and linked replies are permission checked, append-only and replay safe without changing approval state', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '提交结果' });
+  await assert.rejects(act(f, w, 'bob', 'nudge'), { status: 403 });
+  await assert.rejects(act(f, w, 'offline', 'nudge'), { status: 403 });
+  const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'nudge' };
+  w = await f.store.workflowCommand('alice', command); assert.equal(w.status, 'submitted');
+  w = await f.store.workflowCommand('alice', command); assert.equal(w.events.filter(item => item.type === 'nudge').length, 1);
+  await assert.rejects(act(f, w, 'alice', 'reply-nudge', { replyTo: command.id, comment: '非法代回复' }), { status: 403 });
+  await assert.rejects(act(f, w, 'bob', 'reply-nudge', { replyTo: randomUUID(), comment: '错误目标' }), { status: 404 });
+  await assert.rejects(act(f, w, 'bob', 'reply-nudge', { replyTo: command.id, comment: 23 }), { status: 400 });
+  await assert.rejects(act(f, w, 'bob', 'reply-nudge', { replyTo: command.id, comment: '  ' }), { status: 400 });
+  const reply = { id: randomUUID(), workflowId: w.id, version: 0, action: 'reply-nudge', replyTo: command.id, comment: '已经提交，请查看附件' };
+  w = await f.store.workflowCommand('bob', reply); w = await f.store.workflowCommand('bob', reply);
+  assert.equal(w.status, 'submitted'); assert.equal(w.events.filter(item => item.type === 'reply-nudge').length, 1);
+  assert.equal(w.events.at(-1).replyTo, command.id);
+  assert.equal((await f.store.revision('alice')).notices.filter(item => item.eventType === 'reply-nudge').length, 1);
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+  await assert.rejects(act(f, w, 'alice', 'nudge'), /无需催办/);
+});
+
+test('every newly created record is queued once for push while migration and retries do not replay history', async () => {
+  const f = await fixture(), sent = []; f.gateway.notify = async notice => { sent.push(notice.id); };
+  const task = await f.create('推送'); let w = await claim(f, task);
+  w = await act(f, w, 'alice', 'nudge');
+  await f.store.deliverNotices(); await f.store.deliverNotices();
+  assert.equal(sent.length, 3); assert.equal(new Set(sent).size, 3);
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  delete state.notifications; await writeFile(file, JSON.stringify(state));
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  assert.equal((await f.store.revision('bob')).notices.length, 0, 'migration establishes historical baseline');
+  w = await act(f, w, 'bob', 'submit', { comment: '新提交' }); await f.store.deliverNotices();
+  assert.equal(sent.length, 4); assert.equal((await f.store.revision('alice')).notices.length, 1);
+  f.gateway.notify = async notice => { sent.push(notice.id); throw new Error('lost provider response'); };
+  w = await act(f, w, 'alice', 'reject', { comment: '补充材料' });
+  await f.store.deliverNotices(); await f.store.deliverNotices(); assert.equal(sent.length, 5);
+  assert.equal((await f.store.revision('bob')).notices.length, 1, 'failed push keeps durable in-app unread record');
+});
 async function personal(f, fields = {}) {
   const task = { id: 'original-task', projectId: 'inbox-alice', ...taskFields({ title: '共同复习', ...fields }) };
   f.accounts.alice.set(task.id, task);

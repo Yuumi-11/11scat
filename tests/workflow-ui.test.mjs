@@ -25,6 +25,12 @@ test('workflow detail offers settings to every member and direct completion only
   const overview = archived => renderToStaticMarkup(createElement(WorkflowList, { workflows, archived, setArchived() {}, select() {}, name: id => id }));
   const active = overview(false); assert.ok(active.includes('我认领的事项')); assert.ok(active.includes('他人认领的事项')); assert.ok(!active.includes('归档事项示例')); assert.ok(active.includes('已完成归档'));
   const archive = overview(true); assert.ok(archive.includes('归档事项示例')); assert.ok(!archive.includes('我认领的事项')); assert.ok(!archive.includes('他人认领的事项')); assert.ok(archive.includes('未完成流程'));
+  const notices = [{ id: 'nudge-notice', workflowId: 'theirs', eventType: 'nudge' }, { id: 'done-notice', workflowId: 'done', eventType: 'completed' }];
+  const withNotices = renderToStaticMarkup(createElement(WorkflowList, { workflows, notices, archived: false, setArchived() {}, select() {}, name: id => id }));
+  assert.ok(withNotices.indexOf('他人认领的事项') < withNotices.indexOf('我认领的事项'), 'unread workflow is temporarily first');
+  assert.match(withNotices, /1 条归档新记录/); assert.match(withNotices, /task-notice-dot/);
+  assert.ok(!overview(false).includes('task-notice-dot'), 'read acknowledgements remove dots and unread sorting');
+  assert.ok(render('alice').includes('>催办</button>')); assert.ok(!render('bob').includes('>催办</button>'));
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {
     const html = render(member, 'submitted');

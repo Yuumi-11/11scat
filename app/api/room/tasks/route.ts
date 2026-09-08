@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { currentIdentityId } from "../../identity/session";
 import { getUser } from "../../identity/store";
 import { CollaborationError, collectionOperation, isPersonalCollection } from "./store";
@@ -14,8 +14,9 @@ export async function GET(request: NextRequest) {
     // Migrate when the active server receives member traffic. Deployment candidates
     // share the data mount, so startup/health checks must never mutate this store.
     await store.resetLegacy(id);
+    after(() => store.deliverNotices().catch(() => undefined));
     const diagnostic = request.nextUrl.searchParams.get("diagnose");
-    return json(diagnostic !== null ? await store.inspectTransfer(id, diagnostic) : request.nextUrl.searchParams.has("revision") ? await store.revision() : await store.snapshot(id));
+    return json(diagnostic !== null ? await store.inspectTransfer(id, diagnostic) : request.nextUrl.searchParams.has("revision") ? await store.revision(id) : await store.snapshot(id));
   }
   catch (error) { return json({ error: error instanceof CollaborationError ? error.message : "协作区暂时无法读取，请重试" }, error instanceof CollaborationError ? error.status : 503); }
 }
@@ -29,8 +30,10 @@ export async function POST(request: NextRequest) {
     if (text.length > 64000) return json({ error: "任务内容过长" }, 413);
     const command = JSON.parse(text);
     if (!command || typeof command !== "object") return json({ error: "操作无效" }, 400);
+    if (command.action === "read-notices") return json(await store.markNoticesRead(actor, command.ids));
+    after(() => store.deliverNotices().catch(() => undefined));
     if (command.action === "legacy-reset") return json(await store.resetLegacy(actor));
-    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow", "restore-workflow"].includes(command.action)) {
+    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow", "restore-workflow", "nudge", "reply-nudge"].includes(command.action)) {
       const workflow = command.action === "claim" ? await store.claim(actor, command) : await store.workflowCommand(actor, command);
       if (isPersonalCollection(workflow)) return json({ operation: collectionOperation(workflow) }, workflow.error ? 202 : 200);
       return json({ workflow }, workflow.error || workflow.syncError ? 202 : 200);

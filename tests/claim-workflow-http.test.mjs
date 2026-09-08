@@ -28,6 +28,17 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const claim = { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: sourceTask.id, version: sourceTask.version }, destination: 'bob' };
     let response = await call('bob', '/api/room/tasks', claim); assert.equal(response.status, 200); let w = (await response.json()).workflow; assert.equal(w.status, 'working');
     const act = async (actor, action, extra = {}) => call(actor, '/api/room/tasks', { id: randomUUID(), workflowId: w.id, version: w.version, action, ...extra });
+    assert.equal((await act('bob', 'nudge')).status, 403);
+    response = await act('alice', 'nudge'); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    const nudge = w.events.find(event => event.type === 'nudge'); assert.ok(nudge);
+    let notices = (await (await call('bob', '/api/room/tasks?revision=1')).json()).notices;
+    const nudgeNotice = notices.find(item => item.eventId === nudge.id); assert.ok(nudgeNotice);
+    response = await act('bob', 'reply-nudge', { replyTo: nudge.id, comment: '正在处理', version: 0 }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal(w.events.at(-1).replyTo, nudge.id);
+    assert.equal((await call('bob', '/api/room/tasks', { action: 'read-notices', ids: [nudgeNotice.id] }, { Origin: 'https://foreign.example' })).status, 403);
+    assert.equal((await call('bob', '/api/room/tasks', { action: 'read-notices', ids: [nudgeNotice.id] })).status, 200);
+    notices = (await (await call('bob', '/api/room/tasks?revision=1')).json()).notices; assert.ok(!notices.some(item => item.id === nudgeNotice.id));
+    assert.ok((await (await call('alice', '/api/room/tasks?revision=1')).json()).notices.some(item => item.eventType === 'reply-nudge'));
     response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 403); assert.match((await response.json()).error, /审批/);
     response = await act('bob', 'update-workflow', { fields: { content: 'HTTP 修改详情' } }); assert.equal(response.status, 200); w = (await response.json()).workflow;
     const edited = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(edited.alice.original.content, 'HTTP 修改详情'); assert.equal(edited.bob[w.targetId].content, 'HTTP 修改详情');

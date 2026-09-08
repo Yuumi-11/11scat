@@ -111,6 +111,8 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
       const route = new URL(url).pathname.replace('/open/v1', '');
       if (route === '/project/inbox/data') return Response.json({ project: { id: 'inbox-alice' }, tasks: [], columns: [] });
       if (route === '/task/filter') { searchCount++; if (failure) return failure(); return Response.json([task]); }
+      if (route === '/project') return Response.json([{ id: 'other-list' }, { id: 'outside-filter' }]);
+      if (route === '/project/outside-filter/task/older-moved') return Response.json({ ...task, id: 'older-moved', projectId: 'outside-filter' });
       if (route === '/project/other-list/task/moved/complete') { task.status = 2; return new Response(null, { status: 204 }); }
       if (route === '/project/other-list/task/moved') return Response.json(task);
       if (route === '/task/moved') { task = { ...task, ...JSON.parse(init.body) }; return Response.json(task); }
@@ -119,6 +121,7 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
     assert.equal(await gateway.get('alice', 'moved'), null, 'ordinary lookup retains inbox scope');
     assert.equal((await gateway.locate('alice', 'moved')).projectId, 'other-list');
     assert.equal(await gateway.locate('alice', 'absent'), null); assert.equal(searchCount, 1);
+    assert.equal((await gateway.locate('alice', 'older-moved')).projectId, 'outside-filter', 'project enumeration finds moves outside capped filter results');
     await gateway.update('alice', 'moved', taskFields({ title: 'updated' }), remoteVersion(task), 'other-list');
     assert.equal(task.title, 'updated'); assert.equal(task.projectId, 'other-list');
     await gateway.complete('alice', 'moved', 'other-list'); assert.equal(task.status, 2);

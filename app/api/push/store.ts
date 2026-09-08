@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import webPush from "web-push";
+import { receivesTaskNotice, type TaskNotice } from "../../collaboration-notifications";
+import { getUser, listRoomMembers } from "../identity/store";
 
 export type StoredPushSubscription = {
   endpoint: string;
@@ -79,6 +81,23 @@ export async function sendChatPush(message: { sender: string; body: string; atta
     }
   }));
   if (expired.size) await mutate((current) => { current.subscriptions = current.subscriptions.filter((item) => !expired.has(item.endpoint)); });
+}
+
+export async function sendTaskPush(notice: TaskNotice) {
+  const publicKey = process.env.VAPID_PUBLIC_KEY, privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return;
+  webPush.setVapidDetails(process.env.VAPID_SUBJECT || "https://study.11scat.xyz", publicKey, privateKey);
+  await mutationQueue;
+  const members = new Set((await listRoomMembers()).map(member => member.id));
+  const name = notice.actorId ? (await getUser(notice.actorId))?.nickname || "同桌" : "任务板";
+  const payload = JSON.stringify({ kind: "task", noticeId: notice.id, title: `${name} · ${notice.title}`, body: notice.body, url: notice.workflowId ? `/?taskboard=1&workflow=${encodeURIComponent(notice.workflowId)}` : "/?taskboard=1" });
+  const subscriptions = (await readStore()).subscriptions.filter(item => members.has(item.identityId) && receivesTaskNotice(notice, item.identityId));
+  const expired = new Set<string>();
+  await Promise.allSettled(subscriptions.map(async item => {
+    try { await webPush.sendNotification({ endpoint: item.endpoint, expirationTime: item.expirationTime, keys: item.keys }, payload, { TTL: 60 * 60, urgency: "high", timeout: 10_000 }); }
+    catch (error) { if ([404, 410].includes((error as { statusCode?: number }).statusCode || 0)) expired.add(item.endpoint); }
+  }));
+  if (expired.size) await mutate(store => { store.subscriptions = store.subscriptions.filter(item => !expired.has(item.endpoint)); });
 }
 
 export async function sendRingPush(ring: { id: string; recipientId: string; senderName: string; expiresAt: number; repeat?: boolean; attempts?: number }): Promise<"accepted" | "unavailable" | "failed"> {

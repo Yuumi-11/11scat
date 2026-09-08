@@ -154,3 +154,23 @@
 
 .coop-loading-toolbar { display: flex; justify-content: flex-end; }
 .coop-workflow-navigation { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+/* Task notices use a visible dot with a text alternative; acknowledgement is
+   tied to viewport visibility, never merely to loading the board data. */
+.task-notice-dot { display: inline-block; flex: 0 0 auto; width: 8px; height: 8px; margin: 0 7px 0 0; border-radius: 50%; background: #c64b43; vertical-align: middle; }
+.coop-task > .task-notice-dot { position: absolute; top: 9px; right: 6px; }
+.task-notice-count { display: inline-flex; min-width: 19px; height: 19px; padding: 0 5px; align-items: center; justify-content: center; border-radius: 12px; color: white; background: #b64039; font-size: 11px; }
+.coop-nudge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); cursor: pointer; font-size: 12px; }
+.task-nudge-dialog { box-sizing: border-box; width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 22px; border: 1px solid var(--line); border-radius: 20px; color: var(--ink); background: var(--panel); box-shadow: 0 24px 80px #152f3a40; }
+.task-nudge-dialog::backdrop { background: #142a3540; }
+.task-nudge-dialog header { display: flex; align-items: center; gap: 10px; }
+.task-nudge-dialog h3 { flex: 1; margin: 0; font-size: 18px; }
+.task-nudge-dialog h4 { margin: 22px 0 8px; font-size: 19px; overflow-wrap: anywhere; }
+.task-nudge-dialog p { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.task-nudge-dialog label { display: block; margin: 18px 0 8px; font-size: 13px; }
+.task-nudge-dialog textarea { box-sizing: border-box; width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 12px; color: var(--ink); background: var(--soft); font: inherit; }
+.task-nudge-dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.task-nudge-dialog footer button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9px; padding: 9px 13px; color: var(--ink); background: var(--soft); cursor: pointer; }
+.task-nudge-dialog footer button[type=submit] { background: var(--theme-accent); color: var(--on-accent); }
+.task-nudge-dialog button:disabled { opacity: .5; cursor: wait; }
+@keyframes task-nudge-shake { 0%, 100% { translate: 0; } 20%, 60% { translate: -5px; } 40%, 80% { translate: 5px; } }
+@media (prefers-reduced-motion: no-preference) { body.task-nudge-shake > main, .task-nudge-shake .task-nudge-dialog, .task-nudge-shake .room-collaboration-dialog { animation: task-nudge-shake .6s ease-out; } }

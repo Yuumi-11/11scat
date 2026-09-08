@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
+import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
 
 export type RemoteTask = Partial<TaskFields> & { id: string; projectId: string; status?: number; parentId?: string; [key: string]: unknown };
@@ -10,6 +11,7 @@ export type Gateway = {
   inbox(owner: string): Promise<{ projectId: string; tasks: RemoteTask[] }>;
   get(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
   locate?(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
+  notify?(notice: TaskNotice): Promise<void>;
   create(owner: string, id: string, fields: TaskFields, receipt?: (actualId: string) => Promise<void>): Promise<void>;
   update(owner: string, id: string, fields: TaskFields, version: string, projectId?: string): Promise<void>;
   remove(owner: string, id: string): Promise<void>;
@@ -27,7 +29,7 @@ type Operation = OperationView & {
   phase: "prepared" | "destination-ready" | "source-removed";
   creation?: { state: "new" | "sent" | "received"; beforeIds?: string[] };
 };
-type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation>; workflows: Record<string, Workflow>; legacyCleanup?: { title: string; message: string }[]; legacyReset?: boolean };
+type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation>; workflows: Record<string, Workflow>; notifications?: TaskNoticeState; legacyCleanup?: { title: string; message: string }[]; legacyReset?: boolean };
 export const isPersonalCollection = (workflow: ClaimWorkflow) => workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId;
 export function collectionOperation(workflow: ClaimWorkflow): OperationView {
   return { id: workflow.id, actorId: workflow.events[0]?.actorId || workflow.claimantId, title: workflow.title, action: "collect", from: null, to: workflow.claimantId, status: workflow.status === "done" && !workflow.editPending ? "done" : "pending", error: workflow.error, createdAt: workflow.createdAt, updatedAt: workflow.updatedAt };
@@ -101,10 +103,11 @@ export class CollaborationStore {
       for (const [id, task] of Object.entries(state.buffer) as [string, BufferTask][]) {
         task.publisherId ||= (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id)?.actorId;
       }
-      return state;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, revision: 0, buffer: {}, operations: {}, workflows: {} }; throw error; }
+      initializeTaskNotices(state); return state;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, revision: 0, buffer: {}, operations: {}, workflows: {}, notifications: { known: [], entries: [], read: {}, attempted: [] } }; throw error; }
   }
   private async write(state: State) {
+    collectTaskNotices(state);
     await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const temp = `${this.file}.${randomUUID()}.tmp`;
     try {
@@ -133,10 +136,32 @@ export class CollaborationStore {
     const locked = new Set(Object.values(state.operations).filter(other => other.id !== op.id && other.status === "pending").flatMap(other => [other.to === op.to ? other.targetId : "", other.source?.ownerId === op.to ? other.source.taskId : ""]));
     return inbox.tasks.filter(task => !task.status && !locked.has(task.id) && !op.creation?.beforeIds?.includes(task.id) && sameFields(task, op.fields));
   }
-  async revision() {
+  async revision(actor?: string) {
     const state = await this.read();
     const bufferIds = Object.entries(state.buffer).filter(([, task]) => !task.stagedBy && !task.completedAt).map(([id]) => id);
-    return { revision: state.revision, bufferCount: bufferIds.length, bufferIds };
+    return { revision: state.revision, bufferCount: bufferIds.length, bufferIds, ...(actor ? { notices: unreadTaskNotices(state, actor), noticeVersion: state.notifications?.version || 0 } : {}) };
+  }
+  markNoticesRead(actor: string, ids: unknown) {
+    return this.serial(async () => {
+      await this.requireMember(actor);
+      if (!Array.isArray(ids) || ids.length > 500 || ids.some(id => typeof id !== "string" || id.length > 200)) throw new CollaborationError("浏览记录参数无效", 400);
+      const state = await this.read(), notices = initializeTaskNotices(state), allowed = new Set(notices.entries.filter(item => receivesTaskNotice(item, actor)).map(item => item.id));
+      const before = notices.read[actor] || [], next = [...new Set([...before, ...ids.filter(id => allowed.has(id))])];
+      if (next.length !== before.length) { notices.read[actor] = next; notices.version = (notices.version || 0) + 1; await this.write(state); }
+      return { notices: unreadTaskNotices(state, actor), noticeVersion: notices.version || 0 };
+    });
+  }
+  async deliverNotices() {
+    if (!this.gateway.notify) return;
+    const items = await this.serial(async () => {
+      const state = await this.read(), notices = initializeTaskNotices(state), sent = new Set(notices.attempted);
+      const pending = notices.entries.filter(item => !sent.has(item.id)).slice(0, 40);
+      if (pending.length) { notices.attempted.push(...pending.map(item => item.id)); await this.write(state); }
+      return pending;
+    });
+    // Persist attempt before network I/O: refreshes and lost provider responses
+    // do not repeatedly ring phones. The durable in-app unread record remains.
+    for (let start = 0; start < items.length; start += 3) await Promise.allSettled(items.slice(start, start + 3).map(item => this.gateway.notify!(item)));
   }
   inspectTransfer(actorId: string, id: string) {
     return this.serial(async () => {
@@ -180,6 +205,8 @@ export class CollaborationStore {
     };
     return {
       identityId, revision: state.revision,
+      notices: unreadTaskNotices(state, identityId),
+      noticeVersion: state.notifications?.version || 0,
       buffer: Object.entries(state.buffer).filter(([, task]) => !task.completedAt).map(([id, task]) => lock({ ...task.fields, id, ownerId: null, version: String(task.version), publisherId: task.publisherId })),
       members: results.map(member => ({ ...member, tasks: member.tasks.map(lock) })),
       operations: [...Object.values(state.operations).map(op => this.publicOperation(op)), ...Object.values(state.workflows).filter(isPersonalCollection).map(workflow => collectionOperation(this.publicWorkflow(workflow)))].sort((a, b) => b.updatedAt - a.updatedAt).filter((op, index) => op.status === "pending" || index < 30),
@@ -208,7 +235,7 @@ export class CollaborationStore {
   }
   private async checkWorkflowTasks(state: State, inboxes: Map<string, RemoteTask[]>) {
     for (const workflow of Object.values(state.workflows)) {
-      if (isPersonalCollection(workflow) || !["working", "submitted", "rejected", "approving"].includes(workflow.status)) continue;
+      if (isPersonalCollection(workflow) || workflow.taskAnomaly || !["working", "submitted", "rejected", "approving"].includes(workflow.status)) continue;
       const before = workflow.syncError;
       try {
         // A failed account read is not evidence of a missing task. Do not perform
@@ -294,7 +321,7 @@ export class CollaborationStore {
   }
   private publicWorkflow(workflow: Workflow): ClaimWorkflow {
     const { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields, status, version, createdAt, updatedAt, error, events } = workflow;
-    return { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields: workflow.edit?.fields || fields, status, version, createdAt, updatedAt, error, editPending: !!workflow.edit, taskAnomaly: workflow.taskAnomaly, syncError: workflow.syncError, events: events.map(({ id, actorId, type, at, comment, files }) => ({ id, actorId, type, at, comment, files })) };
+    return { id, title, source, reviewerId, claimantId, targetId, reviewerTaskId, fields: workflow.edit?.fields || fields, status, version, createdAt, updatedAt, error, editPending: !!workflow.edit, taskAnomaly: workflow.taskAnomaly, syncError: workflow.syncError, events: events.map(({ id, actorId, type, at, comment, files, replyTo }) => ({ id, actorId, type, at, comment, files, replyTo })) };
   }
   private async saveWorkflow(state: State, workflow: Workflow) {
     workflow.updatedAt = Date.now(); workflow.version++; state.revision++; await this.write(state);
@@ -490,10 +517,26 @@ export class CollaborationStore {
       const signature = fingerprint({ actor, command }), prior = workflow.events.find(event => event.id === command.id);
       if (prior) {
         if (prior.signature !== signature) throw new CollaborationError("操作编号已使用");
+        if (["nudge", "reply-nudge"].includes(command.action)) return this.publicWorkflow(workflow);
         if (command.action === "restore-workflow") return workflow.taskAnomaly && workflow.events.indexOf(prior) > workflow.events.findLastIndex(event => event.type === "task-anomaly") ? this.restoreWorkflow(state, workflow) : this.publicWorkflow(workflow);
         if (workflow.edit?.id === command.id) return this.finishWorkflowEdit(state, workflow);
         if (workflow.edit) return this.publicWorkflow(workflow);
         return workflow.status === "approving" && actor === workflow.reviewerId ? this.finishApproval(state, workflow) : this.publicWorkflow(workflow);
+      }
+      // These append-only communications recheck permissions and current state,
+      // but do not discard a typed reply because an unrelated event arrived.
+      if (command.action === "nudge" || command.action === "reply-nudge") {
+        if (typeof command.comment !== "undefined" && typeof command.comment !== "string") throw new CollaborationError("回复内容无效", 400);
+        const reply = command.action === "reply-nudge", comment = command.comment?.trim() || "";
+        if (comment.length > 2000 || (reply && !comment)) throw new CollaborationError("请填写 1 至 2000 字的回复", 400);
+        if (actor !== (reply ? workflow.claimantId : workflow.reviewerId)) throw new CollaborationError(reply ? "只有认领者可以回复催办" : "只有原任务所属成员或发布者可以催办", 403);
+        if (!reply && ["creating", "done"].includes(workflow.status)) throw new CollaborationError("当前任务无需催办");
+        if (reply) {
+          if (!workflow.events.some(event => event.id === command.replyTo && event.type === "nudge")) throw new CollaborationError("催办记录不存在", 404);
+          if (workflow.events.some(event => event.type === "reply-nudge" && event.replyTo === command.replyTo)) throw new CollaborationError("已经回复过此条催办");
+        }
+        workflow.events.push({ id: command.id, signature, actorId: actor, type: command.action, at: Date.now(), comment: reply ? comment : comment || "请查看任务进展，有空回复一下", files: [], ...(reply ? { replyTo: command.replyTo } : {}) });
+        await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
       }
       if (workflow.version !== command.version) throw new CollaborationError("流程已更新，请刷新后操作");
       if (command.action === "restore-workflow") {

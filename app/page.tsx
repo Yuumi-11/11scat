@@ -2283,7 +2283,7 @@ export default function Home() {
       <header className="topbar">
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
-          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} />
+          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘
