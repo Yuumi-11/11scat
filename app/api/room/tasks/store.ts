@@ -8,7 +8,7 @@ export type Gateway = {
   members(): Promise<{ id: string; name: string; connected: boolean }[]>;
   inbox(owner: string): Promise<{ projectId: string; tasks: RemoteTask[] }>;
   get(owner: string, id: string): Promise<RemoteTask | null>;
-  create(owner: string, id: string, fields: TaskFields): Promise<void>;
+  create(owner: string, id: string, fields: TaskFields, receipt?: (actualId: string) => Promise<void>): Promise<void>;
   update(owner: string, id: string, fields: TaskFields, version: string): Promise<void>;
   remove(owner: string, id: string): Promise<void>;
   complete(owner: string, id: string): Promise<void>;
@@ -18,6 +18,7 @@ type BufferTask = { fields: TaskFields; version: number; stagedBy?: string };
 type Operation = OperationView & {
   signature: string; source?: TaskSource; fields: TaskFields; targetId: string;
   phase: "prepared" | "destination-ready" | "source-removed";
+  creation?: { state: "new" | "sent" | "received"; beforeIds?: string[] };
 };
 type State = { version: 1; revision: number; buffer: Record<string, BufferTask>; operations: Record<string, Operation> };
 export class CollaborationError extends Error {
@@ -111,6 +112,12 @@ export class CollaborationStore {
     op.status = "done"; op.error = ""; await this.checkpoint(state, op);
   }
   private publicOperation(op: Operation): OperationView { const { id, actorId, title, action, from, to, status, error, updatedAt } = op; return { id, actorId, title, action, from, to, status, error, updatedAt }; }
+  private async candidates(state: State, op: Operation) {
+    if (!op.to) return [];
+    const inbox = await this.gateway.inbox(op.to);
+    const locked = new Set(Object.values(state.operations).filter(other => other.id !== op.id && other.status === "pending").flatMap(other => [other.to === op.to ? other.targetId : "", other.source?.ownerId === op.to ? other.source.taskId : ""]));
+    return inbox.tasks.filter(task => !task.status && !locked.has(task.id) && !op.creation?.beforeIds?.includes(task.id) && sameFields(task, op.fields));
+  }
   async revision() { const state = await this.read(); return { revision: state.revision, bufferCount: Object.values(state.buffer).filter(task => !task.stagedBy).length }; }
   inspectTransfer(actorId: string, id: string) {
     return this.serial(async () => {
@@ -125,9 +132,10 @@ export class CollaborationStore {
       const sourceUnchanged = !!source && source.version === op.source!.version;
       const destinationCompleted = !!(target && "status" in target && target.status);
       const differences = target ? fieldDifferences(target, op.fields) : [];
+      const candidates = !target ? await this.candidates(state, op) : [];
       const sourceMessage = !source ? "本次未读到原任务。" : sourceUnchanged ? "原任务仍在原处，内容与转移开始时一致。" : "原任务仍在原处，但已发生变化。";
       const targetMessage = !target ? "本次未读到接收方副本，尚不能确认是否创建成功。" : destinationCompleted ? "接收方副本已完成或状态改变。" : differences.length ? `接收方副本与转移记录不一致的项目：${differences.join("、")}。` : "接收方副本已读到，任务内容核对一致。";
-      return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, message: `${sourceMessage}${targetMessage}本次核对只读取状态，没有继续或取消转移。` };
+      return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, candidates: candidates.map(task => ({ id: task.id, version: remoteVersion(task) })), message: `${sourceMessage}${targetMessage}${candidates.length ? `接收方另有 ${candidates.length} 项完整内容一致的任务，可接续已有副本完成转移。` : ""}本次核对只读取状态，没有继续或取消转移。` };
     });
   }
   async snapshot(identityId: string): Promise<CollaborationSnapshot> {
@@ -184,7 +192,7 @@ export class CollaborationStore {
           }
         }
         if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);
-        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: command.action === "move" ? command.destination! : null, source, fields, targetId: command.action === "move" && command.destination ? randomBytes(12).toString("hex") : randomUUID(), status: "pending", phase: "prepared", error: "", updatedAt: Date.now() };
+        op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: command.action === "move" ? command.destination! : null, source, fields, targetId: command.action === "move" && command.destination ? randomBytes(12).toString("hex") : randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", updatedAt: Date.now() };
         state.operations[op.id] = op; await this.checkpoint(state, op);
       }
       return this.run(state, op);
@@ -214,6 +222,23 @@ export class CollaborationStore {
       op.status = "cancelled"; op.error = ""; await this.checkpoint(state, op); return this.publicOperation(op);
     });
   }
+  recover(actorId: string, id: string, target: { id: string; version: string }) {
+    return this.serial(async () => {
+      if (!/^[a-f0-9-]{36}$/i.test(id) || !target || typeof target.id !== "string" || typeof target.version !== "string") throw new CollaborationError("恢复参数无效", 400);
+      if (!(await this.gateway.members()).some(member => member.id === actorId)) throw new CollaborationError("成员不存在", 403);
+      const state = await this.read(), op = state.operations[id];
+      if (!op || op.action !== "move" || !op.to) throw new CollaborationError("转移记录不存在", 404);
+      if (op.status !== "pending") return this.publicOperation(op);
+      if (op.phase !== "prepared" || await this.gateway.get(op.to, op.targetId)) throw new CollaborationError("转移状态已变化，请刷新后继续");
+      const match = (await this.candidates(state, op)).find(task => task.id === target.id && remoteVersion(task) === target.version);
+      if (!match) throw new CollaborationError("接收方任务已变化或内容不一致，请重新核对");
+      const source = await this.source(state, op.source!);
+      if (!source || source.version !== op.source!.version) throw new CollaborationError("原任务已变化，请重新核对");
+      op.targetId = match.id; op.creation = { ...op.creation, state: "received" };
+      await this.checkpoint(state, op);
+      return this.run(state, op);
+    });
+  }
   private async run(state: State, op: Operation) {
     try {
       if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1 };
@@ -221,7 +246,29 @@ export class CollaborationStore {
         if (op.phase === "prepared") {
           const source = await this.source(state, op.source!);
           if (!source || source.version !== op.source!.version) throw new CollaborationError("原任务已变更，请取消本次转移后重新操作");
-          if (op.to) await this.gateway.create(op.to, op.targetId, op.fields);
+          if (op.to) {
+            let existing = await this.gateway.get(op.to, op.targetId);
+            if (!existing && op.creation?.state === "new") {
+              const before = await this.gateway.inbox(op.to);
+              op.creation = { state: "sent", beforeIds: before.tasks.map(task => task.id) };
+              await this.checkpoint(state, op);
+              await this.gateway.create(op.to, op.targetId, op.fields, async actualId => {
+                if (op.creation!.beforeIds!.includes(actualId)) throw new CollaborationError("创建响应指向原有任务，已保留来源并停止转移");
+                op.targetId = actualId; op.creation!.state = "received";
+                await this.checkpoint(state, op);
+              });
+              existing = await this.gateway.get(op.to, op.targetId);
+            } else if (!existing && op.creation?.state !== "received") {
+              const matches = await this.candidates(state, op);
+              // Only a new, uniquely matching task outside the persisted pre-write
+              // snapshot can be recovered automatically after a lost response.
+              if (op.creation?.beforeIds && matches.length === 1) {
+                op.targetId = matches[0].id; op.creation.state = "received";
+                await this.checkpoint(state, op); existing = await this.gateway.get(op.to, op.targetId);
+              } else throw new CollaborationError("创建结果尚未对应，请核对并接续已有副本；已停止重复创建");
+            }
+            if (!existing || existing.status || !sameFields(existing, op.fields)) throw new CollaborationError(verificationIssue(existing, op.fields));
+          }
           else state.buffer[op.targetId] = { fields: op.fields, version: 1, stagedBy: op.id };
           op.phase = "destination-ready"; await this.checkpoint(state, op);
         }

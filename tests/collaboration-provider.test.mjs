@@ -19,7 +19,7 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
     await build({ entryPoints: ['app/api/room/tasks/provider.ts'], bundle: true, platform: 'node', format: 'esm', outfile: output, logLevel: 'silent' });
     const { gateway } = await import(pathToFileURL(output).href);
     const accounts = { alice: new Map(), bob: new Map() }, requests = [];
-    let comments = [], wrongProject = false;
+    let comments = [], wrongProject = false, allocatedId = null, omitReceipt = false;
     globalThis.fetch = async (url, init) => {
       const owner = String(init.headers.Authorization).replace('Bearer token-', '');
       assert.ok(Object.hasOwn(accounts, owner), 'request uses the selected owner token');
@@ -30,8 +30,8 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
       if (route === '/open/v1/project/inbox/data') return Response.json({ tasks: [...accounts[owner].values()], columns: [] });
       if (route === '/open/v1/project/inbox') return Response.json({ id: `inbox-${owner}` });
       if (route === '/open/v1/task/batch') {
-        for (const task of body.add) { assert.equal(task.projectId, `inbox-${owner}`); accounts[owner].set(task.id, structuredClone(task)); }
-        return Response.json({ id2etag: {} });
+        for (const task of body.add) { assert.equal(task.projectId, `inbox-${owner}`); const actual = { ...structuredClone(task), id: allocatedId || task.id }; accounts[owner].set(actual.id, actual); }
+        return Response.json({ id2etag: omitReceipt ? {} : Object.fromEntries(body.add.map(task => [allocatedId || task.id, "etag"])) });
       }
       if (method === 'POST' && /^\/open\/v1\/task\/[^/]+$/.test(route)) {
         assert.equal(body.projectId, `inbox-${owner}`); accounts[owner].set(body.id, structuredClone(body)); return Response.json(body);
@@ -71,6 +71,19 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
     await gateway.complete('bob', task.id); assert.equal(accounts.bob.get(task.id).status, 2);
     await gateway.remove('bob', task.id); await gateway.remove('bob', task.id);
     assert.equal(accounts.bob.size, 0);
+    allocatedId = 'server-assigned-id';
+    let persistedId;
+    await gateway.create('bob', 'client-proposed-id', fields, async id => {
+      persistedId = id;
+      assert.equal(requests.at(-1).method, 'POST', 'persist receipt before read-back verification');
+    });
+    assert.equal(persistedId, 'server-assigned-id');
+    assert.equal(accounts.bob.has('client-proposed-id'), false);
+    assert.equal((await gateway.get('bob', persistedId)).title, fields.title);
+    await gateway.remove('bob', persistedId);
+    omitReceipt = true; allocatedId = 'unacknowledged-task';
+    await assert.rejects(gateway.create('bob', 'missing-receipt', fields), /未返回明确的创建编号/);
+    await gateway.remove('bob', allocatedId);
     await gateway.inbox('alice');
     assert.ok(requests.some(request => request.owner === 'alice'));
     assert.equal(requests.filter(request => request.route.startsWith('/api/v2/')).length, 0);

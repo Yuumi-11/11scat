@@ -10,7 +10,7 @@ import { InlineTaskTitle } from "./InlineTaskTitle";
 import { collaborationDate, splitCollaborationTasks } from "./collaboration-view";
 import { CollaborationRecovery, TransferCheck } from "./CollaborationRecovery";
 
-type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" };
+type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" } | { id: string; action: "recover"; target: { id: string; version: string } };
 type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
 const taskKey = (task: RoomTask) => `${task.ownerId || "buffer"}:${task.id}`;
 const taskSource = (task: RoomTask) => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
@@ -218,7 +218,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       {recoveryOpen && <CollaborationRecovery busy={busy} onClose={() => setRecoveryOpen(false)}>
         {error && <p className="coop-feedback error" role="status">{error}</p>}
         {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
-        {pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small></span><div className="coop-recovery-actions"><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>{operation.action === "move" && <TransferCheck key={`${operation.id}:${operation.updatedAt}`} operationId={operation.id} />}</div>)}
+        {pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small></span><div className="coop-recovery-actions"><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>{operation.action === "move" && <TransferCheck key={`${operation.id}:${operation.updatedAt}`} operationId={operation.id} disabled={unavailable} onRecover={target => void perform({ id: operation.id, action: "recover", target })} />}</div>)}
         {!pending.length && !uncertain && <p className="coop-empty">没有待处理的操作</p>}
       </CollaborationRecovery>}
       <span className="coop-sr-only" aria-live="polite">{keyboardDrag ? `正在移动 ${keyboardDrag.task.title}，目标 ${ownerName(keyboardDrag.owner || null)}，方向键选择，Enter 放下，Esc 取消` : ""}</span>

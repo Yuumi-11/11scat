@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CollaborationError, CollaborationStore, remoteVersion, taskFields } from '../app/api/room/tasks/store.ts';
@@ -85,6 +85,67 @@ test('lost creation and deletion responses resume across service restarts withou
   await again.resume('alice', returned.id);
   const snapshot = await again.snapshot('alice');
   assert.equal(snapshot.buffer.length, 1); assert.equal(snapshot.buffer[0].pending, undefined);
+});
+
+test('server allocated IDs are checkpointed before verification and remain locked after a failed read', async () => {
+  const f = await fixture(), task = await f.create('server assigned');
+  let writes = 0;
+  f.gateway.create = async (owner, proposed, fields, receipt) => {
+    writes++;
+    f.accounts[owner].set('actual-server-id', { ...fields, id: 'actual-server-id', projectId: 'inbox-' + owner });
+    await receipt('actual-server-id');
+    throw new Error('verification connection lost');
+  };
+  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
+  const snapshot = await f.store.snapshot('alice');
+  assert.equal(op.status, 'pending');
+  assert.equal(snapshot.members.find(m => m.id === 'bob').tasks[0].pending, op.id);
+  const restarted = new CollaborationStore(f.dir, f.gateway);
+  assert.equal((await restarted.resume('alice', op.id)).status, 'done');
+  assert.equal(writes, 1); assert.equal((await restarted.snapshot('alice')).buffer.length, 0);
+});
+
+test('lost response with a changed ID recovers uniquely new exact copy and never repeats an uncertain create', async () => {
+  const f = await fixture(), task = await f.create('lost allocation');
+  f.accounts.bob.set('preexisting', { ...taskFields(task), id: 'preexisting', projectId: 'inbox-bob' });
+  let writes = 0;
+  f.gateway.create = async (owner, proposed, fields) => {
+    writes++; f.accounts[owner].set('new-server-id', { ...fields, id: 'new-server-id', projectId: 'inbox-' + owner });
+    throw new Error('response lost');
+  };
+  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
+  assert.equal((await new CollaborationStore(f.dir, f.gateway).resume('alice', op.id)).status, 'done');
+  assert.equal(writes, 1); assert.equal(f.accounts.bob.size, 2);
+
+  const other = await f.create('unknown create');
+  f.gateway.create = async () => { writes++; throw new Error('timeout before acknowledgement'); };
+  const uncertain = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(other), destination: 'bob' });
+  assert.equal((await f.store.resume('alice', uncertain.id)).status, 'pending');
+  assert.equal(writes, 2, 'no repeat POST when the original request outcome is unknown');
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
+});
+
+test('legacy operations reconnect only explicitly chosen unchanged full matches without creating or deleting other copies', async () => {
+  const f = await fixture(), task = await f.create('legacy allocation');
+  f.gateway.create = async () => { throw new Error('legacy failed'); };
+  const op = await f.store.execute('alice', { id: randomUUID(), action: 'move', source: source(task), destination: 'bob' });
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  delete state.operations[op.id].creation;
+  await writeFile(file, JSON.stringify(state));
+  for (const id of ['actual-one', 'actual-two']) f.accounts.bob.set(id, { ...taskFields(task), id, projectId: 'inbox-bob' });
+  f.accounts.bob.set('different', { ...taskFields(task), id: 'different', projectId: 'inbox-bob', content: 'other content' });
+  const check = await f.store.inspectTransfer('alice', op.id);
+  assert.equal(check.candidates.length, 2);
+  assert.equal((await f.store.resume('alice', op.id)).status, 'pending');
+  await assert.rejects(f.store.recover('stranger', op.id, check.candidates[0]), { status: 403 });
+  await assert.rejects(f.store.recover('alice', op.id, { id: 'different', version: remoteVersion(f.accounts.bob.get('different')) }), /内容不一致/);
+  const selected = check.candidates[0];
+  f.accounts.bob.get(selected.id).etag = 'changed';
+  await assert.rejects(f.store.recover('alice', op.id, selected), /已变化/);
+  const fresh = (await f.store.inspectTransfer('alice', op.id)).candidates.find(c => c.id === selected.id);
+  assert.equal((await f.store.recover('alice', op.id, fresh)).status, 'done');
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+  assert.equal(f.accounts.bob.size, 3); assert.equal(f.counts.creates, 0); assert.equal(f.counts.removes, 0);
 });
 
 test('transfer inspection identifies changed fields without exposing values or writing either account or operation state', async () => {

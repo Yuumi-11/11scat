@@ -41,13 +41,19 @@ export const gateway: Gateway = {
     if (task && (task.id !== id || task.projectId !== account.projectId)) throw new CollaborationError("仅允许操作该成员收集箱中的任务", 403);
     return task as RemoteTask | null;
   },
-  async create(owner, id, fields) {
+  async create(owner, id, fields, receipt) {
     const existing = await gateway.get(owner, id);
     if (existing) { if (existing.status || !sameFields(existing, fields)) throw new CollaborationError(verificationIssue(existing, fields)); return; }
     const account = await context(owner);
     const data = await request(owner, "/task/batch", { method: "POST", body: JSON.stringify({ add: [{ ...payload(fields), id, projectId: account.projectId }] }) });
     if (data?.id2error?.[id] && data.id2error[id] !== "EXISTED") throw new CollaborationError("接收方未接受任务，请检查授权或账户配额", 422);
-    const created = await gateway.get(owner, id);
+    // A batch add may allocate its own ID. The response, not the proposed ID,
+    // identifies the task that was actually created.
+    const ids = data?.id2etag && typeof data.id2etag === "object" ? Object.keys(data.id2etag) : [];
+    const actualId = ids.length === 1 ? ids[0] : ids.includes(id) ? id : undefined;
+    if (!actualId || !/^[A-Za-z0-9_-]{1,100}$/.test(actualId)) throw new CollaborationError("滴答未返回明确的创建编号，已停止重复创建，请核对已有副本");
+    await receipt?.(actualId);
+    const created = await gateway.get(owner, actualId);
     if (!created || created.status || !sameFields(created, fields)) throw new CollaborationError(verificationIssue(created, fields));
   },
   async update(owner, id, fields, version) {

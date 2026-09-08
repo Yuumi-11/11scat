@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     if (text.length > 64000) return json({ error: "任务内容过长" }, 413);
     const command = JSON.parse(text);
     if (!command || typeof command !== "object") return json({ error: "操作无效" }, 400);
-    const result = command.action === "resume" || command.action === "cancel"
+    const result = command.action === "recover" ? await store.recover(actor, typeof command.id === "string" ? command.id : "", command.target) : command.action === "resume" || command.action === "cancel"
       ? await store.resume(actor, typeof command.id === "string" ? command.id : "", command.action === "cancel")
       : await store.execute(actor, command);
     return json({ operation: result }, result.status === "pending" ? 202 : 200);
