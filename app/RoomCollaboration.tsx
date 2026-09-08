@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Ellipsis, GripVertical, Inbox, Loader2, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
+import { CalendarDays, CalendarOff, Check, Ellipsis, GripVertical, Inbox, Loader2, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { InlineTaskTitle } from "./InlineTaskTitle";
+import { collaborationDate, splitCollaborationTasks } from "./collaboration-view";
 
 type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" };
 type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
@@ -14,7 +15,7 @@ const taskKey = (task: RoomTask) => `${task.ownerId || "buffer"}:${task.id}`;
 const taskSource = (task: RoomTask) => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
 const dateInput = (date: string | null, allDay: boolean) => date ? new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0, allDay ? 10 : 16) : "";
 const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}${allDay ? end ? "T23:59:00" : "T00:00:00" : ":00"}+0800` : null;
-const dateLabel = (task: RoomTask) => task.dueDate ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", ...(task.isAllDay ? {} : { hour: "2-digit", minute: "2-digit" }) }).format(new Date(task.dueDate)) : "无日期";
+const dateLabel = (task: RoomTask) => collaborationDate(task) ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric", ...(task.isAllDay ? {} : { hour: "2-digit", minute: "2-digit" }) }).format(new Date(collaborationDate(task)!)) : "";
 const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 
 export function RoomCollaboration({ identityId, onChanged }: { identityId: string; onChanged: () => Promise<boolean> }) {
@@ -131,14 +132,17 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     if (!current.moved && Math.hypot(event.clientX - current.x, event.clientY - current.y) < 7) return;
     current.moved = true;
     setGhost({ x: event.clientX + 14, y: event.clientY + 12, title: current.task.title });
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-coop-owner]");
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    const target = hit?.closest<HTMLElement>("[data-coop-owner]");
     setHoverOwner(target && canDrop(target.dataset.coopOwner!) ? target.dataset.coopOwner! : null);
     const bounds = membersPane.current?.getBoundingClientRect();
     if (bounds && event.clientY >= bounds.top && event.clientY <= bounds.bottom) {
       if (event.clientX > bounds.right - 55) membersPane.current?.scrollBy({ left: 22 });
       else if (event.clientX < bounds.left + 55) membersPane.current?.scrollBy({ left: -22 });
+      if (event.clientY > bounds.bottom - 35) membersPane.current?.scrollBy({ top: 18 });
+      else if (event.clientY < bounds.top + 35) membersPane.current?.scrollBy({ top: -18 });
     }
-    const list = target?.querySelector(".coop-task-list");
+    const list = hit?.closest<HTMLElement>(".coop-task-list");
     const rect = list?.getBoundingClientRect();
     if (rect) { if (event.clientY > rect.bottom - 45) list?.scrollBy({ top: 18 }); else if (event.clientY < rect.top + 45) list?.scrollBy({ top: -18 }); }
   }
@@ -177,7 +181,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={cardLocked} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
         <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={cardLocked} onClick={() => void perform({ id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
       {task.content && <p className="coop-task-summary">{task.content}</p>}
-      {(task.dueDate || task.priority !== 0 || task.repeatFlag || (task.ownerId !== identityId && canDrop(identityId))) && <div className="coop-task-meta">{task.dueDate && <span>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
+      {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (task.ownerId !== identityId && canDrop(identityId))) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {task.ownerId !== identityId && canDrop(identityId) && <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
       </div>}
       {task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
@@ -185,17 +189,18 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     </article>;
   }
   function column(owner: string | null, name: string, tasks: RoomTask[], problem?: string, diagnostic?: string) {
+    const { dated, undated } = splitCollaborationTasks(tasks);
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
-      <header><span className="coop-column-icon">{owner === null ? <Inbox size={18} /> : name.slice(0, 1)}</span><h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span></header>
-      <div className="coop-task-list">{problem ? <><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</> : <>{tasks.map(card)}{owner === null && (draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
+      <header><span className="coop-column-icon">{owner === null ? <Inbox size={18} /> : name.slice(0, 1)}</span><h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span>{owner === null && <button type="button" className="coop-icon coop-refresh" disabled={loading || busy} title="刷新全室任务" aria-label="刷新全室任务" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={17} className={loading ? "coop-spin" : ""} /></button>}</header>
+      {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", icon: CalendarDays, tasks: dated }, { label: "无日期", icon: CalendarOff, tasks: undated }]).map(lane => <section className="coop-lane" key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><lane.icon size={13} aria-hidden="true" /><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(card)}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(card)}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
         const done = await perform({ id: draftId, action: "create", fields: { title } }); if (done) setDraftId(null); return done;
-      }} /></div> : <button className="coop-new-task" type="button" title="新建任务" aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>)}</>}</div>
+      }} /></div> : <button className="coop-new-task" type="button" title="新建任务" aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>}</div>}
     </section>;
   }
   const pending = snapshot?.operations.filter(operation => operation.status === "pending") || [];
   return <>
     <button ref={trigger} className="room-collaboration-trigger" type="button" disabled={!identityId} title="打开自习室协作区" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); setError(""); }}><UsersRound size={18} aria-hidden="true" /><span>协作区</span>{bufferCount > 0 && <i>{bufferCount}</i>}</button>
-    {open && createPortal(<dialog ref={dialog} tabIndex={-1} className="room-collaboration-dialog" aria-labelledby="cooperation-title" onCancel={event => { event.preventDefault(); if (editor) { if (!locked.current) setEditor(null); } else close(); }} onKeyDown={event => {
+    {open && createPortal(<dialog ref={dialog} tabIndex={-1} className="room-collaboration-dialog" aria-label="自习室任务协作" onCancel={event => { event.preventDefault(); if (editor) { if (!locked.current) setEditor(null); } else close(); }} onKeyDown={event => {
       event.stopPropagation();
       if (editor && event.key === "Tab") {
         const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('.coop-editor button:not(:disabled), .coop-editor input:not(:disabled), .coop-editor textarea:not(:disabled), .coop-editor select:not(:disabled)') || []);
@@ -204,7 +209,8 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }
     }}>
-      <header className="coop-heading"><h2 id="cooperation-title">自习室协作</h2><div><button type="button" className="coop-icon" disabled={loading || busy} title="刷新收集箱" aria-label="刷新收集箱" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button><button type="button" className="coop-icon" disabled={busy} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></div></header>
+      <button type="button" className="coop-icon coop-close" disabled={busy || !!editor} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button>
+      <div className="coop-surface">
       {(error || notice || busy) && <p className={`coop-feedback${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}{error || (busy ? "正在保存…" : notice)}</p>}
       {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
       {pending.length > 0 && <div className="coop-recovery-list">{pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small></span><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>)}</div>}
@@ -227,6 +233,7 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || !editor.title.trim()}>保存修改</button></div>
       </form></div>}
       {ghost && <div className="coop-drag-ghost" style={{ left: Math.min(ghost.x, window.innerWidth - 220), top: Math.min(ghost.y, window.innerHeight - 70) }}><GripVertical size={17} />{ghost.title}</div>}
+      </div>
     </dialog>, document.body)}
   </>;
 }
