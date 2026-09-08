@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, GripVertical, Inbox, Loader2, Pencil, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
+import { Check, Ellipsis, GripVertical, Inbox, Loader2, Plus, RefreshCw, Trash2, UsersRound, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
+import { InlineTaskTitle } from "./InlineTaskTitle";
 
 type RequestCommand = CollaborationCommand | { id: string; action: "resume" | "cancel" };
 type Editor = { task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
@@ -24,16 +25,20 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [title, setTitle] = useState("");
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [inlineTask, setInlineTask] = useState<RoomTask | null>(null);
+  const [keyboardDrag, setKeyboardDrag] = useState<{ task: RoomTask; owner: string } | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [uncertain, setUncertain] = useState<RequestCommand | null>(null);
   const [hoverOwner, setHoverOwner] = useState<string | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; title: string } | null>(null);
-  const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), columns = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), membersPane = useRef<HTMLDivElement>(null);
   const locked = useRef(false), fetching = useRef(false), revision = useRef<number | null>(null), generation = useRef(0);
   const loadController = useRef<AbortController | null>(null);
   const drag = useRef<{ task: RoomTask; x: number; y: number; moved: boolean } | null>(null);
+
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 2400); return () => clearTimeout(timer); }, [notice]);
 
   const load = useCallback(async (force = false) => {
     if (fetching.current && !force) return null;
@@ -105,18 +110,19 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
       locked.current = false; setBusy(false);
       void onChanged();
     }
+    if (operation?.status === "done" || operation?.status === "cancelled") setDraftId(current => current === command.id ? null : current);
     return operation?.status === "done";
   }
   const unavailable = busy || !!uncertain;
-  const ownerName = (owner: string | null) => owner === null ? "待分配" : snapshot?.members.find(member => member.id === owner)?.name || "成员";
+  const ownerName = (owner: string | null) => owner === null ? "任务板" : snapshot?.members.find(member => member.id === owner)?.name || "成员";
   const canDrop = (owner: string) => owner === "" || snapshot?.members.some(member => member.id === owner && member.connected && !member.error);
   const move = async (task: RoomTask, owner: string) => {
     if (unavailable || task.pending || task.transferBlocked || (task.ownerId || "") === owner || !canDrop(owner)) return;
     await perform({ id: crypto.randomUUID(), action: "move", source: taskSource(task), destination: owner || null });
   };
-  const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setGhost(null); drag.current = null; } };
+  const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setInlineTask(null); setDraftId(null); setKeyboardDrag(null); setHoverOwner(null); setGhost(null); drag.current = null; } };
   const edit = (task: RoomTask) => {
-    setDeleteArmed(false); setError("");
+    setDeleteArmed(false); setError(""); setKeyboardDrag(null); setHoverOwner(null);
     setEditor({ task, title: task.title, content: task.content, priority: task.priority, start: dateInput(task.startDate, task.isAllDay), due: dateInput(task.dueDate, task.isAllDay), allDay: task.isAllDay, tags: task.tags.join(", "), repeat: task.repeatFlag, reminders: task.reminders });
   };
   function pointerMove(event: PointerEvent<HTMLButtonElement>) {
@@ -127,10 +133,10 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     setGhost({ x: event.clientX + 14, y: event.clientY + 12, title: current.task.title });
     const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-coop-owner]");
     setHoverOwner(target && canDrop(target.dataset.coopOwner!) ? target.dataset.coopOwner! : null);
-    const bounds = columns.current?.getBoundingClientRect();
-    if (bounds) {
-      if (event.clientX > bounds.right - 55) columns.current?.scrollBy({ left: 22 });
-      else if (event.clientX < bounds.left + 55) columns.current?.scrollBy({ left: -22 });
+    const bounds = membersPane.current?.getBoundingClientRect();
+    if (bounds && event.clientY >= bounds.top && event.clientY <= bounds.bottom) {
+      if (event.clientX > bounds.right - 55) membersPane.current?.scrollBy({ left: 22 });
+      else if (event.clientX < bounds.left + 55) membersPane.current?.scrollBy({ left: -22 });
     }
     const list = target?.querySelector(".coop-task-list");
     const rect = list?.getBoundingClientRect();
@@ -145,25 +151,45 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
     }
   }
   function card(task: RoomTask) {
-    const pending = !!task.pending;
+    const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
+    const cardLocked = unavailable || pending || !!inlineTask || !!draftId;
     return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
-      <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动以分配或放回待分配区"} aria-label={`拖动任务 ${task.title}`} disabled={unavailable || pending || !!task.transferBlocked}
-        onPointerDown={event => { if (event.button !== 0) return; event.currentTarget.setPointerCapture(event.pointerId); drag.current = { task, x: event.clientX, y: event.clientY, moved: false }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }}><GripVertical size={18} aria-hidden="true" /></button>
-        <button className="coop-task-title" type="button" disabled={unavailable || pending} onClick={() => edit(task)}>{task.title}</button>
-        <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={unavailable || pending} onClick={() => void perform({ id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={17} aria-hidden="true" /></button></div>
+      <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动安排任务；键盘可按空格、方向键，再按 Enter 放下"} aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
+        onBlur={() => { setKeyboardDrag(null); setHoverOwner(null); }}
+        onKeyDown={event => {
+          if (![" ", "Enter", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+          if (!keyboardDrag && ![" ", "Enter"].includes(event.key)) return;
+          event.preventDefault(); event.stopPropagation();
+          if (event.key === "Escape") { setKeyboardDrag(null); setHoverOwner(null); return; }
+          if (!keyboardDrag) { setKeyboardDrag({ task, owner: task.ownerId || "" }); setHoverOwner(task.ownerId || ""); return; }
+          if ([" ", "Enter"].includes(event.key)) { void move(keyboardDrag.task, keyboardDrag.owner); setKeyboardDrag(null); setHoverOwner(null); return; }
+          const owners = ["", ...(snapshot?.members.filter(member => canDrop(member.id)).map(member => member.id) || [])];
+          const next = owners[(owners.indexOf(keyboardDrag.owner) + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) + owners.length) % owners.length];
+          setKeyboardDrag({ task: keyboardDrag.task, owner: next }); setHoverOwner(next);
+          const target = Array.from(dialog.current?.querySelectorAll<HTMLElement>("[data-coop-owner]") || []).find(element => element.dataset.coopOwner === next);
+          target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }}
+        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { task, x: event.clientX, y: event.clientY, moved: false }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }}><GripVertical size={18} aria-hidden="true" /></button>
+        {isEditing ? <InlineTaskTitle key={taskKey(inlineTask)} initialValue={inlineTask.title} label="修改任务标题" disabled={unavailable} onCancel={() => setInlineTask(null)} onSave={async title => {
+          const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
+          if (done) setInlineTask(null); return done;
+        }} /> : <button className="coop-task-title" type="button" disabled={cardLocked} title="点击修改标题" onClick={() => { setInlineTask(task); setError(""); }}>{task.title}</button>}
+        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={cardLocked} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
+        <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={cardLocked} onClick={() => void perform({ id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button></div>
       {task.content && <p className="coop-task-summary">{task.content}</p>}
-      <div className="coop-task-meta"><span>{dateLabel(task)}</span>{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复任务</span>}</div>
+      {(task.dueDate || task.priority !== 0 || task.repeatFlag || (task.ownerId !== identityId && canDrop(identityId))) && <div className="coop-task-meta">{task.dueDate && <span>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
+        {task.ownerId !== identityId && canDrop(identityId) && <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
+      </div>}
       {task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
-      <div className="coop-task-actions"><button type="button" title="编辑任务" disabled={unavailable || pending} onClick={() => edit(task)}><Pencil size={14} aria-hidden="true" />编辑</button>
-        {task.ownerId !== identityId && canDrop(identityId) && <button type="button" disabled={unavailable || pending || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button>}
-        <select aria-label={`安排任务 ${task.title}`} value={task.ownerId || ""} disabled={unavailable || pending || !!task.transferBlocked} onChange={event => void move(task, event.target.value)}><option value="">待分配</option>{snapshot?.members.map(member => <option key={member.id} value={member.id} disabled={!member.connected || !!member.error}>{member.name}{member.id === identityId ? "（我）" : ""}</option>)}</select>
-      </div>{pending && <small className="coop-pending-label">正在等待操作完成</small>}
+      {pending && <small className="coop-pending-label">处理中…</small>}
     </article>;
   }
   function column(owner: string | null, name: string, tasks: RoomTask[], problem?: string, diagnostic?: string) {
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
-      <header><span className="coop-column-icon">{owner === null ? <Inbox size={19} /> : name.slice(0, 1)}</span><div><h3>{name}{owner === identityId && <small>我</small>}</h3><p>{owner === null ? "尚未确定由谁完成" : "滴答收集箱"}</p></div><span className="coop-count">{tasks.length}</span></header>
-      <div className="coop-task-list">{problem ? <><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</> : tasks.length ? tasks.map(card) : <p className="coop-empty">{owner === null ? "把暂不确定由谁做的任务放在这里" : "拖入任务，或在待分配区认领"}</p>}</div>
+      <header><span className="coop-column-icon">{owner === null ? <Inbox size={18} /> : name.slice(0, 1)}</span><h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span></header>
+      <div className="coop-task-list">{problem ? <><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</> : <>{tasks.map(card)}{owner === null && (draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
+        const done = await perform({ id: draftId, action: "create", fields: { title } }); if (done) setDraftId(null); return done;
+      }} /></div> : <button className="coop-new-task" type="button" title="新建任务" aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>)}</>}</div>
     </section>;
   }
   const pending = snapshot?.operations.filter(operation => operation.status === "pending") || [];
@@ -178,13 +204,12 @@ export function RoomCollaboration({ identityId, onChanged }: { identityId: strin
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }
     }}>
-      <header className="coop-heading"><div><span className="eyebrow">ROOM TASKS</span><h2 id="cooperation-title">自习室协作</h2><p>拖动任务以分配、认领或放回待分配区</p></div><div><button type="button" className="coop-icon" disabled={loading || busy} title="刷新收集箱" aria-label="刷新收集箱" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button><button type="button" className="coop-icon" disabled={busy} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></div></header>
-      <form className="coop-create" onSubmit={event => { event.preventDefault(); if (title.trim()) void perform({ id: crypto.randomUUID(), action: "create", fields: { title: title.trim() } }).then(done => { if (done) setTitle(""); }); }}><Inbox size={19} aria-hidden="true" /><input aria-label="新增待分配任务" placeholder="添加一件要一起处理的事，先放入待分配区" value={title} maxLength={500} disabled={unavailable} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} /><button type="submit" disabled={unavailable || !title.trim()}><Plus size={18} />添加</button></form>
-      {(error || notice) && <p className={`coop-feedback${error ? " error" : ""}`} role="status">{error || notice}</p>}
+      <header className="coop-heading"><h2 id="cooperation-title">自习室协作</h2><div><button type="button" className="coop-icon" disabled={loading || busy} title="刷新收集箱" aria-label="刷新收集箱" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button><button type="button" className="coop-icon" disabled={busy} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></div></header>
+      {(error || notice || busy) && <p className={`coop-feedback${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}{error || (busy ? "正在保存…" : notice)}</p>}
       {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
       {pending.length > 0 && <div className="coop-recovery-list">{pending.map(operation => <div className="coop-recovery" key={operation.id}><span><strong>{operation.title}</strong><small>{operation.action === "move" ? `${ownerName(operation.from)} → ${ownerName(operation.to)}` : `${ownerName(operation.from)} · ${{ create: "添加", update: "修改", complete: "完成", delete: "删除" }[operation.action]}`} · {operation.error || "等待继续"}</small></span><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "resume" })}>继续</button><button type="button" disabled={unavailable} onClick={() => void perform({ id: operation.id, action: "cancel" })}>{operation.action === "move" ? "取消转移" : "停止重试"}</button></div>)}</div>}
-      <div ref={columns} className="coop-columns" aria-busy={loading || busy}>{snapshot ? <>{column(null, "待分配", snapshot.buffer)}{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</> : <p className="coop-empty">{loading ? "正在读取成员收集箱…" : "暂时无法读取，请点击刷新"}</p>}</div>
-      <footer className="coop-footer"><span>{busy ? <><Loader2 className="coop-spin" size={14} />正在保存，请稍候</> : "也可用任务下方的成员菜单分配 · 日期按北京时间显示"}</span>{snapshot?.operations.find(operation => operation.status === "done") && <span>最近操作：{ownerName(snapshot.operations.find(operation => operation.status === "done")!.actorId)} · {snapshot.operations.find(operation => operation.status === "done")!.title}</span>}</footer>
+      <div className="coop-layout" aria-busy={loading || busy}>{snapshot ? <>{column(null, "任务板", snapshot.buffer)}<div ref={membersPane} className="coop-members">{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</div></> : <p className="coop-empty">{loading ? "正在读取…" : "暂时无法读取，请点击刷新"}</p>}</div>
+      <span className="coop-sr-only" aria-live="polite">{keyboardDrag ? `正在移动 ${keyboardDrag.task.title}，目标 ${ownerName(keyboardDrag.owner || null)}，方向键选择，Enter 放下，Esc 取消` : ""}</span>
       {editor && <div className="coop-editor-backdrop"><form className="coop-editor" aria-label="编辑协作任务" onSubmit={event => {
         event.preventDefault();
         void perform({ id: crypto.randomUUID(), action: "update", source: taskSource(editor.task), fields: { title: editor.title, content: editor.content, priority: editor.priority,
