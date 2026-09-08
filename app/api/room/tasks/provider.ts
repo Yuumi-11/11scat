@@ -4,7 +4,7 @@ import { tickFetch, tickInboxData, TickApiError } from "../../ticktick/client";
 import { CollaborationError, remoteVersion, sameFields, verificationIssue, type Gateway, type RemoteTask } from "./store";
 import type { TaskFields } from "../../../collaboration-types";
 
-type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]>; projects?: Promise<string[]> };
+type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]>; projects?: Promise<string[]>; completed?: Promise<RemoteTask[]> };
 const contexts = new Map<string, Context>();
 async function context(owner: string, refreshInbox = false): Promise<Context> {
   const user = await getUser(owner);
@@ -58,7 +58,11 @@ export const gateway: Gateway = {
       return data as RemoteTask[];
     });
     const candidate = (await account.search).find(task => task.id === id);
-    if (candidate) return gateway.get(owner, id, candidate.projectId);
+    if (candidate) {
+      const detail = await gateway.get(owner, id, candidate.projectId);
+      if (detail) return detail;
+      if (candidate.status === 2 && typeof candidate.title === "string" && candidate.title) return candidate;
+    }
     // A capped filter is not exhaustive. On the uncommon missing-ID path,
     // check the same ID in each accessible project before offering recovery.
     account.projects ||= request(owner, "/project").then(data => {
@@ -70,7 +74,14 @@ export const gateway: Gateway = {
       const tasks = await Promise.all(projects.slice(index, index + 3).map(project => gateway.get(owner, id, project)));
       const found = tasks.find(Boolean); if (found) return found;
     }
-    return null;
+    // Some completed tasks remain in history while their detail URL returns
+    // 404. Exact IDs and an explicit completed status are positive evidence;
+    // a capped history miss is never interpreted as completion.
+    account.completed ||= request(owner, "/task/completed", { method: "POST", body: JSON.stringify({}) }).then(data => {
+      if (!Array.isArray(data) || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId) || task.status !== 2 || typeof task.title !== "string" || !task.title)) throw new CollaborationError("滴答完成记录不完整，请稍后重试", 502);
+      return data as RemoteTask[];
+    });
+    return (await account.completed).find(task => task.id === id) || null;
   },
   async create(owner, id, fields, receipt) {
     const existing = await gateway.get(owner, id);
@@ -97,6 +108,17 @@ export const gateway: Gateway = {
     if (!saved || !sameFields(saved, fields)) throw new CollaborationError("滴答尚未确认全部修改，请继续核对或取消重试");
   },
   async remove(owner, id) { await request(owner, `/project/{inbox}/task/${encodeURIComponent(id)}`, { method: "DELETE" }, true); },
+  async reopen(owner, before) {
+    const existing = await gateway.get(owner, before.id, before.projectId) || await gateway.locate!(owner, before.id, before.projectId);
+    if (!existing) throw new CollaborationError("关联任务缺失，请刷新后恢复任务");
+    if (!existing.status && sameFields(existing, before)) return existing;
+    if (existing.status !== 2 || remoteVersion(existing) !== remoteVersion(before)) throw new CollaborationError("任务在恢复期间发生变化，请检查滴答后重试");
+    const data = await request(owner, "/task/batch", { method: "POST", body: JSON.stringify({ update: [{ ...existing, status: 0, completedTime: null }] }) });
+    if (data?.id2error?.[before.id]) throw new CollaborationError("滴答未接受恢复未完成，请稍后重试");
+    const saved = await gateway.get(owner, before.id, before.projectId);
+    if (!saved || saved.status || !sameFields(saved, before)) throw new CollaborationError("滴答尚未确认恢复未完成，请稍后重试");
+    return saved;
+  },
   async complete(owner, id, projectId) {
     if (projectId !== undefined && !validId(projectId)) throw new CollaborationError("清单编号无效", 400);
     await request(owner, `/project/${projectId ? encodeURIComponent(projectId) : "{inbox}"}/task/${encodeURIComponent(id)}/complete`, { method: "POST" });

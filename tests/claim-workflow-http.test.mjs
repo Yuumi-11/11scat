@@ -42,6 +42,12 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 403); assert.match((await response.json()).error, /审批/);
     response = await act('bob', 'update-workflow', { fields: { content: 'HTTP 修改详情' } }); assert.equal(response.status, 200); w = (await response.json()).workflow;
     const edited = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(edited.alice.original.content, 'HTTP 修改详情'); assert.equal(edited.bob[w.targetId].content, 'HTTP 修改详情');
+    edited.bob[w.targetId].status = 2;
+    await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(edited));
+    const externallyChecked = await (await call('bob')).json(); w = externallyChecked.workflows.find(item => item.id === w.id);
+    assert.ok(w.needsSubmission); assert.ok(!w.reopenPending);
+    assert.ok(externallyChecked.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
+    assert.equal((JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'))).bob[w.targetId].status, 0);
     const upload = (actor, body, headers = {}) => fetch(`${origin}/api/room/tasks/files?workflow=${w.id}&name=${encodeURIComponent('评语.txt')}`, { method: 'POST', body, headers: { Cookie: cookie(actor), Origin: origin, ...headers }, redirect: 'manual' });
     assert.equal((await upload('alice', 'draft')).status, 403);
     assert.equal((await upload('bob', 'draft', { Origin: 'https://foreign.example' })).status, 403);
@@ -50,6 +56,11 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     assert.equal((await call('alice', file.url)).status, 403);
     const downloaded = await call('bob', file.url); assert.equal(downloaded.status, 200); assert.equal(await downloaded.text(), '完成说明'); assert.match(downloaded.headers.get('content-disposition'), /^attachment;/); assert.equal(downloaded.headers.get('x-content-type-options'), 'nosniff');
     response = await act('bob', 'submit', { attachments: [file.id], comment: '已完成' }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    const submittedExternal = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'));
+    submittedExternal.bob[w.targetId].status = 2;
+    await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(submittedExternal));
+    w = (await (await call('alice')).json()).workflows.find(item => item.id === w.id);
+    assert.equal(w.status, 'submitted'); assert.ok(w.events.find(item => item.type === 'submit').files.some(item => item.id === file.id));
     assert.equal((await call('alice', file.url)).status, 200);
     assert.equal((await act('bob', 'approve')).status, 403);
     response = await upload('alice', '补充证明'); assert.equal(response.status, 200); const reviewFile = (await response.json()).file;

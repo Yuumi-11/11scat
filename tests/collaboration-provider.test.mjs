@@ -30,8 +30,9 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
       if (route === '/open/v1/project/inbox/data') return Response.json({ tasks: [...accounts[owner].values()], columns: [] });
       if (route === '/open/v1/project/inbox') return Response.json({ id: `inbox-${owner}` });
       if (route === '/open/v1/task/batch') {
-        for (const task of body.add) { assert.equal(task.projectId, `inbox-${owner}`); const actual = { ...structuredClone(task), id: allocatedId || task.id }; accounts[owner].set(actual.id, actual); }
-        return Response.json({ id2etag: omitReceipt ? {} : Object.fromEntries(body.add.map(task => [allocatedId || task.id, "etag"])) });
+        for (const task of body.add || []) { assert.equal(task.projectId, `inbox-${owner}`); const actual = { ...structuredClone(task), id: allocatedId || task.id }; accounts[owner].set(actual.id, actual); }
+        for (const task of body.update || []) { assert.equal(task.projectId, `inbox-${owner}`); accounts[owner].set(task.id, { ...task, etag: 'reopened' }); }
+        return Response.json({ id2etag: omitReceipt ? {} : Object.fromEntries((body.add || body.update).map(task => [allocatedId || task.id, "etag"])) });
       }
       if (method === 'POST' && /^\/open\/v1\/task\/[^/]+$/.test(route)) {
         assert.equal(body.projectId, `inbox-${owner}`); accounts[owner].set(body.id, structuredClone(body)); return Response.json(body);
@@ -69,6 +70,14 @@ test('Dida provider works with Open API credentials despite V2 rejection and sco
     accounts.bob.set('child', { id: 'child', projectId: 'inbox-bob', parentId: task.id });
     await assert.rejects(gateway.checkTransfer('bob', task), /子任务/); accounts.bob.delete('child');
     await gateway.complete('bob', task.id); assert.equal(accounts.bob.get(task.id).status, 2);
+    const completed = await gateway.get('bob', task.id);
+    const reopened = await gateway.reopen('bob', completed);
+    assert.equal(reopened.status, 0); assert.equal(reopened.completedTime, null);
+    assert.deepEqual(reopened.providerMetadata, { preserved: true }); assert.deepEqual(taskFields(reopened), taskFields(completed));
+    const writes = requests.filter(request => request.method === 'POST').length;
+    await gateway.reopen('bob', completed); assert.equal(requests.filter(request => request.method === 'POST').length, writes);
+    accounts.bob.get(task.id).status = 2; accounts.bob.get(task.id).title = 'concurrent edit';
+    await assert.rejects(gateway.reopen('bob', completed), /发生变化/);
     await gateway.remove('bob', task.id); await gateway.remove('bob', task.id);
     assert.equal(accounts.bob.size, 0);
     allocatedId = 'server-assigned-id';
@@ -112,6 +121,7 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
       if (route === '/project/inbox/data') return Response.json({ project: { id: 'inbox-alice' }, tasks: [], columns: [] });
       if (route === '/task/filter') { searchCount++; if (failure) return failure(); return Response.json([task]); }
       if (route === '/project') return Response.json([{ id: 'other-list' }, { id: 'outside-filter' }]);
+      if (route === '/task/completed') return Response.json([{ id: 'history-only', projectId: 'inbox-alice', status: 2, title: '历史完成' }]);
       if (route === '/project/outside-filter/task/older-moved') return Response.json({ ...task, id: 'older-moved', projectId: 'outside-filter' });
       if (route === '/project/other-list/task/moved/complete') { task.status = 2; return new Response(null, { status: 204 }); }
       if (route === '/project/other-list/task/moved') return Response.json(task);
@@ -121,6 +131,7 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
     assert.equal(await gateway.get('alice', 'moved'), null, 'ordinary lookup retains inbox scope');
     assert.equal((await gateway.locate('alice', 'moved')).projectId, 'other-list');
     assert.equal(await gateway.locate('alice', 'absent'), null); assert.equal(searchCount, 1);
+    assert.equal((await gateway.locate('alice', 'history-only')).status, 2);
     assert.equal((await gateway.locate('alice', 'older-moved')).projectId, 'outside-filter', 'project enumeration finds moves outside capped filter results');
     await gateway.update('alice', 'moved', taskFields({ title: 'updated' }), remoteVersion(task), 'other-list');
     assert.equal(task.title, 'updated'); assert.equal(task.projectId, 'other-list');

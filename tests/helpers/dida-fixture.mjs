@@ -13,11 +13,14 @@ globalThis.fetch = async (input, init = {}) => {
   const route = url.pathname.replace('/open/v1', ''), method = init.method || 'GET';
   const save = () => fs.writeFileSync(file, JSON.stringify(state));
   if (route === '/project') return Response.json([]);
+  if (route === '/task/filter') return Response.json(Object.values(tasks));
+  if (route === '/task/completed') return Response.json(Object.values(tasks).filter(task => task.status === 2));
   if (route === '/project/inbox') return Response.json({ id: `inbox-${owner}` });
   if (route === '/project/inbox/data') return Response.json({ tasks: Object.values(tasks).filter(task => !task.status), columns: [] });
   if (route === '/task/batch') {
     const body = JSON.parse(init.body), ids = {};
-    for (const task of body.add) { const id = randomUUID().replaceAll('-', '').slice(0, 24); tasks[id] = { ...task, id }; ids[id] = 'created'; }
+    for (const task of body.add || []) { const id = randomUUID().replaceAll('-', '').slice(0, 24); tasks[id] = { ...task, id }; ids[id] = 'created'; }
+    for (const task of body.update || []) { tasks[task.id] = { ...task, etag: 'reopened' }; ids[task.id] = 'reopened'; }
     save(); return Response.json({ id2etag: ids });
   }
   if (route.endsWith('/comments')) return Response.json([]);

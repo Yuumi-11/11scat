@@ -29,7 +29,7 @@ export function WorkflowList({ workflows, archived, setArchived, select, name, n
     <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已完成归档 <span>{workflows.filter(item => item.status === "done").length}</span>{archiveUnread > 0 && <span className="task-notice-count" aria-label={`${archiveUnread} 条归档新记录`}>{archiveUnread}</span>}</>}</button></div>
     <div className="coop-workflow-list">
       {!visible.length && <p className="coop-empty">{archived ? "暂无已完成的归档任务" : "暂无未完成的工作流程"}</p>}
-      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} onRead={onRead} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{item.taskAnomaly ? "任务状态异常" : workflowStatus[item.status]}</span></button>)}
+      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} onRead={onRead} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{item.taskAnomaly ? "任务状态异常" : item.reopenPending ? "正在恢复未完成" : item.needsSubmission ? "待补充提交" : workflowStatus[item.status]}</span></button>)}
     </div>
   </>;
 }
@@ -39,7 +39,7 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
   const uploadLock = useRef(false), input = useRef<HTMLInputElement>(null);
   const submit = !workflow.taskAnomaly && !workflow.editPending && workflow.claimantId === identityId && ["working", "rejected"].includes(workflow.status);
   const review = !workflow.taskAnomaly && !workflow.editPending && workflow.reviewerId === identityId && workflow.status === "submitted";
-  const retry = workflow.editPending || (workflow.status === "creating" && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || (workflow.status === "approving" && workflow.reviewerId === identityId);
+  const retry = (workflow.reopenPending && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || workflow.editPending || (workflow.status === "creating" && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || (workflow.status === "approving" && workflow.reviewerId === identityId);
   const disabled = busy || uploading;
   async function upload(selected: File[]) {
     if (uploadLock.current || busy || !(submit || review)) return;
@@ -60,7 +60,7 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
   }
   return <div className="coop-workflow-detail">
     <button type="button" className="coop-workflow-back" disabled={disabled} onClick={back}><ArrowLeft size={15} />返回列表</button>
-    <div className="coop-workflow-heading"><h4>{workflow.title}</h4><span className={`coop-workflow-status ${workflow.status}`}>{workflowStatus[workflow.status]}</span></div>
+    <div className="coop-workflow-heading"><h4>{workflow.title}</h4><span className={`coop-workflow-status ${workflow.status}`}>{workflow.reopenPending ? "正在恢复未完成" : workflow.needsSubmission ? "待补充提交" : workflowStatus[workflow.status]}</span></div>
     <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={edit}>详细设置</button>{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}</div>
     {workflow.reviewerId === identityId && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" disabled={disabled} onClick={() => void act("nudge")}><BellRing size={15} />催办</button>}
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>
@@ -73,9 +73,9 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
       <label htmlFor={`comment-${workflow.id}`}>{review ? "审批评语" : "完成说明"}</label><textarea id={`comment-${workflow.id}`} rows={3} value={comment} maxLength={10000} disabled={disabled} onChange={event => setComment(event.target.value)} placeholder={review ? "可附上修改建议，或将附件拖到这里" : "可填写说明，或将附件拖到这里"} />
       <div className="coop-workflow-files">{files.map(file => <span key={file.id}><Paperclip size={13} />{file.name}<button type="button" disabled={disabled} aria-label={`移除附件 ${file.name}`} onClick={() => setFiles(current => current.filter(item => item.id !== file.id))}><X size={13} /></button></span>)}</div>
       <input ref={input} className="coop-sr-only" type="file" multiple tabIndex={-1} onChange={event => { void upload(Array.from(event.target.files || [])); event.target.value = ""; }} />
-      <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={() => input.current?.click()}><Paperclip size={15} />{uploading ? "上传中…" : "附件"}</button><small>每个 20 MB</small><span />{submit ? <button type="button" className="primary" disabled={disabled} onClick={() => void act("submit")}><Send size={15} />提交完成</button> : <><button type="button" disabled={disabled} onClick={() => void act("reject")}><RotateCcw size={15} />打回</button><button type="button" className="primary" disabled={disabled} onClick={() => void act("approve")}><Check size={15} />通过</button></>}</div>
+      <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={() => input.current?.click()}><Paperclip size={15} />{uploading ? "上传中…" : "附件"}</button><small>每个 20 MB</small><span />{submit ? <button type="button" className="primary" disabled={disabled || (workflow.needsSubmission && !comment.trim() && !files.length)} onClick={() => void act("submit")}><Send size={15} />提交完成</button> : <><button type="button" disabled={disabled} onClick={() => void act("reject")}><RotateCcw size={15} />打回</button><button type="button" className="primary" disabled={disabled} onClick={() => void act("approve")}><Check size={15} />通过</button></>}</div>
     </div>}
-    {retry && <button type="button" className="coop-save" disabled={disabled} onClick={() => void act("retry-workflow")}>核对并继续</button>}
+    {retry && <button type="button" className="coop-save" disabled={disabled} onClick={() => void act("retry-workflow")}>{workflow.reopenPending ? "重试同步" : "核对并继续"}</button>}
     {workflow.status === "submitted" && !review && <p className="coop-workflow-people">等待 {name(workflow.reviewerId)} 审批</p>}
   </div>;
 }

@@ -22,6 +22,7 @@ async function fixture() {
     update: async (owner, id, fields) => { Object.assign(accounts[owner].get(id), structuredClone(fields)); },
     remove: async (owner, id) => { counts.removes++; accounts[owner].delete(id); if (loseDelete) { loseDelete = false; throw new Error('delete response lost'); } },
     complete: async (owner, id) => { accounts[owner].get(id).status = 2; },
+    reopen: async (owner, before) => { const task = accounts[owner].get(before.id); task.status = 0; task.completedTime = null; return structuredClone(task); },
     checkTransfer: async () => {},
   };
   const store = new CollaborationStore(dir, gateway);
@@ -179,13 +180,15 @@ test('concurrent restorations cannot create duplicate replacements', async () =>
   assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.creates, 2);
 });
 
-test('completed Dida task is not treated as missing and no automatic replacement or approval occurs', async () => {
+test('completed claimant task is reopened without replacement or automatic approval', async () => {
   const f = await fixture(), task = await personal(f); let w = await claim(f, task);
   f.accounts.bob.get(w.targetId).status = 2;
   const inbox = f.gateway.inbox;
   f.gateway.inbox = async owner => { const data = await inbox(owner); data.tasks = data.tasks.filter(task => !task.status); return data; };
   w = await refreshed(f, w.id);
   assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
+  assert.equal(f.accounts.bob.get(w.targetId).status, 0); assert.ok(w.needsSubmission);
+  assert.ok((await f.store.snapshot('bob')).members.find(member => member.id === 'bob').tasks.some(task => task.id === w.targetId));
 });
 
 test('public and workflow unread records are per member, persist across devices and never query Dida on acknowledgement', async () => {
@@ -497,12 +500,12 @@ test('explicit new settings can resolve a detail sync conflict while stale reque
   assert.ok(w.events.some(event => event.type === 'update-replaced'));
 });
 
-test('stale approvals and out of workflow manual completions are rejected without polling or reopening', async () => {
+test('stale approvals are rejected and external claimant completion requires results after reopening', async () => {
   const f = await fixture(), task = await personal(f); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
   f.accounts.bob.get(w.targetId).title = 'changed externally';
   await assert.rejects(act(f, w, 'alice', 'approve'), /发生变化/); assert.ok(!f.accounts.alice.get(task.id).status);
   w = await act(f, w, 'alice', 'reject'); f.accounts.bob.get(w.targetId).status = 2;
-  await assert.rejects(act(f, w, 'bob', 'submit'), /流程外/); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  await assert.rejects(act(f, w, 'bob', 'submit'), /补充完成说明/); assert.equal(f.accounts.bob.get(w.targetId).status, 0);
   await assert.rejects(act(f, { ...w, version: w.version - 1 }, 'bob', 'submit'), /已更新/);
 });
 
@@ -564,4 +567,94 @@ test('legacy destructive routes stay disabled and public edits reject stale or i
   await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'delete', source: source(task) }), /已被修改/);
   await assert.rejects(f.store.execute('alice', { id: randomUUID(), action: 'create', fields: { title: 'x', token: 'forbidden' } }), { status: 400 });
   await assert.rejects(f.store.execute('stranger', { id: randomUUID(), action: 'create', fields: { title: 'x' } }), { status: 403 });
+});
+
+test('external original owner completion finishes both tasks once and updates the same snapshot and notifications', async () => {
+  for (const publicTask of [false, true]) {
+    const f = await fixture(), task = publicTask ? await f.create('公共外部完成') : await personal(f);
+    let w = await claim(f, task);
+    const sourceId = publicTask ? w.reviewerTaskId : task.id;
+    f.accounts.alice.get(sourceId).status = 2;
+    let writes = 0; const complete = f.gateway.complete;
+    f.gateway.complete = async (...args) => { writes++; await complete(...args); };
+    const snapshot = await f.store.snapshot('bob'); w = snapshot.workflows.find(item => item.id === w.id);
+    assert.equal(w.status, 'done'); assert.equal(writes, 1); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    assert.ok(!snapshot.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
+    if (publicTask) assert.ok(!snapshot.buffer.some(item => item.id === task.id));
+    assert.ok(snapshot.notices.some(item => item.eventType === 'external-owner-complete'));
+    w = await refreshed(f, w.id); assert.equal(writes, 1); assert.equal(w.events.filter(item => item.type === 'external-owner-complete').length, 1);
+  }
+});
+
+test('external claimant checkbox restoration retains pending review and original submitted materials', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '成果说明已提交' });
+  const event = w.events.find(item => item.type === 'submit');
+  f.accounts.bob.get(w.targetId).status = 2; f.accounts.bob.get(w.targetId).etag = 'external-checkbox';
+  const reopen = f.gateway.reopen;
+  f.gateway.reopen = async (...args) => { const saved = await reopen(...args); f.accounts.bob.get(saved.id).etag = 'restored-checkbox'; return { ...saved, etag: 'restored-checkbox' }; };
+  w = await refreshed(f, w.id); assert.equal(w.status, 'submitted'); assert.ok(!w.needsSubmission);
+  assert.deepEqual(w.events.find(item => item.type === 'submit'), event);
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+});
+
+test('external claimant checkbox never hides concurrent configuration changes from approval', async () => {
+  for (const side of ['alice', 'bob']) {
+    const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+    w = await act(f, w, 'bob', 'submit', { comment: '原成果' });
+    f.accounts[side].get(side === 'alice' ? task.id : w.targetId).content = '审批后修改了要求';
+    f.accounts.bob.get(w.targetId).status = 2;
+    w = await refreshed(f, w.id); assert.equal(w.status, 'submitted');
+    await assert.rejects(act(f, w, 'alice', 'approve'), /发生变化/);
+    assert.ok(!f.accounts.alice.get(task.id).status);
+  }
+});
+
+test('lost reopen response survives restart and cooldown without duplicate incident records', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.bob.get(w.targetId).status = 2;
+  const reopen = f.gateway.reopen; let calls = 0;
+  f.gateway.reopen = async (...args) => { calls++; const saved = await reopen(...args); if (calls === 1) throw new Error('lost reopen response'); return saved; };
+  w = await refreshed(f, w.id); assert.ok(w.reopenPending); assert.match(w.syncError, /lost reopen/);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await refreshed(f, w.id); assert.equal(calls, 1);
+  await assert.rejects(act(f, w, 'offline', 'retry-workflow'), /参与者/);
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.ok(!w.reopenPending); assert.equal(w.status, 'working');
+  assert.equal(w.events.filter(item => item.type === 'external-claimant-check').length, 1);
+  assert.equal(w.events.filter(item => item.type === 'external-task-reopened').length, 1);
+  assert.equal(f.counts.creates, 1);
+  await assert.rejects(act(f, w, 'bob', 'submit'), /补充完成说明/);
+  w = await act(f, w, 'bob', 'submit', { comment: '补充成果' }); assert.equal(w.status, 'submitted'); assert.ok(!w.needsSubmission);
+});
+
+test('external source completion partial response resumes through durable approval without repeated completion', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.alice.get(task.id).status = 2;
+  let calls = 0; const complete = f.gateway.complete;
+  f.gateway.complete = async (...args) => { calls++; await complete(...args); throw new Error('lost complete response'); };
+  w = await refreshed(f, w.id); assert.equal(w.status, 'approving'); assert.ok(w.error);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await act(f, w, 'alice', 'retry-workflow'); assert.equal(w.status, 'done'); assert.equal(calls, 1);
+});
+
+test('advanced recurring occurrence is never rewound or completed by the external checkbox synchronizer', async () => {
+  const f = await fixture(), task = await personal(f, { repeatFlag: 'RRULE:FREQ=DAILY', dueDate: '2026-09-09T12:00:00Z' });
+  let w = await claim(f, task);
+  f.accounts.bob.get(w.targetId).dueDate = '2026-09-10T12:00:00Z';
+  f.gateway.reopen = async () => { assert.fail('must not rewind next occurrence'); };
+  f.gateway.complete = async () => { assert.fail('must not complete next occurrence'); };
+  w = await refreshed(f, w.id); assert.equal(w.status, 'working'); assert.match(w.syncError, /重复任务日期已变化/);
+  assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
+});
+
+test('submit and review discover external owner completion without waiting for a board refresh', async () => {
+  for (const action of ['submit', 'approve', 'reject']) {
+    const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+    if (action !== 'submit') w = await act(f, w, 'bob', 'submit');
+    f.accounts.alice.get(task.id).status = 2;
+    await assert.rejects(act(f, w, 'offline', action), { status: 403 });
+    assert.ok(!f.accounts.bob.get(w.targetId).status);
+    w = await act(f, w, action === 'submit' ? 'bob' : 'alice', action, { comment: '成果' });
+    assert.equal(w.status, 'done'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  }
 });

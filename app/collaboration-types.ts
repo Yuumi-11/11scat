@@ -16,6 +16,8 @@ export type ClaimWorkflow = {
   editPending?: boolean;
   taskAnomaly?: boolean;
   syncError?: string;
+  reopenPending?: boolean;
+  needsSubmission?: boolean;
 };
 export type WorkflowCommand = { id: string; workflowId: string; version: number; action: "submit" | "approve" | "reject" | "retry-workflow" | "owner-complete" | "update-workflow" | "restore-workflow" | "nudge" | "reply-nudge"; comment?: string; replyTo?: string; attachments?: string[]; fields?: Partial<TaskFields> };
 export type CollaborationSnapshot = { identityId: string; revision: number; noticeVersion?: number; buffer: RoomTask[]; members: CollaborationMember[]; operations: OperationView[]; workflows: ClaimWorkflow[]; legacyCleanup?: { title: string; message: string }[]; notices?: import("./collaboration-notifications").TaskNotice[] };
