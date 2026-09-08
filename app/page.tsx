@@ -18,6 +18,7 @@ import { RoomCollaboration } from "./RoomCollaboration";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { useRoomTheme } from "./use-room-theme";
 import { ThemeColorPicker } from "./ThemeColorPicker";
+import { RoomSettings } from "./RoomSettings";
 import { RoomBell } from "./RoomBell";
 import { CloudDrive } from "./CloudDrive";
 import { Expand, Minimize2 } from "lucide-react";
@@ -256,8 +257,6 @@ export default function Home() {
   const activitySavingRef = useRef(false);
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [pushOpen, setPushOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
@@ -2289,7 +2288,21 @@ export default function Home() {
             <Cloud aria-hidden="true" />
             云盘
           </button>
-          <button className="appearance-button" type="button" onClick={() => setAppearanceOpen(true)} title="外观设置"><Palette aria-hidden="true" />外观设置</button>
+          <RoomSettings sections={[
+            { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
+              <h3>手机与手表消息提醒</h3>
+              <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
+              <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
+              {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
+              <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
+            </> },
+            { id: "appearance", label: "外观设置", icon: <Palette size={19} />, content: <>
+              <p>选择主题颜色或背景图片。</p>
+              <ThemeColorPicker theme={appearanceTheme} color={appearanceColor} choosePreset={choosePreset} chooseCustom={chooseCustom} />
+              <input ref={backgroundInputRef} className="chat-image-input" type="file" accept="image/*" onChange={(event) => { importBackground(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+              <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}><ImagePlus size={18} aria-hidden="true" />导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
+            </> },
+          ]} />
         </div>
       </header>
 
@@ -2618,34 +2631,6 @@ export default function Home() {
       )}
 
       {cloudOpen && <CloudDrive onClose={() => setCloudOpen(false)} onStatusChange={setCloudStatus} onImage={openChatImage} />}
-
-      {pushOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPushOpen(false)}>
-          <section className="push-modal" role="dialog" aria-modal="true" aria-labelledby="push-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" type="button" onClick={() => setPushOpen(false)} aria-label="关闭消息提醒设置" title="关闭消息提醒设置"><X size={18} aria-hidden="true" /></button>
-            <span className="eyebrow">消息提醒</span>
-            <h2 id="push-title">手机与手表消息提醒</h2>
-            <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
-            <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
-            {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
-            <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
-          </section>
-        </div>
-      )}
-
-      {appearanceOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setAppearanceOpen(false)}>
-          <section className="appearance-modal" role="dialog" aria-modal="true" aria-labelledby="appearance-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setAppearanceOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
-            <h2 id="appearance-title">外观设置</h2>
-            <button className="push-button" type="button" onClick={() => { setAppearanceOpen(false); setPushOpen(true); }}><Bell size={18} aria-hidden="true" />消息提醒设置</button>
-            <p>选择预设或自由选色，让整个自习室与你喜欢的颜色相配。</p>
-            <ThemeColorPicker theme={appearanceTheme} color={appearanceColor} choosePreset={choosePreset} chooseCustom={chooseCustom} />
-            <input ref={backgroundInputRef} className="chat-image-input" type="file" accept="image/*" onChange={(event) => { importBackground(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-            <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}><ImagePlus size={18} aria-hidden="true" />导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
-          </section>
-        </div>
-      )}
 
       {viewedChatImage && <ChatImageViewer image={viewedChatImage} onClose={closeChatImage} />}
 

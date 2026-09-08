@@ -34,28 +34,11 @@ test('palette text and meaningful controls meet contrast targets across RGB gamu
   }
 });
 
-test('accents distinguish presets and server default matches the generated palette', async () => {
+test('all theme roles change with preset hue and server default matches the generated palette', async () => {
   const palettes = Object.values(THEME_PRESETS).map(preset => createThemePalette(preset.color));
-  for (const key of ['--theme-soft','--theme-accent']) assert.equal(new Set(palettes.map(p => p[key])).size, palettes.length, key);
+  for (const key of ['--page','--panel','--soft','--ink','--muted','--line','--theme-soft','--theme-accent','--overlay']) assert.equal(new Set(palettes.map(p => p[key])).size, 4, key);
   const css = await readFile('app/room-theme.css', 'utf8');
   const root = css.match(/:root \{([\s\S]*?)\n\}/)[1];
   for (const [key,value] of Object.entries(palettes[0])) assert.ok(root.includes(`${key}: ${value};`), key);
   assert.ok(!css.includes(':has(.app-shell[data-theme='), 'per-preset overrides must not mask root custom variables');
-});
-
-test('vivid custom seeds keep large surfaces neutral and near-gray choices stay neutral', () => {
-  const channels = hex => [1,3,5].map(i => parseInt(hex.slice(i,i+2),16));
-  const spread = hex => Math.max(...channels(hex)) - Math.min(...channels(hex));
-  for (const seed of ['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff',...Object.values(THEME_PRESETS).map(p => p.color)]) {
-    const p = createThemePalette(seed);
-    assert.ok(spread(p['--page']) <= 16, seed);
-    assert.ok(spread(p['--panel']) <= 4, seed);
-    assert.ok(spread(p['--soft']) <= 14, seed);
-    assert.ok(spread(p['--ink']) <= 10, seed);
-    assert.ok(spread(p['--theme-soft']) > spread(p['--page']), seed);
-  }
-  for (const seed of ['#000000','#ffffff','#888888','#898888','#888988','#888889']) {
-    const p = createThemePalette(seed);
-    for (const key of ['--page','--soft','--theme-soft','--theme-accent']) assert.ok(spread(p[key]) <= 3, `${seed} ${key}`);
-  }
 });

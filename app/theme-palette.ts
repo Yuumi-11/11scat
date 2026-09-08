@@ -1,10 +1,8 @@
 export const THEME_PRESETS = {
-  blue: { name: "青瓷蓝", color: "#536d8c" },
-  green: { name: "鼠尾草", color: "#577568" },
-  purple: { name: "鸢尾灰", color: "#786887" },
-  pink: { name: "藕玫瑰", color: "#996c7d" },
-  amber: { name: "燕麦金", color: "#947348" },
-  clay: { name: "陶土棕", color: "#a16d57" },
+  blue: { name: "雾蓝", color: "#416b9e" },
+  green: { name: "青绿", color: "#28775f" },
+  purple: { name: "暮紫", color: "#7753a6" },
+  pink: { name: "玫瑰", color: "#a54f76" },
 } as const;
 export type ThemeName = keyof typeof THEME_PRESETS | "custom";
 export type ThemePalette = Record<`--${string}`, string>;
@@ -66,13 +64,9 @@ function toHex(lightness: number, chroma: number, hue: number): string {
 export function createThemePalette(input: string): ThemePalette {
   const seed = normalizeThemeColor(input) || THEME_PRESETS.blue.color;
   const { lightness, chroma, hue } = toOklch(seed);
-  // Never add saturation to a neutral seed. Accent and neutral surfaces have
-  // independent chroma budgets; a vivid seed must not dye the whole room.
-  const c = chroma < .00001 ? 0 : Math.min(.16, chroma);
+  const c = chroma < .005 ? 0 : Math.min(.18, Math.max(.065, chroma));
   const tone = (l: number, factor: number) => toHex(l, c * factor, hue);
-  const neutral = (l: number, cap: number) => toHex(l, Math.min(cap, c * .14), hue);
-  const page = neutral(.962, .009), panel = neutral(.996, .0015), soft = neutral(.975, .007);
-  const selected = toHex(.930, Math.min(.038, c * .36), hue);
+  const page = tone(.958, .23), panel = tone(.993, .06), soft = tone(.943, .25), selected = tone(.913, .43);
   const surfaces = [page, panel, soft, selected];
   const darkEnough = (start: number, factor: number, ratio: number) => {
     for (let l = start; l >= .1; l -= .01) {
@@ -83,19 +77,19 @@ export function createThemePalette(input: string): ThemePalette {
   };
   // Preserve the chosen color in the picker; adapt its UI tone for readable
   // controls, including near-white, yellow, black and neutral custom seeds.
-  const accent = darkEnough(Math.max(.42, Math.min(.60, lightness)), 1, 4.6);
+  const accent = darkEnough(Math.max(.35, Math.min(.68, lightness)), 1, 3.05);
   const accentDark = darkEnough(.40, .8, 4.6);
   const onAccent = contrastRatio("#ffffff", accent) >= contrastRatio("#000000", accent) ? "#ffffff" : "#000000";
   const accentL = toOklch(accent).lightness;
   const hoverCandidate = tone(onAccent === "#ffffff" ? accentL - .045 : Math.min(.76, accentL + .035), 1);
   const hover = contrastRatio(onAccent, hoverCandidate) >= 4.5 && surfaces.every(bg => contrastRatio(hoverCandidate, bg) >= 3) ? hoverCandidate : accent;
-  const ink = neutral(.27, .008), muted = neutral(.47, .009);
-  const shadowRgb = rgb(neutral(.25, .008)).map(v => Math.round(v * 255)).join(" ");
+  const ink = darkEnough(.25, .23, 7), muted = darkEnough(.47, .26, 4.6);
+  const shadowRgb = rgb(tone(.25, .3)).map(v => Math.round(v * 255)).join(" ");
   return {
     "--theme-seed": seed, "--theme-accent": accent, "--theme-accent-dark": accentDark,
     "--theme-accent-hover": hover, "--on-accent": onAccent, "--theme-soft": selected,
     "--page": page, "--panel": panel, "--soft": soft, "--ink": ink, "--muted": muted,
-    "--line": neutral(.875, .010), "--line-strong": darkEnough(.60, .12, 3.05),
+    "--line": tone(.84, .26), "--line-strong": darkEnough(.64, .35, 3.05),
     "--shadow-rgb": shadowRgb, "--shadow": `0 4px 24px rgb(${shadowRgb} / 7%)`,
     "--overlay": `rgb(${shadowRgb} / 40%)`,
   };

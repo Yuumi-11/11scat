@@ -1,0 +1,23 @@
+.topbar-actions .settings-button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-control); background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 550; }
+.room-settings-dialog { position: fixed; inset: 0; width: min(460px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); margin: auto; padding: 22px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--radius-dialog); background: var(--panel); color: var(--ink); box-shadow: 0 24px 80px rgb(var(--shadow-rgb) / 20%); }
+.room-settings-dialog::backdrop { background: var(--overlay); backdrop-filter: blur(4px); }
+.room-settings-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; }
+.room-settings-heading h2 { flex: 1; min-width: 0; margin: 0; font-size: 21px; font-weight: 650; }
+.settings-back, .settings-close { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--soft); }
+.room-settings-sections { display: grid; gap: 10px; }
+.room-settings-sections > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); text-align: left; font-size: 14px; }
+.room-settings-sections > button > svg { margin-left: auto; color: var(--muted); }
+.settings-section-icon { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 9px; color: var(--theme-accent-dark); background: var(--theme-soft); }
+.room-settings-sections > button:hover, .settings-back:hover, .settings-close:hover { border-color: var(--theme-accent); background: var(--soft); }
+.room-settings-content p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.75; }
+.room-settings-content h3 { margin: 0 0 10px; font-size: 16px; }
+.room-settings-content .wide { margin-top: 16px; }
+.room-settings-content .push-watch-note { margin-top: 12px; }
+.room-settings-content .push-message { margin: 12px 0 0; color: var(--theme-accent-dark); }
+.room-settings-content .error-message { color: var(--danger); }
+@media (max-width: 480px) {
+  .topbar-actions .settings-button { padding: 7px 9px; font-size: 12px; }
+  .room-settings-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 18px 16px; }
+  .room-settings-heading h2 { font-size: 19px; }
+  .settings-back, .settings-close { flex-basis: 40px; width: 40px; height: 40px; }
+}
