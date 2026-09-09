@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowLeft, BellRing, Check, ClipboardCheck, Paperclip, RotateCcw, Send, X } from "lucide-react";
+import { Archive, ArrowLeft, BellRing, Check, ClipboardCheck, Paperclip, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { WorkflowSettings } from "./WorkflowSettings";
 import { TaskNoticeDot } from "./TaskNoticeDot";
 import { workflowEventLabels, type TaskNotice } from "./collaboration-notifications";
 import type { ClaimWorkflow, CollaborationSnapshot, WorkflowCommand, WorkflowFile } from "./collaboration-types";
 
 export const workflowStatus: Record<ClaimWorkflow["status"], string> = { creating: "正在建立", working: "进行中", submitted: "待审批", rejected: "已打回", approving: "正在确认完成", done: "已完成" };
 const eventLabels = workflowEventLabels;
-export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onClose, retryUncertain, onEdit, notices = [], onRead }: { notices?: TaskNotice[]; onRead?: (ids: string[]) => void; snapshot: CollaborationSnapshot; initialId: string | null; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; onClose: () => void; onEdit: (workflow: ClaimWorkflow) => void; retryUncertain?: () => void }) {
+export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onClose, retryUncertain, notices = [], onRead }: { notices?: TaskNotice[]; onRead?: (ids: string[]) => void; snapshot: CollaborationSnapshot; initialId: string | null; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; onClose: () => void; retryUncertain?: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState(initialId);
   const [archived, setArchived] = useState(false);
@@ -18,13 +19,13 @@ export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onCl
   return <dialog ref={dialog} className="coop-workflows" aria-label="认领工作流程" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }} onKeyDown={event => event.stopPropagation()}>
     <header><h3><ClipboardCheck size={20} />{archived ? "已完成归档" : "工作流程"}</h3><button className="coop-icon" type="button" aria-label="关闭工作流程" disabled={busy} onClick={onClose}><X size={20} /></button></header>
     {retryUncertain && <div className="coop-recovery">上次请求结果未确认。<button type="button" disabled={busy} onClick={retryUncertain}>核对并重试</button></div>}
-    {workflow ? <WorkflowDetail key={workflow.id} notices={notices} onRead={onRead} workflow={workflow} identityId={snapshot.identityId} name={name} busy={busy || !!retryUncertain} error={error} perform={perform} edit={() => onEdit(workflow)} back={() => setSelected(null)} /> : <WorkflowList notices={notices} onRead={onRead} workflows={snapshot.workflows} archived={archived} setArchived={setArchived} select={setSelected} name={name} />}
+    {workflow ? <WorkflowDetail key={workflow.id} notices={notices} onRead={onRead} workflow={workflow} identityId={snapshot.identityId} name={name} busy={busy || !!retryUncertain} error={error} perform={perform} back={() => setSelected(null)} /> : <WorkflowList notices={notices} onRead={onRead} workflows={snapshot.workflows} archived={archived} setArchived={setArchived} select={setSelected} name={name} />}
   </dialog>;
 }
 export function WorkflowList({ workflows, archived, setArchived, select, name, notices = [], onRead }: { notices?: TaskNotice[]; onRead?: (ids: string[]) => void; workflows: ClaimWorkflow[]; archived: boolean; setArchived: (value: boolean) => void; select: (id: string) => void; name: (id: string) => string }) {
   const unread = (id: string) => notices.filter(item => item.workflowId === id).map(item => item.id);
   const archiveUnread = workflows.filter(item => item.status === "done").reduce((count, item) => count + unread(item.id).length, 0);
-  const visible = workflows.filter(item => archived ? item.status === "done" : item.status !== "done").sort((a, b) => Number(unread(b.id).length > 0) - Number(unread(a.id).length > 0) || (archived ? b.updatedAt - a.updatedAt : b.createdAt - a.createdAt));
+  const visible = workflows.filter(item => archived ? item.status === "done" : item.status !== "done").sort((a, b) => Number(b.status === "submitted") - Number(a.status === "submitted") || Number(unread(b.id).length > 0) - Number(unread(a.id).length > 0) || (archived ? b.updatedAt - a.updatedAt : b.createdAt - a.createdAt));
   return <>
     <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已完成归档 <span>{workflows.filter(item => item.status === "done").length}</span>{archiveUnread > 0 && <span className="task-notice-count" aria-label={`${archiveUnread} 条归档新记录`}>{archiveUnread}</span>}</>}</button></div>
     <div className="coop-workflow-list">
@@ -33,9 +34,10 @@ export function WorkflowList({ workflows, archived, setArchived, select, name, n
     </div>
   </>;
 }
-function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back, edit, notices, onRead }: { notices: TaskNotice[]; onRead?: (ids: string[]) => void; workflow: ClaimWorkflow; identityId: string; name: (id: string) => string; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; back: () => void; edit: () => void }) {
+function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back, notices, onRead }: { notices: TaskNotice[]; onRead?: (ids: string[]) => void; workflow: ClaimWorkflow; identityId: string; name: (id: string) => string; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; back: () => void }) {
   const [comment, setComment] = useState(""), [files, setFiles] = useState<WorkflowFile[]>([]), [uploading, setUploading] = useState(false), [fileError, setFileError] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [deleteArmed, setDeleteArmed] = useState(false);
   const uploadLock = useRef(false), input = useRef<HTMLInputElement>(null);
   const submit = !workflow.taskAnomaly && !workflow.editPending && workflow.claimantId === identityId && ["working", "rejected"].includes(workflow.status);
   const review = !workflow.taskAnomaly && !workflow.editPending && workflow.reviewerId === identityId && workflow.status === "submitted";
@@ -59,13 +61,15 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     if (await perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action, comment, ...(action === "reply-nudge" ? { replyTo: replyTo! } : {}), attachments: files.map(file => file.id) })) { setComment(""); setFiles([]); setReplyTo(null); }
   }
   return <div className="coop-workflow-detail">
+    <section className="coop-workflow-main" aria-label="任务内容及操作">
     <button type="button" className="coop-workflow-back" disabled={disabled} onClick={back}><ArrowLeft size={15} />返回列表</button>
     <div className="coop-workflow-heading"><h4>{workflow.title}</h4><span className={`coop-workflow-status ${workflow.status}`}>{workflow.reopenPending ? "正在恢复未完成" : workflow.needsSubmission ? "待补充提交" : workflowStatus[workflow.status]}</span></div>
-    <div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={edit}>详细设置</button>{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}</div>
-    {workflow.reviewerId === identityId && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" disabled={disabled} onClick={() => void act("nudge")}><BellRing size={15} />催办</button>}
+    <div className="coop-workflow-actions">{workflow.reviewerId === identityId && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" disabled={disabled} onClick={() => void act("nudge")}><BellRing size={15} />催办</button>}{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}
+    {workflow.claimantId === identityId && <button type="button" className="coop-delete" disabled={disabled} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void act("delete-claimed-task").then(() => setDeleteArmed(false)); }}><Trash2 size={15} />{deleteArmed ? "确认删除自己收集箱中的任务" : "删除我的任务"}</button>}
+    {deleteArmed && <button type="button" disabled={disabled} onClick={() => setDeleteArmed(false)}>取消删除</button>}</div>
     {workflow.fields.content && <p className="coop-workflow-description">{workflow.fields.content}</p>}
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>
-    <ol className="coop-workflow-events">{workflow.events.map(event => <li key={event.id}><div><strong><TaskNoticeDot ids={notices.filter(item => item.eventId === event.id && item.workflowId === workflow.id).map(item => item.id)} onRead={onRead} />{event.actorId ? name(event.actorId) : "系统"} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.comment}</p>}{event.type === "nudge" && workflow.claimantId === identityId && !workflow.events.some(item => item.type === "reply-nudge" && item.replyTo === event.id) && <button type="button" className="coop-workflow-back" disabled={disabled} onClick={() => { setReplyTo(event.id); setComment(""); }}>回复催办</button>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
+    <ol className="coop-workflow-events">{workflow.events.filter(event => event.type !== "completed").map(event => <li key={event.id}><div><strong><TaskNoticeDot ids={notices.filter(item => item.eventId === event.id && item.workflowId === workflow.id).map(item => item.id)} onRead={onRead} />{event.actorId ? name(event.actorId) : "系统"} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.comment}</p>}{event.type === "nudge" && workflow.claimantId === identityId && !workflow.events.some(item => item.type === "reply-nudge" && item.replyTo === event.id) && <button type="button" className="coop-workflow-back" disabled={disabled} onClick={() => { setReplyTo(event.id); setComment(""); }}>回复催办</button>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
     {(workflow.error || workflow.syncError || error || fileError) && <p className="coop-feedback error" role="alert">{fileError || error || workflow.syncError || workflow.error}</p>}
     {workflow.taskAnomaly && <div className="coop-recovery"><p>关联任务缺失。恢复只补回缺失任务，保留当前{workflowStatus[workflow.status]}进度和已提交材料。</p>{[workflow.claimantId, workflow.reviewerId].includes(identityId) && <button type="button" disabled={disabled} onClick={() => void act("restore-workflow")}><RotateCcw size={15} />恢复任务</button>}</div>}
     {replyTo && <div className="coop-workflow-compose"><label htmlFor="workflow-nudge-reply">回复催办</label><textarea id="workflow-nudge-reply" rows={3} maxLength={2000} disabled={disabled} value={comment} onChange={event => setComment(event.target.value)} /><div className="coop-workflow-actions"><button type="button" disabled={disabled} onClick={() => setReplyTo(null)}>取消</button><button type="button" disabled={disabled || !comment.trim()} onClick={() => void act("reply-nudge")}>发送回复</button></div></div>}
@@ -77,5 +81,7 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     </div>}
     {retry && <button type="button" className="coop-save" disabled={disabled} onClick={() => void act("retry-workflow")}>{workflow.reopenPending ? "重试同步" : "核对并继续"}</button>}
     {workflow.status === "submitted" && !review && <p className="coop-workflow-people">等待 {name(workflow.reviewerId)} 审批</p>}
+    </section>
+    <WorkflowSettings workflow={workflow} disabled={disabled} perform={perform} />
   </div>;
 }

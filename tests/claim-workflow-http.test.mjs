@@ -72,14 +72,15 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     response = await act('bob', 'submit'); w = (await response.json()).workflow;
     response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow; assert.equal(w.status, 'done');
     const final = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(final.alice.original.status, 2); assert.equal(final.bob[w.targetId].status, 2);
-    // A fresh public workflow verifies the original publisher's ordinary sidebar checkbox.
+    // A public workflow completes without creating any publisher inbox task.
     await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '直接完成测试' } });
     const publicTask = (await (await call('bob')).json()).buffer[0];
     response = await call('bob', '/api/room/tasks', { id: randomUUID(), action: 'claim', source: { ownerId: null, taskId: publicTask.id, version: publicTask.version }, destination: 'bob' });
     const direct = (await response.json()).workflow;
-    response = await call('alice', '/api/ticktick/complete', { projectId: 'inbox-alice', taskId: direct.reviewerTaskId }); assert.equal(response.status, 200);
+    assert.equal(direct.reviewerTaskId, undefined);
+    response = await call('alice', '/api/room/tasks', { id: randomUUID(), workflowId: direct.id, version: direct.version, action: 'owner-complete' }); assert.equal(response.status, 200);
     const completed = (await response.json()).workflow; assert.equal(completed.status, 'done'); assert.ok(completed.events.some(event => event.type === 'owner-complete'));
-    const directlyDone = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(directlyDone.alice[direct.reviewerTaskId].status, 2); assert.equal(directlyDone.bob[direct.targetId].status, 2);
+    const directlyDone = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.deepEqual(Object.keys(directlyDone.alice), ['original']); assert.equal(directlyDone.bob[direct.targetId].status, 2);
     await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '自己收取的任务' } });
     const personalPublic = (await (await call('alice')).json()).buffer.find(task => task.title === '自己收取的任务');
     const collect = { id: randomUUID(), action: 'claim', source: { ownerId: null, taskId: personalPublic.id, version: personalPublic.version }, destination: 'alice' };
@@ -89,6 +90,14 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const ordinary = afterCollection.members.find(member => member.id === 'alice').tasks.find(item => item.title === '自己收取的任务'); assert.ok(ordinary); assert.ok(!ordinary.workflowId); assert.ok(!ordinary.pending);
     response = await call('bob', '/api/room/tasks', { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: ordinary.id, version: ordinary.version }, destination: 'bob' });
     assert.equal(response.status, 200); const laterClaim = (await response.json()).workflow; assert.equal(laterClaim.reviewerId, 'alice'); assert.equal(laterClaim.status, 'working');
+    const deletion = { id: randomUUID(), workflowId: laterClaim.id, version: laterClaim.version, action: 'delete-claimed-task' };
+    assert.equal((await call('alice', '/api/room/tasks', deletion)).status, 403);
+    response = await call('bob', '/api/room/tasks', deletion); assert.equal(response.status, 200);
+    assert.equal((await response.json()).workflow.taskAnomaly, true);
+    assert.equal((await call('bob', '/api/room/tasks', deletion)).status, 200);
+    const deletedSnapshot = await (await call('bob')).json();
+    assert.ok(!deletedSnapshot.members.find(member => member.id === 'bob').tasks.some(task => task.id === laterClaim.targetId));
+    assert.ok(deletedSnapshot.members.find(member => member.id === 'alice').tasks.some(task => task.id === ordinary.id));
     assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
   } finally { child.kill(); }
 });

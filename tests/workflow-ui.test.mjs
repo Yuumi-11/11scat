@@ -16,7 +16,7 @@ test('workflow detail offers settings to every member and direct completion only
   const workflow = { id: 'workflow', title: '测试', reviewerId: 'alice', claimantId: 'bob', fields: taskFields({ title: '测试' }), status: 'working', events: [] };
   const render = (identityId, status = 'working', editPending = false) => renderToStaticMarkup(createElement(ClaimWorkflows, { initialId: workflow.id, busy: false, error: '', onClose() {}, onEdit() {}, perform() {}, snapshot: { identityId, members: ['alice', 'bob', 'charlie'].map(id => ({ id, name: id })), workflows: [{ ...workflow, status, editPending }] } }));
   for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done']) {
-    const html = render(member, status); assert.match(html, />详细设置<\/button>/);
+    const html = render(member, status); assert.match(html, /<form[^>]+aria-label="详细设置"/); assert.ok(!html.includes(">详细设置</button>"));
     assert.equal(html.includes('直接完成'), member === 'alice' && status !== 'done');
   }
   assert.ok(render('bob').includes('提交完成')); assert.ok(!render('bob', 'working', true).includes('提交完成'));
@@ -30,6 +30,13 @@ test('workflow detail offers settings to every member and direct completion only
   assert.ok(withNotices.indexOf('他人认领的事项') < withNotices.indexOf('我认领的事项'), 'unread workflow is temporarily first');
   assert.match(withNotices, /1 条归档新记录/); assert.match(withNotices, /task-notice-dot/);
   assert.ok(!overview(false).includes('task-notice-dot'), 'read acknowledgements remove dots and unread sorting');
+  const ordered = renderToStaticMarkup(createElement(WorkflowList, { workflows: [...workflows, { ...workflow, id: 'review', title: '优先审批事项', status: 'submitted', createdAt: 1 }], notices, archived: false, setArchived() {}, select() {}, name: id => id }));
+  assert.ok(ordered.indexOf('优先审批事项') < ordered.indexOf('他人认领的事项'), 'pending review outranks unread working tasks');
+  workflow.events = ['claimed', 'submit', 'approve', 'completed'].map((type, index) => ({ id: String(index), actorId: 'bob', type, at: 1700000000000, comment: type === 'completed' ? '不可显示的后台完成说明' : '', files: [] }));
+  const history = render('alice', 'done');
+  assert.ok(!history.includes('安排认领')); assert.ok(!history.includes('完成同步')); assert.ok(!history.includes('不可显示的后台完成说明'));
+  assert.ok(history.includes('bob · 认领')); assert.ok(history.includes('提交完成')); assert.ok(history.includes('审批通过'));
+  assert.ok(render('bob').includes('删除我的任务')); assert.ok(!render('alice').includes('删除我的任务'));
   assert.ok(render('alice').includes('>催办</button>')); assert.ok(!render('bob').includes('>催办</button>'));
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {

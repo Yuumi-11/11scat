@@ -78,6 +78,46 @@ const claim = (f, task, actor = 'bob', destination = actor) => f.store.claim(act
 const act = (f, workflow, actor, action, extra = {}) => f.store.workflowCommand(actor, { id: randomUUID(), workflowId: workflow.id, version: workflow.version, action, ...extra });
 const refreshed = async (f, id) => (await f.store.snapshot('alice')).workflows.find(workflow => workflow.id === id);
 
+test('claimant deletion preserves submitted results, retries lost responses and never creates publisher tasks', async () => {
+  const f = await fixture(), task = await f.create('仅认领者收集箱');
+  let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '保留这份结果' });
+  const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'delete-claimed-task' };
+  await assert.rejects(f.store.workflowCommand('alice', command), { status: 403 });
+  f.loseDelete(); w = await f.store.workflowCommand('bob', command); assert.ok(w.error);
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await f.store.workflowCommand('bob', command);
+  assert.equal(w.taskAnomaly, true); assert.equal(w.status, 'submitted');
+  assert.equal(w.events.find(event => event.type === 'submit').comment, '保留这份结果');
+  assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 0); assert.equal(f.counts.removes, 1);
+  w = await act(f, w, 'bob', 'restore-workflow');
+  assert.equal(w.taskAnomaly, false); assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 1);
+  await f.store.workflowCommand('bob', command); assert.equal(f.accounts.bob.size, 1, 'old deletion cannot delete a restored task');
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+});
+
+test('absent original tasks do not block submit, approval or direct completion and are never recreated', async () => {
+  for (const deletionTime of ['before-submit', 'after-submit', 'direct']) {
+    const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+    if (deletionTime === 'after-submit') w = await act(f, w, 'bob', 'submit');
+    f.accounts.alice.delete(task.id);
+    w = await refreshed(f, w.id); assert.ok(!w.taskAnomaly);
+    if (deletionTime === 'before-submit') w = await act(f, w, 'bob', 'submit');
+    w = await act(f, w, 'alice', deletionTime === 'direct' ? 'owner-complete' : 'approve');
+    assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.size, 0);
+    assert.equal(f.accounts.bob.get(w.targetId).status, 2); assert.equal(f.counts.creates, 1);
+  }
+});
+
+test('missing publisher lookup failures pause approval without inventing absence or completing claimant', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit');
+  const get = f.gateway.get;
+  f.gateway.get = async (owner, id) => { if (owner === 'alice') throw new Error('network unavailable'); return get(owner, id); };
+  await assert.rejects(act(f, w, 'alice', 'approve'), /network unavailable/);
+  assert.ok(!f.accounts.bob.get(w.targetId).status); assert.equal(f.counts.creates, 1);
+});
+
 test('missing claimant task is restored without resetting submitted review or losing results', async () => {
   const f = await fixture(), task = await personal(f, { dueDate: '2026-09-12T12:00:00+0800', tags: ['exam'], reminders: ['TRIGGER:-PT15M'], priority: 5 });
   let w = await claim(f, task);
@@ -103,7 +143,7 @@ test('missing claimant task is restored without resetting submitted review or lo
   assert.equal(w.status, 'done'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
 });
 
-test('recovery of both public counterparts survives a lost creation response and a store restart', async () => {
+test('recovery of the public claimant task never creates a publisher task and survives a lost creation response and a store restart', async () => {
   const f = await fixture(), publicTask = await f.create('公共发布任务');
   let w = await claim(f, publicTask);
   f.accounts.alice.delete(w.reviewerTaskId); f.accounts.bob.delete(w.targetId);
@@ -111,17 +151,17 @@ test('recovery of both public counterparts survives a lost creation response and
   f.loseCreate();
   const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'restore-workflow' };
   w = await f.store.workflowCommand('alice', command);
-  assert.ok(w.syncError); assert.equal(w.status, 'working'); assert.equal(f.accounts.alice.size, 1);
+  assert.ok(w.syncError); assert.equal(w.status, 'working'); assert.equal(f.accounts.alice.size, 0);
   f.store = new CollaborationStore(f.dir, f.gateway);
   w = await f.store.workflowCommand('alice', command);
   assert.equal(w.taskAnomaly, false); assert.equal(w.status, 'working');
-  assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.creates, 4);
+  assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 1); assert.equal(f.counts.creates, 2);
   await f.store.workflowCommand('alice', command);
-  assert.equal(f.counts.creates, 4, 'successful restoration replay is idempotent');
+  assert.equal(f.counts.creates, 2, 'successful restoration replay is idempotent');
   assert.equal((await f.store.snapshot('alice')).buffer[0].id, publicTask.id);
   f.accounts.bob.delete(w.targetId); w = await refreshed(f, w.id);
   await f.store.workflowCommand('alice', command);
-  assert.equal(f.counts.creates, 4, 'old restoration request cannot restore a later anomaly');
+  assert.equal(f.counts.creates, 2, 'old restoration request cannot restore a later anomaly');
 });
 
 test('surviving task external edits still invalidate approval after counterpart restoration', async () => {
@@ -286,9 +326,9 @@ test('public reviewer stays the publisher after another user edits it, board sta
   const f = await fixture(), task = await f.create('公共任务');
   await f.store.execute('bob', { id: randomUUID(), action: 'update', source: source(task), fields: { title: '编辑后的任务' } });
   const updated = (await f.store.snapshot('bob')).buffer[0]; assert.equal(updated.publisherId, 'alice');
-  let w = await claim(f, updated); assert.equal(w.reviewerId, 'alice'); assert.ok(w.reviewerTaskId);
+  let w = await claim(f, updated); assert.equal(w.reviewerId, 'alice'); assert.equal(w.reviewerTaskId, undefined);
   assert.equal((await f.store.snapshot('bob')).buffer[0].workflowId, w.id);
-  assert.equal(f.accounts.alice.size, 1); assert.equal(f.accounts.bob.size, 1);
+  assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 1);
   w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve');
   assert.equal(w.status, 'done'); assert.equal((await f.store.snapshot('bob')).buffer.length, 0);
   assert.equal((await f.store.revision()).bufferCount, 0);
@@ -419,7 +459,7 @@ test('original owner or publisher directly completes in working, submitted and r
     await assert.rejects(act(f, w, 'offline', 'owner-complete'), { status: 403 });
     const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'owner-complete' };
     w = await f.store.workflowCommand('alice', command); assert.equal(w.status, 'done');
-    assert.equal(f.accounts.alice.get(publicTask ? w.reviewerTaskId : task.id).status, 2); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    if (publicTask) assert.equal(f.accounts.alice.size, 0); else assert.equal(f.accounts.alice.get(task.id).status, 2); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
     assert.equal(w.events.filter(event => event.type === 'owner-complete').length, 1);
     assert.equal((await f.store.workflowCommand('alice', command)).events.filter(event => event.type === 'completed').length, 1);
     assert.equal((await f.store.snapshot('bob')).buffer.length, 0);
@@ -443,12 +483,12 @@ test('all room members can synchronize workflow details and submitted work requi
   await assert.rejects(act(f, w, 'stranger', 'update-workflow', { fields: { title: 'no' } }), { status: 403 });
   w = await act(f, w, 'offline', 'update-workflow', { fields: { title: '新标题', content: '新说明', priority: 5, dueDate: '2026-09-15T12:00:00+0800' } });
   assert.equal(w.status, 'working'); assert.equal(w.editPending, false);
-  for (const remote of [f.accounts.alice.get(w.reviewerTaskId), f.accounts.bob.get(w.targetId)]) { assert.equal(remote.title, '新标题'); assert.equal(remote.priority, 5); assert.equal(remote.content, '新说明'); }
+  for (const remote of [f.accounts.bob.get(w.targetId)]) { assert.equal(remote.title, '新标题'); assert.equal(remote.priority, 5); assert.equal(remote.content, '新说明'); }
   assert.equal((await f.store.snapshot('alice')).buffer[0].title, '新标题');
   await assert.rejects(act(f, w, 'alice', 'approve', { version: oldVersion }), /已更新/);
   await assert.rejects(act(f, w, 'alice', 'approve'), /状态/);
   w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
-  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '完成后补充' } }); assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.get(w.reviewerTaskId).content, '完成后补充'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '完成后补充' } }); assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.get(w.targetId).content, '完成后补充'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
 });
 
 test('lost detail update response resumes after restart without overwriting newer edits or repeating acknowledged writes', async () => {
@@ -573,6 +613,12 @@ test('external original owner completion finishes both tasks once and updates th
   for (const publicTask of [false, true]) {
     const f = await fixture(), task = publicTask ? await f.create('公共外部完成') : await personal(f);
     let w = await claim(f, task);
+    if (publicTask) {
+      const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+      state.workflows[w.id].reviewerTaskId = 'legacy-publisher-task';
+      f.accounts.alice.set('legacy-publisher-task', { id: 'legacy-publisher-task', projectId: 'inbox-alice', ...w.fields });
+      await writeFile(file, JSON.stringify(state)); w = await refreshed(f, w.id);
+    }
     const sourceId = publicTask ? w.reviewerTaskId : task.id;
     f.accounts.alice.get(sourceId).status = 2;
     let writes = 0; const complete = f.gateway.complete;
