@@ -12,6 +12,7 @@ import { CollaborationRecovery } from "./CollaborationRecovery";
 import type { TaskNotice } from "./collaboration-notifications";
 import { TaskNoticeDot } from "./TaskNoticeDot";
 import { TaskNudge } from "./TaskNudge";
+import { taskDescriptionPreview } from "./task-description";
 
 import { ClaimWorkflows, workflowStatus } from "./ClaimWorkflows";
 
@@ -212,6 +213,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
     }
   }
   function card(task: RoomTask) {
+    const description = task.ownerId === null ? taskDescriptionPreview(task.content || task.desc || "") : "";
     const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
     const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
@@ -248,6 +250,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
+      {description && <p className="coop-task-description">{description}</p>}
       {workflow && canComplete && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" title="催办认领者" disabled={unavailable} onClick={() => void perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action: "nudge" })}><BellRing size={14} />催办</button>}
       {workflow && <button type="button" className={`coop-workflow-badge ${workflow.status}`} onClick={showWorkflow}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</button>}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
