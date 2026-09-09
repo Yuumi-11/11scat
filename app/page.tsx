@@ -2285,6 +2285,7 @@ export default function Home() {
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
           <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} />
+          <MusicWindow />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘
@@ -2364,7 +2365,6 @@ export default function Home() {
                 <small>{roomStatus === "error" ? "连接异常" : inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</small>
               </button>
             ))}
-            <MusicWindow />
           </div>
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas" ref={stageRef}>

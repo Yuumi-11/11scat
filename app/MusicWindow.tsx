@@ -5,8 +5,6 @@ import {
   MoreHorizontal,
   Minus,
   X,
-  Music2,
-  ExternalLink,
   Play,
   Pause,
   ChevronUp,
@@ -42,23 +40,40 @@ function Avatar({ member }: { member?: MusicMember }) {
     </span>
   );
 }
+function MusicCover({ cover }: { cover?: string }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <span className="music-cover">
+      {cover && failed !== cover ? (
+        <img
+          src={cover}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(cover)}
+        />
+      ) : (
+        <svg
+          className="music-idle-logo"
+          viewBox="0 0 48 48"
+          aria-label="网易云音乐"
+        >
+          <path
+            d="M30 9c-3-3-8-1-8 3 0 4 8 5 8 12 0 5-4 9-9 9s-9-4-9-9c0-4 3-8 7-9M34 17c4 3 6 7 5 12-1 8-8 13-16 12S9 34 9 26M23 21c-4-1-6 2-5 5 1 3 5 3 6 0 1-2-1-4-1-5Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
 function Song({ track }: { track?: MusicTrack }) {
   return (
     <>
-      <span className="music-cover">
-        {track?.cover ? (
-          <img
-            src={track.cover}
-            alt=""
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              e.currentTarget.style.visibility = "hidden";
-            }}
-          />
-        ) : (
-          <Music2 size={22} />
-        )}
-      </span>
+      <MusicCover cover={track?.cover} />
       <span className="music-track-text">
         <strong title={track?.title}>{track?.title || "暂未播放"}</strong>
         <small title={track?.artist}>{track?.artist || "网易云音乐"}</small>
@@ -79,13 +94,9 @@ function Row({
   const status = musicStatus(member, own);
   return (
     <div className="music-row">
-      <span className="music-cover">
-        {track?.cover ? (
-          <img src={track.cover} alt="" referrerPolicy="no-referrer" />
-        ) : (
-          <Music2 size={21} />
-        )}
-      </span>
+      <MusicCover
+        cover={member?.state === "playing" ? track?.cover : undefined}
+      />
       <div className="music-row-main">
         <div className="music-owner">
           <Avatar member={member} />
@@ -135,11 +146,8 @@ export function MusicPanel({
   const [open, setOpen] = useState(initialOpen),
     [collapsed, setCollapsed] = useState(false),
     [menu, setMenu] = useState(false),
-    [connect, setConnect] = useState(false),
-    [form, setForm] = useState(false);
-  const [url, setUrl] = useState(""),
-    [song, setSong] = useState(""),
-    [selected, setSelected] = useState("");
+    [connect, setConnect] = useState(false);
+  const [selected, setSelected] = useState("");
   const [position, setPosition] = useState<Point | null>(null);
   const panel = useRef<HTMLDivElement>(null),
     trigger = useRef<HTMLButtonElement>(null),
@@ -149,7 +157,8 @@ export function MusicPanel({
   const self = data?.members.find((m) => m.id === data.selfId),
     peers = data?.members.filter((m) => m.id !== data.selfId) || [];
   const peer = peers.find((m) => m.id === selected) || peers[0];
-  const invite = data?.invitation;
+  const invite =
+    data?.invitation?.mode === "sync" ? data.invitation : undefined;
   const inviter = data?.members.find((m) => m.id === invite?.from);
   const leader = data?.members.find(
     (m) => m.id === (data.session?.leader || invite?.leader),
@@ -209,7 +218,7 @@ export function MusicPanel({
       observer.disconnect();
       window.removeEventListener("resize", fit);
     };
-  }, [open, collapsed, connect, form, menu, clamp]);
+  }, [open, collapsed, connect, menu, clamp]);
   useEffect(() => {
     if (position && data?.selfId && loadedKey.current === key) {
       try {
@@ -274,7 +283,7 @@ export function MusicPanel({
       <button
         ref={trigger}
         type="button"
-        className="music-entry"
+        className="cloud-button music-entry"
         onClick={() => setOpen(true)}
         aria-expanded={open}
         aria-controls="room-music-window"
@@ -297,9 +306,8 @@ export function MusicPanel({
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               if (menu) setMenu(false);
-              else if (connect || form) {
+              else if (connect) {
                 setConnect(false);
-                setForm(false);
               } else close();
             }
           }}
@@ -584,24 +592,11 @@ export function MusicPanel({
                         </button>
                       </div>
                       <p>
-                        当前尚未接通实时听歌状态。登录网易云后，可以复制“一起听”的邀请链接发给对方；登录不会自动开启共享。
+                        同步桌面网易云需要双方各自连接客户端。当前尚未接通，暂时无法读取播放列表、歌曲或进度。
                       </p>
-                      <a
-                        href="https://music.163.com/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        打开网易云 <ExternalLink size={13} />
-                      </a>
-                      <button
-                        className="music-text-button"
-                        onClick={() => {
-                          setForm(true);
-                          setConnect(false);
-                        }}
-                      >
-                        粘贴一起听邀请链接
-                      </button>
+                      <p>
+                        连接后，由你决定是否共享听歌状态；一起听邀请需要另行确认。
+                      </p>
                     </section>
                   )}
                   {!together && (
@@ -614,9 +609,7 @@ export function MusicPanel({
                             </strong>
                             <span title={invite.title}>{invite.title}</span>
                             <p>
-                              {invite.mode === "external"
-                                ? `将前往网易云跟随 ${leader?.name || "TA"} 播放，可能切换当前歌曲；在网易云确认后生效。`
-                                : `接受后跟随 ${leader?.name || "TA"} 播放，并切换至这首歌。`}
+                              {`接受后跟随 ${leader?.name || "TA"} 播放，替换当前播放队列并切换至这首歌。`}
                             </p>
                             <div className="music-invite-actions">
                               <button
@@ -671,15 +664,7 @@ export function MusicPanel({
                       ) : invite?.status === "accepted" ? (
                         <section className="music-external">
                           <strong>邀请已接受</strong>
-                          <p>请在网易云完成一起听。本站尚不能确认播放同步。</p>
-                          <a
-                            className="music-primary"
-                            href={invite.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            去网易云一起听 <ExternalLink size={14} />
-                          </a>
+                          <p>正在等待双方客户端确认同步。</p>
                           <button
                             className="music-text-button"
                             disabled={busy}
@@ -710,75 +695,26 @@ export function MusicPanel({
                           </button>
                           <button
                             className="music-text-button music-invite-own"
-                            disabled={!peer || busy}
+                            disabled={
+                              !peer ||
+                              !selfTrack ||
+                              !data.capabilities.sync ||
+                              busy
+                            }
                             onClick={() => {
-                              setForm(true);
-                              setSong(selfTrack?.title || "");
+                              if (peer && selfTrack)
+                                void command({
+                                  action: "invite",
+                                  to: peer.id,
+                                  leader: data.selfId,
+                                  title: selfTrack.title,
+                                  url: selfTrack.url || "",
+                                });
                             }}
                           >
                             邀请 TA 听我的
                           </button>
                         </>
-                      )}
-                      {form && !invite && (
-                        <form
-                          className="music-invite-form"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (peer)
-                              void command({
-                                action: "invite",
-                                to: peer.id,
-                                title: song,
-                                url,
-                              });
-                          }}
-                        >
-                          <p>
-                            在网易云创建一起听邀请后，将链接发给{" "}
-                            {peer?.name || "TA"}。
-                          </p>
-                          <label>
-                            歌曲名称
-                            <input
-                              value={song}
-                              onChange={(e) => setSong(e.target.value)}
-                              maxLength={100}
-                              required
-                              placeholder="邀请中的歌曲名称"
-                            />
-                          </label>
-                          <label>
-                            网易云邀请链接
-                            <input
-                              value={url}
-                              onChange={(e) => setUrl(e.target.value)}
-                              maxLength={1800}
-                              type="url"
-                              required
-                              placeholder="https://…"
-                            />
-                          </label>
-                          <small>
-                            仅向对方发送这次邀请，不开启听歌状态共享。
-                          </small>
-                          <div className="music-invite-actions">
-                            <button
-                              className="music-primary"
-                              disabled={busy || !peer}
-                              type="submit"
-                            >
-                              发送邀请
-                            </button>
-                            <button
-                              type="button"
-                              className="music-secondary"
-                              onClick={() => setForm(false)}
-                            >
-                              取消
-                            </button>
-                          </div>
-                        </form>
                       )}
                     </div>
                   )}
