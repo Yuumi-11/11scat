@@ -46,3 +46,6 @@ Use case: stylized-concept. Asset type: ONE square production texture atlas, 2 b
 
 截至 2026-09-09，[OpenAI 官方生图说明](https://developers.openai.com/codex/image-generation)写明：内置生图计入 Codex 通用使用额度，通常比不生图的类似请求更快消耗额度；网页版可用性和限制取决于 ChatGPT 套餐与工作区设置。这不能证明当前连接环境与网页版额度完全共用或完全独立，也不能保证工具受限时网页版一定可用。本轮内置工具已经成功生成上述素材，提示词仍保留，方便用户自行继续制作。
 
+## 2026-09-09 浏览器批注后的素材更新
+
+右桌三个物件、墙铃和台历当前采用项目原生 SVG，原生成图集继续保留作为制作源图。黑板与聊天纸面改用有明确授权的现成细纹素材，来源及保留许可见[素材署名](../public/classroom/ATTRIBUTION.md)；新素材没有调用生图服务。当前显示方案和按钮印刷字体的选择见[材质调整说明](classroom-material-refinement-2026-09-09.md)，本地调试限制继续有效。

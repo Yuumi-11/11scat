@@ -3,7 +3,7 @@
 import { AudioPlayer } from "./AudioPlayer";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, Plus, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, Bell, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, Plus, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, Bell, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import { createMediaRecovery, mediaCallReusable } from "./media-recovery";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
@@ -23,7 +23,7 @@ import { Expand, Minimize2 } from "lucide-react";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
-import { CalendarCard, ClassroomProp, IdleChalkboard, useClassroomDate } from "./ClassroomScene";
+import { CalendarCard, ClassroomProp, EmergencyExit, IdleChalkboard, useClassroomDate } from "./ClassroomScene";
 import { classroomDay, todayTasks, type PublicTaskPreview } from "./classroom-view";
 
 type Task = {
@@ -2486,7 +2486,7 @@ export default function Home() {
           <button className="object-button" type="button" onClick={() => boards.length ? setBoardShelfOpen(value => !value) : createBoard()} aria-label="画板" title="画板" aria-expanded={boardShelfOpen} aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
           <button className="object-button" type="button" aria-label="麦克风" title="麦克风"><ClassroomProp name="microphone" /></button>
           <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"} aria-pressed={!!cameraStream}><ClassroomProp name="camera" /></button>
-          <button className="wall-exit" type="button" aria-label="退出自习室" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}><LogOut size={19} aria-hidden="true" /><span>退出</span></button>
+
           {boardShelfOpen && <div className="board-shelf" role="group" aria-label="画板"><button type="button" onClick={() => setBoardShelfOpen(false)} aria-label="关闭画板列表"><X size={16} /></button>{boards.map(board => <div key={board.id}><button type="button" onClick={() => { setActiveBoardId(board.id); setBoardShelfOpen(false); }}>{board.name}</button><button type="button" onClick={() => deleteBoard(board.id)} aria-label={"删除" + board.name}><X size={16} /></button></div>)}<button type="button" onClick={() => { createBoard(); setBoardShelfOpen(false); }}><Plus size={16} />新建画板</button>{activeBoard && <button type="button" onClick={() => { setActiveBoardId(""); setBoardShelfOpen(false); }}>关闭画板</button>}</div>}
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
         </div>
@@ -2505,6 +2505,7 @@ export default function Home() {
         </div>
       </div>
 
+      <EmergencyExit onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }} />
       <RoomBell triggerHost={bellHost} onShowChat={showBellChat} />
       {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}
 

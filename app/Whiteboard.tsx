@@ -221,11 +221,16 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
       painter.drawStrokes(layerContext, board.strokes, board.epoch);
       painter.drawTexts(layerContext, board.texts);
       context.fillStyle = BOARD_COLOR; context.fillRect(0, 0, outputWidth, outputHeight);
-      const texture = new Image(); texture.src = "/classroom/board.webp";
+      const texture = new Image(); texture.src = "/classroom/board-grain.png";
       await texture.decode().catch(() => undefined);
       if (texture.complete && texture.naturalWidth) {
         const pattern = context.createPattern(texture, "repeat");
-        if (pattern) { context.fillStyle = pattern; context.fillRect(0, 0, outputWidth, outputHeight); }
+        if (pattern) {
+          // Match the muted grain used by the classroom CSS background.
+          context.save(); context.globalAlpha = 0.44;
+          context.fillStyle = pattern; context.fillRect(0, 0, outputWidth, outputHeight);
+          context.restore();
+        }
       }
       context.drawImage(layer, 0, 0, outputWidth, outputHeight);
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("画板生成失败")), "image/png"));

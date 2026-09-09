@@ -7,6 +7,11 @@ export type ClassroomPropName = 'calendar' | 'chalk-cup' | 'projector' | 'microp
 export function ClassroomProp({ name }: { name: ClassroomPropName }) {
   return <span className={`classroom-prop prop-${name}`} aria-hidden="true" />;
 }
+export function EmergencyExit({ onClick }: { onClick?: () => void }) {
+  return <button className="wall-exit" type="button" aria-label="退出自习室" title="退出自习室" onClick={onClick}>
+    <span className="emergency-exit-sign" aria-hidden="true" />
+  </button>;
+}
 export function useClassroomDate() {
   const [date, setDate] = useState<Date | null>(null);
   useEffect(() => {
