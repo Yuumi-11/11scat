@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "../store";
+import { classroomDay, todayTasks } from "../../../classroom-view";
 
 import { tickFetch, tickInboxData, filterTasksByView, type TickProject, type TickTask, type TaskView } from "../client";
 
@@ -38,13 +39,19 @@ export async function GET(request: Request) {
   }
   const requestedView = new URL(request.url).searchParams.get("view");
   const view: TaskView = requestedView === "today" ? "today" : requestedView === "undated" ? "undated" : "week";
-  const tasks = filterTasksByView([...uniqueTasks.values()], view)
+  const exactToday = view === "today" && new URL(request.url).searchParams.get("exact") === "1";
+  const sourceTasks = [...uniqueTasks.values()];
+  const filtered = exactToday
+    ? todayTasks(sourceTasks.map(task => ({ ...task, dueDate: task.dueDate || task.startDate, done: !!task.status })), classroomDay()).sort((a, b) => Date.parse(a.dueDate || "") - Date.parse(b.dueDate || ""))
+    : filterTasksByView(sourceTasks, view);
+  const tasks = filtered
     .map((task) => ({
       id: task.id,
       projectId: task.projectId,
       title: task.title,
       project: projectNames.get(task.projectId) || "滴答清单",
       dueDate: task.dueDate || task.startDate,
+      isAllDay: task.isAllDay,
       done: false,
     }));
   return NextResponse.json({

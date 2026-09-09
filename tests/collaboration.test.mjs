@@ -36,6 +36,7 @@ test('lightweight task notices expose active IDs without querying external inbox
   const a = await f.create('first'), b = await f.create('second');
   const before = await f.store.revision();
   assert.deepEqual(new Set(before.bufferIds), new Set([a.id, b.id]));
+  assert.deepEqual(before.bufferPreview, [{ id: a.id, title: 'first' }, { id: b.id, title: 'second' }]);
   await f.store.execute('alice', { id: randomUUID(), action: 'update', source: source(a), fields: { title: 'edited title' } });
   assert.deepEqual((await f.store.revision()).bufferIds, before.bufferIds);
   await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(b) });
@@ -44,10 +45,12 @@ test('lightweight task notices expose active IDs without querying external inbox
   const after = await f.store.revision();
   assert.equal(after.bufferCount, before.bufferCount);
   assert.deepEqual(new Set(after.bufferIds), new Set([a.id, c.id]));
+  assert.deepEqual(after.bufferPreview, [{ id: a.id, title: 'edited title' }, { id: c.id, title: 'replacement' }]);
   const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
   state.buffer[a.id].stagedBy = 'pending'; state.buffer[c.id].completedAt = Date.now();
   await writeFile(file, JSON.stringify(state));
   assert.deepEqual((await f.store.revision()).bufferIds, []);
+  assert.deepEqual((await f.store.revision()).bufferPreview, []);
 });
 
 test('reading either member inbox never creates transfers and preserves task ownership', async () => {

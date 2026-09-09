@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import type { PublicTaskPreview } from "./classroom-view";
 import { createPortal } from "react-dom";
 import { BellRing, CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
@@ -26,7 +27,7 @@ const dateLabel = (task: RoomTask) => collaborationDate(task) ? new Intl.DateTim
 const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
-export function RoomCollaboration({ identityId, onChanged, onNotice }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void }) {
+export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTasks, triggerContent }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void; onPublicTasks?: (tasks: PublicTaskPreview[]) => void; triggerContent?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
   const [taskNotices, setTaskNotices] = useState<TaskNotice[]>([]);
@@ -94,12 +95,13 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
       if (!response.ok) throw new Error(data.error || "协作区读取失败");
       if (id !== generation.current) return null;
       setSnapshot(data);
+      onPublicTasks?.(data.buffer || []);
       acceptNotices(data.notices || [], data.noticeVersion);
       revision.current = data.revision;
       return data as CollaborationSnapshot;
     } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "协作区暂时无法读取"); return null; }
     finally { if (id === generation.current) { fetching.current = false; setLoading(false); } }
-  }, [acceptNotices]);
+  }, [acceptNotices, onPublicTasks]);
 
   useEffect(() => {
     if (!identityId) return;
@@ -114,6 +116,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
         if (stopped) return;
         if (revision.current !== null && data.revision < revision.current) return;
         acceptNotices(data.notices || [], data.noticeVersion);
+        if (Array.isArray(data.bufferPreview)) onPublicTasks?.(data.bufferPreview);
         if (revision.current !== null && revision.current !== data.revision) { void onChanged(); if (open) void load(); }
         revision.current = data.revision;
       } catch { /* Try again on the next poll or focus. */ }
@@ -124,7 +127,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
     const visible = () => { if (!document.hidden) { void poll(); if (open && !locked.current && !drag.current) void load(); } };
     window.addEventListener("focus", focus); window.addEventListener("online", focus); document.addEventListener("visibilitychange", visible);
     return () => { stopped = true; clearTimeout(first); clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("online", focus); document.removeEventListener("visibilitychange", visible); };
-  }, [identityId, open, onChanged, load, acceptNotices]);
+  }, [identityId, open, onChanged, load, acceptNotices, onPublicTasks]);
   useEffect(() => {
     if (!open) return;
     const element = dialog.current, button = trigger.current;
@@ -268,7 +271,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
   }
   const pending = snapshot?.operations.filter(operation => operation.status === "pending") || [];
   return <>
-    <button ref={trigger} className="room-collaboration-trigger" type="button" disabled={!identityId} title={unseenCount ? `任务板 · ${unseenCount} 条新动态` : "打开任务板"} aria-label={unseenCount ? `任务板，${unseenCount} 条新动态` : "任务板"} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); setError(""); }}><ClipboardList size={18} aria-hidden="true" /><span>任务板</span>{unseenCount > 0 && <i aria-hidden="true">{unseenCount > 99 ? "99+" : unseenCount}</i>}</button>
+    <button ref={trigger} className="room-collaboration-trigger" type="button" disabled={!identityId} title={unseenCount ? `任务板 · ${unseenCount} 条新动态` : "打开任务板"} aria-label={unseenCount ? `任务板，${unseenCount} 条新动态` : "任务板"} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setOpen(true); setError(""); }}>{triggerContent || <><ClipboardList size={18} aria-hidden="true" /><span>任务板</span></>}{unseenCount > 0 && <i aria-hidden="true">{unseenCount > 99 ? "99+" : unseenCount}</i>}</button>
     {open && createPortal(<dialog ref={dialog} tabIndex={-1} className="room-collaboration-dialog" aria-label="自习室任务协作" onCancel={event => { event.preventDefault(); if (editor) { if (!locked.current) setEditor(null); } else close(); }} onKeyDown={event => {
       event.stopPropagation();
       if (editor && event.key === "Tab") {

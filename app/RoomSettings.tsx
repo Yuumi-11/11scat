@@ -7,7 +7,7 @@ import "./room-settings.css";
 
 export type SettingsSection = { id: string; label: string; icon: ReactNode; content: ReactNode };
 
-export function RoomSettings({ sections }: { sections: SettingsSection[] }) {
+export function RoomSettings({ sections, triggerContent }: { sections: SettingsSection[]; triggerContent?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const section = sections.find(item => item.id === selected);
@@ -33,7 +33,7 @@ export function RoomSettings({ sections }: { sections: SettingsSection[] }) {
 
   const back = () => setSelected(null);
   return <>
-    <button ref={triggerRef} className="settings-button" type="button" title="设置" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}><Settings size={18} aria-hidden="true" />设置</button>
+    <button ref={triggerRef} className="settings-button" type="button" title="设置" aria-label="设置" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}>{triggerContent || <><Settings size={18} aria-hidden="true" />设置</>}</button>
     {open && createPortal(<dialog ref={dialogRef} className="room-settings-dialog" aria-labelledby="room-settings-title" onCancel={event => { event.preventDefault(); if (selected) back(); else setOpen(false); }} onKeyDown={event => event.stopPropagation()} onClick={event => {
       if (event.target !== event.currentTarget) return;
       const bounds = event.currentTarget.getBoundingClientRect();

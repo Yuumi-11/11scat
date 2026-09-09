@@ -3,7 +3,7 @@
 import { AudioPlayer } from "./AudioPlayer";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, Plus, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, Bell, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import { createMediaRecovery, mediaCallReusable } from "./media-recovery";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
@@ -16,14 +16,15 @@ import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
 import { NewMemberTasks } from "./MemberTasks";
 import { RoomCollaboration } from "./RoomCollaboration";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
-import { useRoomTheme } from "./use-room-theme";
-import { ThemeColorPicker } from "./ThemeColorPicker";
 import { RoomSettings } from "./RoomSettings";
 import { RoomBell } from "./RoomBell";
 import { CloudDrive } from "./CloudDrive";
 import { Expand, Minimize2 } from "lucide-react";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
+import "./classroom.css";
+import { CalendarCard, ClassroomProp, IdleChalkboard, useClassroomDate } from "./ClassroomScene";
+import { classroomDay, todayTasks, type PublicTaskPreview } from "./classroom-view";
 
 type Task = {
   id: string;
@@ -31,6 +32,7 @@ type Task = {
   title: string;
   project: string;
   dueDate?: string;
+  isAllDay?: boolean;
   done: boolean;
   source: "ticktick" | "local";
 };
@@ -39,7 +41,7 @@ type ChatQuote = { id: string; sender: string; body: string };
 type ChatAttachment = { id: string; url: string; name: string; size: number; mimeType: string; kind: "image" | "file" | "audio" };
 type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean; delivery?: "sending" | "failed"; error?: string };
 type OutgoingChat = { message: ChatMessage; file?: File; attachment?: ChatAttachment };
-type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done">;
+type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done" | "isAllDay">;
 type MediaSource = "camera" | "screen";
 type MediaItem = {
   id: string;
@@ -201,7 +203,10 @@ function MediaVideo({ stream, label, className, muted = true, onAudioBlocked }: 
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [taskView, setTaskView] = useState<"today" | "week" | "undated">("today");
+  const classroomDate = useClassroomDate();
+  const today = classroomDate ? classroomDay(classroomDate) : "";
+  const [publicTasks, setPublicTasks] = useState<PublicTaskPreview[]>([]);
+  const [boardShelfOpen, setBoardShelfOpen] = useState(false);
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
@@ -260,8 +265,6 @@ export default function Home() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState("");
-  const { theme: appearanceTheme, color: appearanceColor, choosePreset, chooseCustom } = useRoomTheme();
-  const [backgroundImage, setBackgroundImage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, CloudSaveState>>({});
@@ -285,7 +288,6 @@ export default function Home() {
   const identityIdRef = useRef("");
   const memberNamesRef = useRef<Record<string, string>>({});
   const chatImageInputRef = useRef<HTMLInputElement>(null);
-  const backgroundInputRef = useRef<HTMLInputElement>(null);
   const boardsRef = useRef<RoomBoard[]>([]);
   const packetReceiverRef = useRef(createPacketReceiver());
   const deletedBoardIdsRef = useRef(new Set<string>());
@@ -632,14 +634,6 @@ export default function Home() {
     else list.scrollTop = chatSavedScrollTopRef.current;
   }, [messages, sideView, scrollChatToBottom]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      try {
-        setBackgroundImage(window.localStorage.getItem("11scat-appearance-background") || "");
-      } catch { /* Appearance remains at defaults when storage is unavailable. */ }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const taskLoadVersionRef = useRef(0);
   const loadTasks = useCallback(async () => {
@@ -647,7 +641,7 @@ export default function Home() {
     setSyncing(true);
     setSyncError("");
     try {
-      const response = await fetch(`/api/ticktick/tasks?view=${taskView}`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+      const response = await fetch("/api/ticktick/tasks?view=today&exact=1", { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       if (version !== taskLoadVersionRef.current) return false;
       if (response.status === 401) {
         setConnected(false);
@@ -672,7 +666,14 @@ export default function Home() {
     } finally {
       if (version === taskLoadVersionRef.current) setSyncing(false);
     }
-  }, [taskView]);
+  }, []);
+
+  const loadedDayRef = useRef("");
+  useEffect(() => {
+    if (!today) return;
+    if (loadedDayRef.current && loadedDayRef.current !== today) void loadTasks();
+    loadedDayRef.current = today;
+  }, [today, loadTasks]);
 
   const syncLatestChatMessages = useCallback(async () => {
     if (chatSyncInFlightRef.current || !identityIdRef.current) return;
@@ -836,7 +837,7 @@ export default function Home() {
 
   useEffect(() => {
     tasksRef.current = tasks;
-    const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done }));
+    const shared = tasks.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done, isAllDay }) => ({ id, title, project, dueDate, done, isAllDay }));
     void roomRef.current?.localParticipant.publishData(
       new TextEncoder().encode(JSON.stringify({ type: "task-snapshot", tasks: shared })),
       { reliable: true },
@@ -1363,7 +1364,7 @@ export default function Home() {
         connection.send({ type: "presence", name: displayNameRef.current, identityId: identityIdRef.current, deviceId: localDeviceId, activity: activityRef.current, mobile: mobileClient });
         connection.send({
           type: "task-snapshot",
-          tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done }) => ({ id, title, project, dueDate, done })),
+          tasks: tasksRef.current.filter((task) => !task.done).slice(0, 50).map(({ id, title, project, dueDate, done, isAllDay }) => ({ id, title, project, dueDate, done, isAllDay })),
         });
         connection.send({ type: "media-request" });
         encodeRoomPackets({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] }).forEach((packet) => connection.send(packet));
@@ -1817,26 +1818,6 @@ export default function Home() {
     setShareModeOpen(true);
   };
 
-  const importBackground = (file?: File) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setChatImageError("背景请选择图片文件");
-      return;
-    }
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result !== "string") return;
-      setBackgroundImage(reader.result);
-      try { window.localStorage.setItem("11scat-appearance-background", reader.result); } catch { /* Large backgrounds remain available for this session. */ }
-    });
-    reader.readAsDataURL(file);
-  };
-
-  const clearBackground = () => {
-    setBackgroundImage("");
-    try { window.localStorage.removeItem("11scat-appearance-background"); } catch { /* ignore unavailable storage */ }
-  };
-
   const togglePictureInPicture = async () => {
     setShareError("");
     try {
@@ -2034,7 +2015,7 @@ export default function Home() {
   const submitActivity = async (event: FormEvent) => {
     event.preventDefault();
     if (activitySavingRef.current) return;
-    const input = event.currentTarget.querySelector("input") as HTMLInputElement | null;
+    const input = event.currentTarget.querySelector("input, textarea") as HTMLInputElement | HTMLTextAreaElement | null;
     const nextActivity = activity.trim().slice(0, 80);
     activitySavingRef.current = true;
     setActivitySaveStatus("正在保存…");
@@ -2237,7 +2218,7 @@ export default function Home() {
     void deliverChat(item);
   };
 
-  const visibleTasks = tasks.filter((task) => !task.done);
+  const visibleTasks = todayTasks(tasks, today);
   const visibleRemoteMembers = roomMembers;
   const groupedTaskMembers = new Map<string, string[]>();
   visibleRemoteMembers.forEach((peerId) => {
@@ -2253,11 +2234,11 @@ export default function Home() {
     return {
       identityKey,
       nickname: memberNames[firstPeer] || "成员",
-      tasks: [...taskMap.values()],
+      tasks: todayTasks([...taskMap.values()], today),
+      peerIds,
       activity: peerIds.map((peerId) => memberActivities[peerId]).find((value) => value?.trim()) || "...",
     };
   });
-  const emptyMemberSlots = Math.max(0, 1 - visibleRemoteMembers.length);
   const mediaItems: MediaItem[] = [];
   if (stream) mediaItems.push({ id: "self-screen", label: "你的屏幕", stream, kind: "screen", remote: false });
   if (cameraStream) mediaItems.push({ id: "self-camera", label: "你的摄像头", stream: cameraStream, kind: "camera", remote: false });
@@ -2278,101 +2259,21 @@ export default function Home() {
   };
 
   return (
-    <main className="app-shell" id="top" data-theme={appearanceTheme}>
-      {backgroundImage && <div className="custom-background" style={{ backgroundImage: `url(${JSON.stringify(backgroundImage).slice(1, -1)})` }} aria-hidden="true" />}
-      <header className="topbar">
-        <div className="session-status"><span className="pulse" />一一主人专属</div>
-        <div className="topbar-actions">
-          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} />
-          <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
-            <Cloud aria-hidden="true" />
-            云盘
-          </button>
-          <RoomSettings sections={[
-            { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
-              <h3>手机与手表消息提醒</h3>
-              <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
-              <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
-              {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
-              <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
-            </> },
-            { id: "appearance", label: "外观设置", icon: <Palette size={19} />, content: <>
-              <p>选择主题颜色或背景图片。</p>
-              <ThemeColorPicker theme={appearanceTheme} color={appearanceColor} choosePreset={choosePreset} chooseCustom={chooseCustom} />
-              <input ref={backgroundInputRef} className="chat-image-input" type="file" accept="image/*" onChange={(event) => { importBackground(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-              <div className="background-actions"><button className="primary-button" type="button" onClick={() => backgroundInputRef.current?.click()}><ImagePlus size={18} aria-hidden="true" />导入背景图片</button>{backgroundImage && <button type="button" onClick={clearBackground}>移除背景</button>}</div>
-            </> },
-          ]} />
-        </div>
-      </header>
-
+    <main className="app-shell classroom-scene" id="top">
       <section className="workspace">
         <section className="focus-stage panel">
-          <div className="participant-strip">
-            <button
-              className="participant-tile active selectable"
-              type="button"
-              onClick={() => { setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : cameraStream ? "self-camera" : ""); }}
-              aria-label="查看你的共享画面"
-            >
-              <span className="tile-badge" title="你"><UserRound size={14} aria-hidden="true" /></span>
-              {stream
-                ? <MediaVideo className="tile-preview-media" stream={stream} label="你的屏幕预览" />
-                : cameraStream
-                  ? <MediaVideo className="camera-preview" stream={cameraStream} label="你的摄像头预览" />
-                  : <div className="tile-preview" aria-hidden="true" />}
-              <small>{displayName || "你"}</small>
-            </button>
-            {visibleRemoteMembers.map((peerId, index) => (
-              <button
-                className="participant-tile connected selectable"
-                type="button"
-                key={peerId}
-                onClick={() => { setActiveBoardId(""); setActiveMediaId(remoteScreens[peerId] ? `${peerId}-screen` : remoteCameras[peerId] ? `${peerId}-camera` : ""); }}
-                aria-label={`查看 ${memberNames[peerId] || `成员 ${index + 1}`} 的共享画面`}
-              >
-                <span className="tile-badge">{(memberNames[peerId] || peerId).slice(0, 1)}</span>
-                {remoteScreens[peerId]
-                  ? <MediaVideo className="tile-preview-media" stream={remoteScreens[peerId]} label={`成员 ${index + 1} 的屏幕预览`} />
-                  : remoteCameras[peerId]
-                    ? <MediaVideo className="camera-preview remote" stream={remoteCameras[peerId]} label={`成员 ${index + 1} 的摄像头`} />
-                    : <div className="tile-preview invite-preview" aria-hidden="true" />}
-                <small>{memberNames[peerId] || peerId}</small>
-              </button>
-            ))}
-            {boards.map((board) => (
-              <div
-                className={activeBoardId === board.id ? "participant-tile board-tile active selectable" : "participant-tile board-tile selectable"}
-                role="button"
-                tabIndex={0}
-                key={board.id}
-                onClick={() => { setActiveBoardId(board.id); setActiveMediaId(""); }}
-                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveBoardId(board.id); setActiveMediaId(""); } }}
-                aria-label={`查看${board.name}`}
-              >
-                <span className="tile-badge board"><Presentation size={14} aria-hidden="true" /></span>
-                <div className="tile-preview board-preview" aria-hidden="true"><Presentation /></div>
-                <small>{board.name}</small>
-                <button className="board-delete" type="button" onClick={(event) => { event.stopPropagation(); deleteBoard(board.id); }} aria-label={`删除${board.name}`} title={`删除${board.name}`}><X size={18} aria-hidden="true" /></button>
-              </div>
-            ))}
-            {Array.from({ length: emptyMemberSlots }, (_, index) => (
-              <button className="participant-tile participant-invite" type="button" onClick={() => void copyInviteLink()} key={`empty-${index}`}>
-                <span className="tile-badge invite"><Plus size={14} aria-hidden="true" /></span>
-                <span className="tile-preview invite-preview" aria-hidden="true" />
-                <small>{roomStatus === "error" ? "连接异常" : inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</small>
-              </button>
-            ))}
-          </div>
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas" ref={stageRef}>
+            <button className="object-button projector-control" type="button" disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} title={stream ? "结束共享" : "共享屏幕"}><ClassroomProp name="projector" /></button>
             {!activeBoard && <button className="main-fullscreen-button" type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}>{fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />}</button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
             {activeBoard ? <Whiteboard board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
-            }} /> : activeMedia ? <>
+            }} /> : !activeMedia ? <IdleChalkboard date={classroomDate} tasks={publicTasks} /> : null}
+            <div className={activeMedia && !activeBoard ? "projection-sheet is-open" : "projection-sheet"} aria-hidden={!activeMedia || !!activeBoard}>
+              {activeMedia && !activeBoard && <>
               <MediaVideo
                 className={`main-media ${activeMedia.kind}${activeMedia.remote ? " remote" : ""}`}
                 stream={activeMedia.stream}
@@ -2386,56 +2287,32 @@ export default function Home() {
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
               {activeMedia.kind === "screen" && <div className="media-window-actions">
+                {activeMedia.id === "self-screen" && <button type="button" onClick={stopShare}><Square size={14} aria-hidden="true" />结束共享</button>}
                 {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
                 {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} title={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
                 <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
-            </> : (
-              <div className="empty-share">
-                <div className="share-glyph"><Monitor size={36} strokeWidth={1.6} aria-hidden="true" /></div><h2>一起专注，自在交流</h2><p>共享画面或打开画板，让想法在这里继续。</p>
-                <button className="primary-button" onClick={() => openShareDialog("start")}>开始共享</button>
-              </div>
-            )}
+              {activeMedia.id === "self-camera" && <div className="media-window-actions"><button type="button" onClick={() => void toggleCamera()}><Camera size={16} aria-hidden="true" />关闭摄像头</button></div>}
+
+              </>}
+            </div>
+            <div className="board-ledge" aria-hidden="true">{!activeBoard && <div className="ledge-decoration"><span className="chalk-eraser" /><span className="chalk-stick" /><span className="chalk-stick" style={{background: '#efd28a'}} /><span className="chalk-stick" style={{background: '#a4c5de'}} /><span className="chalk-stick" style={{background: '#e0a7b5'}} /></div>}</div>
           </div>
           {boardNotice && <p className="board-notice" role="status">{boardNotice}</p>}
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
-          <div className="room-controls">
-            <button className={stream ? "share-on" : ""} disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} data-tooltip={stream ? "结束共享" : "共享屏幕"}>
-              {stream ? <Square className="room-control-icon" aria-hidden="true" /> : <MonitorUp className="room-control-icon" aria-hidden="true" />}
-            </button>
-            <button onClick={createBoard} aria-label="新建画板" data-tooltip="新建画板">
-              <Presentation className="room-control-icon" aria-hidden="true" />
-            </button>
-            <button aria-label="麦克风" data-tooltip="麦克风">
-              <MicOff className="room-control-icon" aria-hidden="true" />
-            </button>
-            <button className={cameraStream ? "camera-on" : ""} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} data-tooltip={cameraStream ? "关闭摄像头" : "开启摄像头"} onClick={() => void toggleCamera()}>
-              {cameraStream ? <CameraOff className="room-control-icon" aria-hidden="true" /> : <Camera className="room-control-icon" aria-hidden="true" />}
-            </button>
-            <button className="room-leave" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}><LogOut size={18} aria-hidden="true" /><span>退出</span></button>
-          </div>
+
         </section>
 
         <aside className="side-panel panel">
-          <div className={sideView === "tasks" ? "side-tabs has-task-range" : "side-tabs"} aria-label="侧栏内容">
+          <div className="side-tabs" aria-label="侧栏内容">
             <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />传纸条</button>
             <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />同桌</button>
-            {sideView === "tasks" && <button
-              className="task-range-switch"
-              type="button"
-              onClick={() => setTaskView((current) => current === "today" ? "week" : current === "week" ? "undated" : "today")}
-              aria-label={`当前显示${taskView === "today" ? "今天" : taskView === "week" ? "最近 7 天" : "无日期"}，点击切换到${taskView === "today" ? "最近 7 天" : taskView === "week" ? "无日期" : "今天"}`}
-              title="切换任务日期范围"
-            >
-              {taskView === "undated" ? <CalendarOff size={18} aria-hidden="true" /> : <CalendarDays size={18} aria-hidden="true" />}
-              <span>{taskView === "today" ? "今天" : taskView === "week" ? "七天" : "无日期"}</span>
-            </button>}
+            <div className="chat-bell-host" ref={setBellHost} />
           </div>
 
           {sideView === "chat" ? <div className="chat-view">
-            <div className="chat-heading"><div><span className="eyebrow">ROOM CHAT</span><h2>自习室聊天</h2></div><div className="chat-bell-host" ref={setBellHost} /></div>
             <div className="message-list" ref={messageListRef} onScroll={handleChatScroll} aria-live="polite">
               {chatHistoryLoading && <div className="chat-history-status">正在加载聊天记录…</div>}
               {!chatHistoryLoading && chatHistoryReady && !chatHistoryCursor && messages.length > 0 && <div className="chat-history-status">已经到最早一条了</div>}
@@ -2542,7 +2419,6 @@ export default function Home() {
                       event.currentTarget.form?.requestSubmit();
                     }
                   }}
-                  placeholder="输入消息"
                   aria-label="输入房间消息"
                   rows={2}
                 />
@@ -2556,17 +2432,13 @@ export default function Home() {
 
             <div className="task-scroll">
               <section className="task-person-card self-task-card" aria-label="我的任务">
-                <div className="activity-heading"><form className="activity-box" onSubmit={submitActivity}>
-                  <label htmlFor="activity-input">我正在</label>
-                  <input id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
-                  {activitySaveStatus && <small id="activity-save-status" role="status">{activitySaveStatus}</small>}
-                </form><NewMemberTasks identityId={identityId} onChanged={loadTasks} /></div>
+                <div className="activity-heading"><strong>{displayName || "你"}</strong><NewMemberTasks identityId={identityId} onChanged={loadTasks} /></div>
                 <div className="task-person-list">
                   {!syncing && !connected ? (
                     <div className="ticktick-connect-empty"><button className="primary-button" type="button" onClick={() => setSyncOpen(true)}>连接滴答</button></div>
                   ) : (
                     <div className="task-list" aria-live="polite">
-                      {!syncing && connected && !visibleTasks.length && <p className="task-empty">{taskView === "undated" ? "暂无无日期待办" : "当前范围内没有待办"}</p>}
+                      {!syncing && connected && !visibleTasks.length && <p className="task-empty">今天没有待办</p>}
                       {visibleTasks.map((task) => (
                       <div className="task-row" key={task.id}>
                         <button className="custom-check" type="button" onClick={(event) => { event.stopPropagation(); void toggleTask(task); }} aria-label={`完成任务：${task.title}`}><Check size={14} aria-hidden="true" /></button>
@@ -2580,10 +2452,10 @@ export default function Home() {
               </section>
 
               {taskBoardGroups.map((group) => {
-                const { nickname, tasks: sharedTasks, activity: memberActivity } = group;
+                const { nickname, tasks: sharedTasks } = group;
                 return (
                   <section className="task-person-card" aria-label={`${nickname}的任务`} key={group.identityKey}>
-                    <div className="activity-heading"><div className="activity-box readonly"><strong>{nickname}正在</strong><span className={memberActivity === "..." ? "empty-activity" : ""}>{memberActivity}</span></div></div>
+                    <div className="activity-heading"><strong>{nickname}</strong></div>
                     <div className="task-person-list">
                       <div className="task-list">
                         {sharedTasks.map((task) => (
@@ -2602,6 +2474,36 @@ export default function Home() {
           </div>}
         </aside>
       </section>
+
+      <div className="scene-desks">
+        <div className="classroom-desk"><CalendarCard name={displayName || "你"} projecting={!!stream} onView={stream || cameraStream ? () => { setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : "self-camera"); } : undefined}><form className="activity-box" onSubmit={submitActivity}>
+                  <label htmlFor="activity-input">我正在</label>
+                  <textarea rows={2} id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (!event.nativeEvent.isComposing && event.keyCode !== 229) event.currentTarget.form?.requestSubmit(); } }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
+                  {activitySaveStatus && <small id="activity-save-status" role="status">{activitySaveStatus}</small>}
+                </form></CalendarCard></div>
+        <div className="classroom-desk desk-classmates">{taskBoardGroups.length ? taskBoardGroups.map(group => <CalendarCard key={group.identityKey} name={group.nickname} projecting={group.peerIds.some(id => !!remoteScreens[id])} onView={group.peerIds.some(id => remoteScreens[id] || remoteCameras[id]) ? () => { const id = group.peerIds.find(id => remoteScreens[id] || remoteCameras[id])!; setActiveBoardId(""); setActiveMediaId(remoteScreens[id] ? id + "-screen" : id + "-camera"); } : undefined}><p>{group.activity}</p></CalendarCard>) : <CalendarCard name="同桌"><button className="calendar-invite" type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</button></CalendarCard>}</div>
+        <div className="classroom-desk desk-media">
+          <button className="object-button" type="button" onClick={() => boards.length ? setBoardShelfOpen(value => !value) : createBoard()} aria-label="画板" title="画板" aria-expanded={boardShelfOpen} aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
+          <button className="object-button" type="button" aria-label="麦克风" title="麦克风"><ClassroomProp name="microphone" /></button>
+          <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"} aria-pressed={!!cameraStream}><ClassroomProp name="camera" /></button>
+          <button className="wall-exit" type="button" aria-label="退出自习室" onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }}><LogOut size={19} aria-hidden="true" /><span>退出</span></button>
+          {boardShelfOpen && <div className="board-shelf" role="group" aria-label="画板"><button type="button" onClick={() => setBoardShelfOpen(false)} aria-label="关闭画板列表"><X size={16} /></button>{boards.map(board => <div key={board.id}><button type="button" onClick={() => { setActiveBoardId(board.id); setBoardShelfOpen(false); }}>{board.name}</button><button type="button" onClick={() => deleteBoard(board.id)} aria-label={"删除" + board.name}><X size={16} /></button></div>)}<button type="button" onClick={() => { createBoard(); setBoardShelfOpen(false); }}><Plus size={16} />新建画板</button>{activeBoard && <button type="button" onClick={() => { setActiveBoardId(""); setBoardShelfOpen(false); }}>关闭画板</button>}</div>}
+          {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
+        </div>
+        <div className="classroom-desk desk-room">
+          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
+          <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}><ClassroomProp name="folder" /></button>
+          <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
+            { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
+              <h3>手机与手表消息提醒</h3>
+              <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
+              <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
+              {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
+              <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
+            </> },
+          ]} />
+        </div>
+      </div>
 
       <RoomBell triggerHost={bellHost} onShowChat={showBellChat} />
       {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}

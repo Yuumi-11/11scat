@@ -5,6 +5,7 @@ import { BellRing, CircleStop, Check, Loader2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { Ring } from "./api/room/rings/store";
 import "./room-bell.css";
+import { ClassroomProp } from "./ClassroomScene";
 import { placeBellPanel } from "./bell-position";
 
 type Snapshot = { identityId: string; rings: Ring[]; members: { id: string; name: string }[]; serverNow: number };
@@ -125,7 +126,7 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
   };
   return <>
     {triggerHost && createPortal(<div className="room-bell" ref={root}><button className={`room-bell-trigger${incoming.length ? " has-incoming" : outgoing.length ? " is-ringing" : ""}`} type="button" title={triggerLabel} aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? "room-bell-panel" : undefined} onClick={() => open ? close() : setOpenFor(triggerHost)}>
-      <BellRing size={22} aria-hidden="true" />{incoming.length > 0 ? <i aria-hidden="true">{incoming.length > 99 ? "99+" : incoming.length}</i> : outgoing.length > 0 && <span className="room-bell-active-dot" aria-hidden="true" />}
+      <ClassroomProp name="bell" />{incoming.length > 0 ? <i aria-hidden="true">{incoming.length > 99 ? "99+" : incoming.length}</i> : outgoing.length > 0 && <span className="room-bell-active-dot" aria-hidden="true" />}
     </button>
     </div>, triggerHost)}
     {open && createPortal(<section ref={panel} id="room-bell-panel" className="room-bell room-bell-panel" role="dialog" aria-modal="false" aria-labelledby="room-bell-title" style={{ visibility: "hidden" }}>
