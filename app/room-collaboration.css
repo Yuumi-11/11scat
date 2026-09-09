@@ -44,13 +44,13 @@
 .coop-lane h4 { margin: 0; font-size: 11px; font-weight: 500; }
 .coop-lane > header > span { margin-left: auto; font-size: 10px; }
 .coop-lane .coop-task-list { padding: 8px; }
-.coop-lane .coop-task { padding: 8px 7px 8px 28px; }
+.coop-lane .coop-task { padding: 24px 7px 8px; }
 .coop-lane .coop-task-top { gap: 2px; }
 .coop-lane .coop-drag, .coop-lane .coop-more { min-width: 20px; }
 .coop-lane .coop-task-meta { padding-left: 0; }
 .coop-task-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .coop-empty { font-size: 12px; color: var(--muted); padding: 24px 12px; line-height: 1.8; text-align: center; }
-.coop-task { position: relative; flex: 0 0 auto; min-width: 0; border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px 9px 28px; background: var(--panel); box-shadow: 0 2px 6px rgb(var(--shadow-rgb) / 4%); }
+.coop-task { position: relative; flex: 0 0 auto; min-width: 0; border: 1px solid var(--line); border-radius: 11px; padding: 24px 10px 9px; background: var(--panel); box-shadow: 0 2px 6px rgb(var(--shadow-rgb) / 4%); }
 .coop-task.pending { border-style: dashed; }
 .coop-task-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-height: 3em; }
 .room-collaboration-dialog .coop-task-title:disabled { opacity: 1; }
@@ -61,7 +61,7 @@
 .coop-drag, .coop-complete, .coop-more { flex-shrink: 0; display: grid; place-items: center; border: 0; background: transparent; padding: 4px 0; color: var(--muted); min-width: 24px; min-height: 28px; }
 .coop-more { border-radius: 6px; }
 .coop-more:hover:not(:disabled), .coop-task-title:hover:not(:disabled) { color: var(--theme-accent-dark); background: var(--theme-soft); }
-.room-collaboration-dialog .coop-drag { position: absolute; top: 1px; left: 1px; min-height: 24px; padding: 2px 0; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.room-collaboration-dialog .coop-drag { position: absolute; top: 0; left: calc(50% - 36px); width: 72px; height: 22px; min-height: 22px; padding: 0; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .room-collaboration-dialog .coop-drag:active { cursor: grabbing; }
 .coop-complete { border: 1px solid var(--line); border-radius: 50%; width: 25px; min-height: 25px; }
 .coop-task-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--muted); font-size: 11px; padding: 4px 0 0; min-height: 24px; }

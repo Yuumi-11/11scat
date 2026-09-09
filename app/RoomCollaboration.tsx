@@ -221,7 +221,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
     const cardLocked = controlsLocked || !!workflow;
     const canComplete = (workflow?.reviewerId || task.ownerId || task.publisherId) === identityId;
     const compactClaim = task.ownerId !== null && !collaborationDate(task);
-    const claimButton = !workflow && task.ownerId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
+    const claimButton = !workflow && task.ownerId !== identityId && task.publisherId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
     return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
       {task.ownerId === null && <TaskNoticeDot ids={taskNotices.filter(item => item.taskId === task.id).map(item => item.id)} onRead={open && !workflowOpen && !editor && !recoveryOpen && !nudge ? markViewed : undefined} />}
       <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动安排任务；键盘可按空格、方向键，再按 Enter 放下"} aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
@@ -239,20 +239,20 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
           const target = Array.from(dialog.current?.querySelectorAll<HTMLElement>("[data-coop-owner]") || []).find(element => element.dataset.coopOwner === next);
           target?.scrollIntoView({ block: "nearest", inline: "nearest" });
         }}
-        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { task, x: event.clientX, y: event.clientY, moved: false }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }}><GripVertical size={18} aria-hidden="true" /></button>
+        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { task, x: event.clientX, y: event.clientY, moved: false }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }} />
         {isEditing ? <InlineTaskTitle key={taskKey(inlineTask)} initialValue={inlineTask.title} label="修改任务标题" disabled={unavailable} onCancel={() => setInlineTask(null)} onSave={async title => {
           const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
           if (done) setInlineTask(null); return done;
         }} /> : <button className="coop-task-title" type="button" disabled={unavailable || pending || !!inlineTask || !!draftId} title={workflow ? "查看工作流程" : "点击修改标题"} onClick={() => { if (workflow) showWorkflow(); else { setInlineTask(task); setError(""); } }}>{task.title}</button>}
         {compactClaim && claimButton}
-        <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
+        <button className="coop-more" type="button" title="编辑任务与工作流程" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => { if (workflow) showWorkflow(); else edit(task); }}><Ellipsis size={18} aria-hidden="true" /></button>
         {canComplete && <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button>}</div>
       {description && <p className="coop-task-description">{description}</p>}
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
       {workflow && canComplete && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" title="催办认领者" disabled={unavailable} onClick={() => void perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action: "nudge" })}><BellRing size={14} />催办</button>}
-      {workflow && <button type="button" className={`coop-workflow-badge ${workflow.status}`} onClick={showWorkflow}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</button>}
+      {workflow && <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
       {pending && <button type="button" className="coop-pending-label" onClick={() => setRecoveryOpen(true)}><CircleAlert size={12} aria-hidden="true" />查看待处理操作</button>}
     </article>;
