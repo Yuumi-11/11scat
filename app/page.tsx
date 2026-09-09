@@ -2113,7 +2113,7 @@ export default function Home() {
 
   const startMessageLongPress = (event: React.PointerEvent, messageId: string) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if ((event.target as Element).closest("button, a, audio, input, .voice-player")) { clearLongPressTimer(); longPressTriggeredRef.current = false; return; }
+    if ((event.target as Element).closest("button, a, audio, input")) { clearLongPressTimer(); longPressTriggeredRef.current = false; return; }
     clearLongPressTimer();
     longPressTriggeredRef.current = false;
     longPressOriginRef.current = { x: event.clientX, y: event.clientY };
@@ -2448,7 +2448,7 @@ export default function Home() {
                   onPointerUp={clearLongPressTimer}
                   onPointerCancel={clearLongPressTimer}
                   onContextMenu={(event) => {
-                    if ((event.target as Element).closest("audio, .voice-player")) return;
+                    if ((event.target as Element).closest("audio, .voice-player button, .voice-player input, .voice-player a")) return;
                     event.preventDefault();
                     clearLongPressTimer();
                     longPressTriggeredRef.current = false;
@@ -2457,7 +2457,6 @@ export default function Home() {
                     setMessageMenuId(message.id);
                   }}
                   onClickCapture={(event) => {
-                    if ((event.target as Element).closest("audio, .voice-player")) { longPressTriggeredRef.current = false; return; }
                     if (!longPressTriggeredRef.current) return;
                     if ((event.target as Element).closest(".message-action-menu")) {
                       longPressTriggeredRef.current = false;
