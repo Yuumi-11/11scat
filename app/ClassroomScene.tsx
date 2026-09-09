@@ -7,6 +7,20 @@ export type ClassroomPropName = 'calendar' | 'chalk-cup' | 'projector' | 'microp
 export function ClassroomProp({ name }: { name: ClassroomPropName }) {
   return <span className={`classroom-prop prop-${name}`} aria-hidden="true" />;
 }
+export function useProjectionCurtain(source: object | undefined, boardOpen = false) {
+  const [foldedSource, setFoldedSource] = useState<object | null>(null);
+  return {
+    open: !!source && source !== foldedSource && !boardOpen,
+    toggle: () => { if (source) setFoldedSource(current => current === source ? null : source); },
+    reveal: () => setFoldedSource(null),
+  };
+}
+export function ProjectorControl({ open, hasSource, disabled, onClick }: { open: boolean; hasSource: boolean; disabled?: boolean; onClick: () => void }) {
+  const label = open ? '收起投影' : hasSource ? '展开投影' : '共享屏幕';
+  return <button className="object-button projector-control" type="button" disabled={disabled} onClick={onClick} aria-label={label} title={label} aria-expanded={open}>
+    <ClassroomProp name="projector" />
+  </button>;
+}
 export function EmergencyExit({ onClick }: { onClick?: () => void }) {
   return <button className="wall-exit" type="button" aria-label="退出自习室" title="退出自习室" onClick={onClick}>
     <span className="emergency-exit-sign" aria-hidden="true" />

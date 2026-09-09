@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eraser, Expand, Minimize2, PenLine, Save, Trash2, Type, GripHorizontal, Pipette } from "lucide-react";
-import { BOARD_COLOR, CHALK_COLORS, createBoardPainter, visibleBoardColor } from "./board-painter.mjs";
+import { BOARD_COLOR, CHALK_COLORS, CHALK_FONT, createBoardPainter, visibleBoardColor } from "./board-painter.mjs";
 
 export type BoardPoint = { x: number; y: number };
 export type BoardStroke = { id: string; color: string; width: number; points: BoardPoint[]; createdAt: number; revision: string; tool?: "pen" | "erase"; material?: "chalk-v1" };
@@ -78,7 +78,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
       painterRef.current.drawTexts(ctx, board.texts.filter(text => text.confirmed && text.id !== editingTextId));
     };
     paint();
-    void document.fonts.load('32px "Long Cang"', board.texts.map(text => text.text).join("")).then(paint, () => undefined);
+    void Promise.all([document.fonts.load('32px "Classroom Yan"', board.texts.map(text => text.text).join("")), document.fonts.load('32px "Long Cang"', board.texts.map(text => text.text).join(""))]).then(paint, () => undefined);
     return () => { cancelled = true; };
   }, [board.texts, editingTextId]);
 
@@ -214,7 +214,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
       canvas.height = outputHeight;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("画板生成失败");
-      await document.fonts.load('32px "Long Cang"', board.texts.map(text => text.text).join(""));
+      await Promise.all([document.fonts.load('32px "Classroom Yan"', board.texts.map(text => text.text).join("")), document.fonts.load('32px "Long Cang"', board.texts.map(text => text.text).join(""))]);
       const layer = document.createElement("canvas"); layer.width = BOARD_WIDTH; layer.height = BOARD_HEIGHT;
       const layerContext = layer.getContext("2d"); if (!layerContext) throw new Error("画板生成失败");
       const painter = createBoardPainter(() => document.createElement("canvas"));
@@ -252,7 +252,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
         <div className="board-text-layer">
           {board.texts.map((text) => {
             const editing = editingTextId === text.id || !text.confirmed;
-            return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: visibleBoardColor(text), fontFamily: text.material === "chalk-v1" ? '"Long Cang", cursive' : "system-ui, sans-serif", fontSize: `${text.fontSize / 12}cqw` }} onPointerUp={(event) => editing && syncTextSize(event.currentTarget, text)}>
+            return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: visibleBoardColor(text), fontFamily: text.material === "chalk-v1" ? CHALK_FONT : "system-ui, sans-serif", fontSize: `${text.fontSize / 12}cqw` }} onPointerUp={(event) => editing && syncTextSize(event.currentTarget, text)}>
               {editing ? <>
                 <button className="board-text-drag" type="button" aria-label="拖动文本框" title="拖动文本框" onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}><GripHorizontal size={15} aria-hidden="true" /></button>
                 <button className="board-text-delete" type="button" aria-label="删除文本框" title="删除文本框" onClick={() => onDeleteText(text.id, board.epoch)}><Trash2 aria-hidden="true" /></button>

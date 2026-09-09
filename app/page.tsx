@@ -23,7 +23,7 @@ import { Expand, Minimize2 } from "lucide-react";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
-import { CalendarCard, ClassroomProp, EmergencyExit, IdleChalkboard, useClassroomDate } from "./ClassroomScene";
+import { CalendarCard, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
 import { classroomDay, todayTasks, type PublicTaskPreview } from "./classroom-view";
 
 type Task = {
@@ -1761,6 +1761,7 @@ export default function Home() {
       setStream(nextStream);
       setShareMode(mode);
       setActiveMediaId("self-screen");
+      setActiveBoardId("");
       if (withComputerAudio && nextStream.getAudioTracks().length === 0) {
         setShareError("画面已开始共享，但当前浏览器或所选窗口没有提供电脑音频。可改选支持音频的标签页或整个屏幕。");
       }
@@ -2250,11 +2251,13 @@ export default function Home() {
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
   const activeBoard = boards.find((board) => board.id === activeBoardId);
+  const projection = useProjectionCurtain(activeMedia?.stream, !!activeBoard);
 
   const stepMedia = (direction: -1 | 1) => {
     if (mediaItems.length < 2) return;
     const currentIndex = Math.max(0, mediaItems.findIndex((item) => item.id === activeMedia?.id));
     const nextIndex = (currentIndex + direction + mediaItems.length) % mediaItems.length;
+    projection.reveal();
     setActiveMediaId(mediaItems[nextIndex].id);
   };
 
@@ -2264,16 +2267,20 @@ export default function Home() {
         <section className="focus-stage panel">
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas" ref={stageRef}>
-            <button className="object-button projector-control" type="button" disabled={shareStarting} onClick={() => stream ? stopShare() : openShareDialog("start")} aria-label={stream ? "结束共享" : "共享屏幕"} title={stream ? "结束共享" : "共享屏幕"}><ClassroomProp name="projector" /></button>
+            <ProjectorControl open={projection.open} hasSource={!!activeMedia} disabled={shareStarting} onClick={() => {
+              if (!activeMedia) { openShareDialog("start"); return; }
+              if (activeBoard) { setActiveBoardId(""); projection.reveal(); return; }
+              projection.toggle();
+            }} />
             {!activeBoard && <button className="main-fullscreen-button" type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}>{fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />}</button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
             {activeBoard ? <Whiteboard board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
-            }} /> : !activeMedia ? <IdleChalkboard date={classroomDate} tasks={publicTasks} /> : null}
-            <div className={activeMedia && !activeBoard ? "projection-sheet is-open" : "projection-sheet"} aria-hidden={!activeMedia || !!activeBoard}>
-              {activeMedia && !activeBoard && <>
+            }} /> : !projection.open ? <IdleChalkboard date={classroomDate} tasks={publicTasks} /> : null}
+            <div className={projection.open ? "projection-sheet is-open" : "projection-sheet"} aria-hidden={!projection.open}>
+              {activeMedia && projection.open && <>
               <MediaVideo
                 className={`main-media ${activeMedia.kind}${activeMedia.remote ? " remote" : ""}`}
                 stream={activeMedia.stream}
@@ -2287,6 +2294,7 @@ export default function Home() {
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
               {activeMedia.kind === "screen" && <div className="media-window-actions">
+                {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
                 {activeMedia.id === "self-screen" && <button type="button" onClick={stopShare}><Square size={14} aria-hidden="true" />结束共享</button>}
                 {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
                 {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
@@ -2294,7 +2302,10 @@ export default function Home() {
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
                 <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
-              {activeMedia.id === "self-camera" && <div className="media-window-actions"><button type="button" onClick={() => void toggleCamera()}><Camera size={16} aria-hidden="true" />关闭摄像头</button></div>}
+              {activeMedia.kind === "camera" && <div className="media-window-actions">
+                {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
+                {activeMedia.id === "self-camera" && <button type="button" onClick={() => void toggleCamera()}><Camera size={16} aria-hidden="true" />关闭摄像头</button>}
+              </div>}
 
               </>}
             </div>
@@ -2476,12 +2487,12 @@ export default function Home() {
       </section>
 
       <div className="scene-desks">
-        <div className="classroom-desk"><CalendarCard name={displayName || "你"} projecting={!!stream} onView={stream || cameraStream ? () => { setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : "self-camera"); } : undefined}><form className="activity-box" onSubmit={submitActivity}>
+        <div className="classroom-desk"><CalendarCard name={displayName || "你"} projecting={!!stream} onView={stream || cameraStream ? () => { projection.reveal(); setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : "self-camera"); } : undefined}><form className="activity-box" onSubmit={submitActivity}>
                   <label htmlFor="activity-input">我正在</label>
                   <textarea rows={2} id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (!event.nativeEvent.isComposing && event.keyCode !== 229) event.currentTarget.form?.requestSubmit(); } }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
                   {activitySaveStatus && <small id="activity-save-status" role="status">{activitySaveStatus}</small>}
                 </form></CalendarCard></div>
-        <div className="classroom-desk desk-classmates">{taskBoardGroups.length ? taskBoardGroups.map(group => <CalendarCard key={group.identityKey} name={group.nickname} projecting={group.peerIds.some(id => !!remoteScreens[id])} onView={group.peerIds.some(id => remoteScreens[id] || remoteCameras[id]) ? () => { const id = group.peerIds.find(id => remoteScreens[id] || remoteCameras[id])!; setActiveBoardId(""); setActiveMediaId(remoteScreens[id] ? id + "-screen" : id + "-camera"); } : undefined}><p>{group.activity}</p></CalendarCard>) : <CalendarCard name="同桌"><button className="calendar-invite" type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</button></CalendarCard>}</div>
+        <div className="classroom-desk desk-classmates">{taskBoardGroups.length ? taskBoardGroups.map(group => <CalendarCard key={group.identityKey} name={group.nickname} projecting={group.peerIds.some(id => !!remoteScreens[id])} onView={group.peerIds.some(id => remoteScreens[id] || remoteCameras[id]) ? () => { const id = group.peerIds.find(id => remoteScreens[id] || remoteCameras[id])!; projection.reveal(); setActiveBoardId(""); setActiveMediaId(remoteScreens[id] ? id + "-screen" : id + "-camera"); } : undefined}><p>{group.activity}</p></CalendarCard>) : <CalendarCard name="同桌"><button className="calendar-invite" type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</button></CalendarCard>}</div>
         <div className="classroom-desk desk-media">
           <button className="object-button" type="button" onClick={() => boards.length ? setBoardShelfOpen(value => !value) : createBoard()} aria-label="画板" title="画板" aria-expanded={boardShelfOpen} aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
           <button className="object-button" type="button" aria-label="麦克风" title="麦克风"><ClassroomProp name="microphone" /></button>

@@ -1,6 +1,7 @@
 import { createChalkRenderer } from './chalk-renderer.mjs';
 
 export const BOARD_COLOR = '#426e63';
+export const CHALK_FONT = '"Classroom Yan", "Long Cang", cursive';
 export const CHALK_COLORS = [
   { name: '白色粉笔', color: '#f6f1dc' }, { name: '黄色粉笔', color: '#efd28a' },
   { name: '蓝色粉笔', color: '#a4c5de' }, { name: '粉色粉笔', color: '#e0a7b5' },
@@ -44,7 +45,7 @@ export function createBoardPainter(createCanvas) {
   function drawTexts(ctx, texts) {
     for (const item of texts) {
       const size=item.fontSize, padX=size*.6, padY=size*.8;
-      const font=`${size}px ${item.material==='chalk-v1'?'"Long Cang", cursive':'system-ui, sans-serif'}`;
+      const font=`${size}px ${item.material==='chalk-v1'?CHALK_FONT:'system-ui, sans-serif'}`;
       ctx.save();ctx.beginPath();ctx.rect(item.x,item.y,item.width,item.height);ctx.clip();ctx.font=font;
       const metrics=ctx.measureText('Mg');
       const ascent=metrics.fontBoundingBoxAscent || size*.8, descent=metrics.fontBoundingBoxDescent || size*.2;

@@ -25,6 +25,10 @@ The PNG is included unchanged. The classroom applies a green background and redu
 
 Existing **Long Cang** and **CHAWP** retain their accompanying OFL license files in `fonts/`.
 
+`fonts/classroom-yan.woff2` is a web-format version of **ChenYuluoyan 2.0 Thin**, copyright 2022 Wang, Li-Yu and Liu, Wei-Chen, from https://github.com/Chenyu-otf/chenyuluoyan_thin . It contains the original 10,137 mapped characters. The family is renamed **Classroom Yan** to respect the reserved names declared in the original license. Full terms and original copyright: `fonts/ClassroomYan-OFL.txt`. Glyph outlines are unchanged. Characters absent from this font use Long Cang as a fallback.
+
 ## Vector illustrations
 
-`taskboard-flat.svg`, `folder-flat.svg`, `settings-flat.svg`, `bell-flat.svg`, `calendar-flat.svg` and `emergency-exit.svg` were drawn for this project using editable paths. They are not downloaded third-party icon packs. Existing generated objects and material source atlases are documented in `docs/classroom-asset-prompts-2026-09-09.md`.
+`taskboard-flat.svg`, `folder-flat.svg`, `settings-flat.svg`, `bell-flat.svg`, `calendar-flat.svg`, `chalk-cup-flat.svg`, `microphone-flat.svg`, `camera-flat.svg` and `projector-rear.svg` were drawn for this project using editable paths. Existing generated objects and material source atlases are documented in `docs/classroom-asset-prompts-2026-09-09.md`.
+
+The figure/door path in `emergency-exit.svg` is adapted from **MaxxL**, [ISO 7010 E002](https://commons.wikimedia.org/wiki/File:ISO_7010_E002.svg), released into the **public domain** by its author. The project applies a muted green and ivory palette and a separate right arrow in a horizontal sign. Source SVG: https://upload.wikimedia.org/wikipedia/commons/3/35/ISO_7010_E002.svg . The reference and its public-domain notice were checked on 2026-09-09.
