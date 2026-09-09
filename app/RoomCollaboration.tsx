@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { BellRing, CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
@@ -251,8 +251,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
-      {workflow && canComplete && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" title="催办认领者" disabled={unavailable} onClick={() => void perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action: "nudge" })}><BellRing size={14} />催办</button>}
-      {workflow && <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>}
+      {workflow && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" aria-label={`认领者：${ownerName(workflow.claimantId)}`}>{ownerName(workflow.claimantId)}</span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
       {pending && <button type="button" className="coop-pending-label" onClick={() => setRecoveryOpen(true)}><CircleAlert size={12} aria-hidden="true" />查看待处理操作</button>}
     </article>;

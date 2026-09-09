@@ -52,6 +52,12 @@
 .coop-empty { font-size: 12px; color: var(--muted); padding: 24px 12px; line-height: 1.8; text-align: center; }
 .coop-task { position: relative; flex: 0 0 auto; min-width: 0; border: 1px solid var(--line); border-radius: 11px; padding: 24px 10px 9px; background: var(--panel); box-shadow: 0 2px 6px rgb(var(--shadow-rgb) / 4%); }
 .coop-task.pending { border-style: dashed; }
+@font-face { font-family: "TaskStampLatin"; src: url("/fonts/task-stamp/ProtestRevolution-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: "TaskStampChinese"; src: url("/fonts/task-stamp/LongCang-Regular.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: swap; }
+.coop-stamp-clip { display: flex; justify-content: flex-end; overflow: hidden; margin: 4px -10px -9px; padding: 8px 0 0 12px; border-radius: 0 0 8px 2px; pointer-events: none; }
+.coop-claim-stamp { position: relative; right: -7px; bottom: -5px; display: block; max-width: calc(100% - 18px); padding: 7px 23px 12px 15px; border: 4px double #ae403a; color: #ae403a; transform: rotate(-6deg); transform-origin: 75% 60%; font: 400 29px/1.15 "TaskStampLatin", "TaskStampChinese", cursive; text-align: center; overflow-wrap: anywhere; }
+.buffer .coop-stamp-clip { margin-bottom: -10px; }
+.coop-lane .coop-stamp-clip { margin: 4px -7px -8px; }
 .coop-task-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-height: 3em; }
 .room-collaboration-dialog .coop-task-title:disabled { opacity: 1; }
 .coop-task-top { display: flex; align-items: start; gap: 5px; }
