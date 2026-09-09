@@ -76,7 +76,7 @@ export function createSpeechService(options: Options) {
         if (!Number.isFinite(prepared.seconds) || prepared.seconds <= 0 || prepared.seconds > 305 || prepared.audio.length > 4 * 1024 * 1024) throw new SpeechError("这条语音超过转写长度或大小限制", 413);
         await transaction(ledger => { ledger.entries[key] = { state: "pending", retryAt: clock() + 120000 }; });
         let result: string;
-        let retryAt = clock() + 60000;
+        let retryAt = 0;
         try {
           const response = await request(`https://api.cloudflare.com/client/v4/accounts/${config.account}/ai/run/${SPEECH_MODEL}`, {
             method: "POST", headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
@@ -94,7 +94,7 @@ export function createSpeechService(options: Options) {
           if (body.success !== true || typeof body.result?.text !== "string" || body.result.text.length > 30000) throw new SpeechError("转写服务未返回有效文字，请稍后再试");
           result = body.result.text.trim();
         } catch (error) {
-          await transaction(ledger => { ledger.entries[key] = { state: "failed", retryAt: Math.max(retryAt, clock() + 1000) }; });
+          await transaction(ledger => { ledger.entries[key] = { state: "failed", retryAt: retryAt || clock() + 60000 }; });
           throw error instanceof SpeechError ? error : new SpeechError("转写请求未完成，请稍后重试");
         }
         await transaction(ledger => { ledger.entries[key] = { state: "done", text: result }; });
