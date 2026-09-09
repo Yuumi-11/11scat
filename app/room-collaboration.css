@@ -57,6 +57,7 @@
 .coop-stamp-clip { display: flex; justify-content: flex-end; overflow: hidden; margin: 4px -10px -9px; padding: 8px 0 6px 12px; border-radius: 0 0 8px 2px; pointer-events: none; }
 .coop-claim-stamp { position: relative; right: -7px; bottom: -5px; display: block; min-width: 112px; max-width: calc(100% - 18px); box-sizing: border-box; padding: 8px 17px 10px; border: 0; background: url("/fonts/task-stamp/stamp-frame.png") center / 100% 100% no-repeat; color: #b12b27; transform: rotate(-6deg); transform-origin: 75% 60%; font: 400 36px/1.05 "TaskStampLatin", "TaskStampChinese", serif; text-align: center; overflow-wrap: anywhere; }
 .coop-claim-stamp-name { display: block; mask-image: url("/fonts/task-stamp/dry-ink-mask.png"); mask-size: 235px 90px; -webkit-mask-image: url("/fonts/task-stamp/dry-ink-mask.png"); -webkit-mask-size: 235px 90px; }
+.coop-claim-stamp[data-fonts-ready="false"] { opacity: 0; }
 .buffer .coop-stamp-clip { margin-bottom: -10px; }
 .coop-lane .coop-stamp-clip { margin: 4px -7px -8px; }
 .coop-task-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-height: 3em; }
