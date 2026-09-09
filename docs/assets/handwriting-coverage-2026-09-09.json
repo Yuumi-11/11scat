@@ -1,0 +1,42 @@
+[
+  {
+    "font": "志莽行书",
+    "file": "ZhiMangXing-Regular.ttf",
+    "bytes": 4063532,
+    "sha256": "644e0cae9b40f0b10ab729a01bd32032e3973bac22be3dccae01bf6ae7fde969",
+    "gb2312Covered": 6763,
+    "gb2312Total": 6763,
+    "sampleMissing": "",
+    "sampleWoff2Bytes": 10464
+  },
+  {
+    "font": "龙藏体",
+    "file": "LongCang-Regular.ttf",
+    "bytes": 5162508,
+    "sha256": "e5bf2c3f24ef2327c6f136d8f73e2f9dfdf44896fdbeb35a9515f44777bb91bc",
+    "gb2312Covered": 6763,
+    "gb2312Total": 6763,
+    "sampleMissing": "",
+    "sampleWoff2Bytes": 12900
+  },
+  {
+    "font": "辰宇落雁体",
+    "file": "ChenYuluoyan-2.0-Thin.ttf",
+    "bytes": 9522140,
+    "sha256": "1289e42a6d1ec995d0cb23aee89efc69fc95749fbd54a610057a3e992dc453db",
+    "gb2312Covered": 4333,
+    "gb2312Total": 6763,
+    "sampleMissing": "业务历审时笔认记进间领",
+    "sampleWoff2Bytes": 13180
+  },
+  {
+    "font": "悠哉 Medium",
+    "file": "../classroom-v3/Yozai-Medium.ttf",
+    "bytes": 15238394,
+    "sha256": "05f50f252b45197d0d6148a4abc3e37c7cd4cfdf03c955b57c25d53d924f835f",
+    "gb2312Covered": 6763,
+    "gb2312Total": 6763,
+    "sampleMissing": "",
+    "sampleWoff2Bytes": 10016
+  }
+]
