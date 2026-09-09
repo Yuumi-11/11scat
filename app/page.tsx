@@ -1,7 +1,7 @@
 "use client";
 
 import { AudioPlayer } from "./AudioPlayer";
-import { MusicWindow } from "./MusicWindow";
+import { MusicListening as MusicWindow } from "./MusicListening";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";

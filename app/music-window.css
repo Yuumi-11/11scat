@@ -613,3 +613,44 @@
     min-height: 46px;
   }
 }
+
+.music-summary {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  line-height: 1.8;
+}
+.music-share-consent {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0;
+  color: var(--muted);
+  align-items: flex-start;
+}
+.music-volume {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  align-items: center;
+  margin: 10px 0;
+}
+.music-connection input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 10px 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.music-titlebar > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}

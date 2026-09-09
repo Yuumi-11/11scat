@@ -1,4 +1,5 @@
 "use client";
+import { NeteaseMark } from "./NeteaseMark";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Headphones,
@@ -52,20 +53,7 @@ function MusicCover({ cover }: { cover?: string }) {
           onError={() => setFailed(cover)}
         />
       ) : (
-        <svg
-          className="music-idle-logo"
-          viewBox="0 0 48 48"
-          aria-label="网易云音乐"
-        >
-          <path
-            d="M30 9c-3-3-8-1-8 3 0 4 8 5 8 12 0 5-4 9-9 9s-9-4-9-9c0-4 3-8 7-9M34 17c4 3 6 7 5 12-1 8-8 13-16 12S9 34 9 26M23 21c-4-1-6 2-5 5 1 3 5 3 6 0 1-2-1-4-1-5Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <NeteaseMark />
       )}
     </span>
   );

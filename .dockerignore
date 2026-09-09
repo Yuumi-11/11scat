@@ -17,3 +17,6 @@ coverage
 deploy-*.tgz
 release-*
 npm-debug.log*
+
+.music-test-data
+native/music-bridge/*.exe
