@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import type { PublicTaskPreview } from "./classroom-view";
 import { createPortal } from "react-dom";
-import { CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, GripVertical, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { CircleAlert, CalendarDays, CalendarOff, Check, ClipboardList, Ellipsis, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
@@ -48,11 +48,11 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [uncertain, setUncertain] = useState<RequestCommand | null>(null);
   const [hoverOwner, setHoverOwner] = useState<string | null>(null);
-  const [ghost, setGhost] = useState<{ x: number; y: number; title: string } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; task: RoomTask; width: number } | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), membersPane = useRef<HTMLDivElement>(null);
   const locked = useRef(false), fetching = useRef(false), revision = useRef<number | null>(null), generation = useRef(0);
   const loadController = useRef<AbortController | null>(null);
-  const drag = useRef<{ task: RoomTask; x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ task: RoomTask; x: number; y: number; moved: boolean; offsetX: number; offsetY: number; width: number } | null>(null);
 
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 2400); return () => clearTimeout(timer); }, [notice]);
 
@@ -192,7 +192,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     if (!current) return;
     if (!current.moved && Math.hypot(event.clientX - current.x, event.clientY - current.y) < 7) return;
     current.moved = true;
-    setGhost({ x: event.clientX + 14, y: event.clientY + 12, title: current.task.title });
+    setGhost({ x: event.clientX - current.offsetX, y: event.clientY - current.offsetY, task: current.task, width: current.width });
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     const target = hit?.closest<HTMLElement>("[data-coop-owner]");
     setHoverOwner(target && canDrop(target.dataset.coopOwner!) ? target.dataset.coopOwner! : null);
@@ -215,7 +215,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       if (target) void move(current.task, target.dataset.coopOwner!);
     }
   }
-  function card(task: RoomTask) {
+  function card(task: RoomTask, preview = false) {
     const description = task.ownerId === null ? taskDescriptionPreview(task.content || task.desc || "") : "";
     const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
     const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
@@ -225,7 +225,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const canComplete = (workflow?.reviewerId || task.ownerId || task.publisherId) === identityId;
     const compactClaim = task.ownerId !== null && !collaborationDate(task);
     const claimButton = !workflow && task.ownerId !== identityId && task.publisherId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
-    return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}`} key={taskKey(task)}>
+    return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}${!preview && ghost && taskKey(ghost.task) === taskKey(task) ? " dragging" : ""}`} key={taskKey(task)}>
       {task.ownerId === null && <TaskNoticeDot ids={taskNotices.filter(item => item.taskId === task.id).map(item => item.id)} onRead={open && !workflowOpen && !editor && !recoveryOpen && !nudge ? markViewed : undefined} />}
       <div className="coop-task-top"><button className="coop-drag" type="button" title={task.transferBlocked || "拖动安排任务；键盘可按空格、方向键，再按 Enter 放下"} aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
         onBlur={() => { setKeyboardDrag(null); setHoverOwner(null); }}
@@ -242,7 +242,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
           const target = Array.from(dialog.current?.querySelectorAll<HTMLElement>("[data-coop-owner]") || []).find(element => element.dataset.coopOwner === next);
           target?.scrollIntoView({ block: "nearest", inline: "nearest" });
         }}
-        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { task, x: event.clientX, y: event.clientY, moved: false }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }} />
+        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.closest("article")!.getBoundingClientRect(); drag.current = { task, x: event.clientX, y: event.clientY, moved: false, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }} />
         {isEditing ? <InlineTaskTitle key={taskKey(inlineTask)} initialValue={inlineTask.title} label="修改任务标题" disabled={unavailable} onCancel={() => setInlineTask(null)} onSave={async title => {
           const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
           if (done) setInlineTask(null); return done;
@@ -263,7 +263,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const { dated, undated } = splitCollaborationTasks(tasks);
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
       <header>{owner !== null && <span className="coop-column-icon">{name.slice(0, 1)}</span>}<h3>{name}{owner === identityId && <small>我</small>}</h3><span className="coop-count">{tasks.length}</span>{owner === null && <><button type="button" className="coop-recovery-trigger" onClick={() => { setWorkflowId(null); setWorkflowOpen(true); setError(""); }}>工作流程 {taskNotices.some(item => item.kind === "workflow") && <span className="task-notice-count">{taskNotices.filter(item => item.kind === "workflow").length}</span>}</button><button type="button" className="coop-icon coop-refresh" disabled={loading || busy} title="刷新全室任务" aria-label="刷新全室任务" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={17} className={loading ? "coop-spin" : ""} /></button><button type="button" className="coop-icon coop-close" disabled={busy || !!editor} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></>}</header>
-      {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", icon: CalendarDays, tasks: dated }, { label: "无日期", icon: CalendarOff, tasks: undated }]).map(lane => <section className="coop-lane" key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><lane.icon size={13} aria-hidden="true" /><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(card)}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(card)}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
+      {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", icon: CalendarDays, tasks: dated }, { label: "无日期", icon: CalendarOff, tasks: undated }]).map(lane => <section className="coop-lane" key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><lane.icon size={13} aria-hidden="true" /><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(task => card(task))}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(task => card(task))}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
         const done = await perform({ id: draftId, action: "create", fields: { title } }); if (done) setDraftId(null); return done;
       }} /></div> : <button className="coop-new-task" type="button" title="新建任务" aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>}</div>}
     </section>;
@@ -284,7 +284,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       {!snapshot && <div className="coop-loading-toolbar"><button type="button" className="coop-icon coop-close" disabled={busy || !!editor} title="关闭" aria-label="关闭协作区" onClick={close}><X size={21} /></button></div>}
       <div className="coop-layout" aria-busy={loading || busy}>{snapshot ? <>{column(null, "任务板", snapshot.buffer)}<div ref={membersPane} className="coop-members">{snapshot.members.map(member => column(member.id, member.name, member.tasks, member.error, member.diagnostic))}</div></> : <div className="coop-empty"><p>{loading ? "正在读取…" : "暂时无法读取任务"}</p><button type="button" className="coop-icon" disabled={loading} aria-label="重新读取任务" onClick={() => { setError(""); void load(); }}><RefreshCw size={18} className={loading ? "coop-spin" : ""} /></button>{uncertain && <button type="button" onClick={() => setRecoveryOpen(true)}>查看待处理操作</button>}</div>}</div>
       {!editor && !recoveryOpen && !workflowOpen && (error || notice || busy) && <div className={`coop-toast${error ? " error" : ""}`} role="status">{busy && <Loader2 className="coop-spin" size={14} />}<span>{error || (busy ? "正在保存…" : notice)}</span>{(pending.length > 0 || uncertain) && <button type="button" onClick={() => setRecoveryOpen(true)}>查看</button>}{!busy && <button type="button" aria-label="收起提示" onClick={() => { setError(""); setNotice(""); }}><X size={14} /></button>}</div>}
-      {workflowOpen && snapshot && <ClaimWorkflows snapshot={snapshot} notices={taskNotices} onRead={nudge ? undefined : markViewed} initialId={workflowId} busy={busy} error={error} perform={perform} retryUncertain={uncertain ? () => void perform(uncertain) : undefined} onClose={() => setWorkflowOpen(false)} onEdit={workflow => { setWorkflowOpen(false); edit({ ...workflow.fields, id: workflow.source.taskId, ownerId: workflow.source.ownerId, version: workflow.source.version, workflowId: workflow.id }, workflow); }} />}
+      {workflowOpen && snapshot && <ClaimWorkflows snapshot={snapshot} notices={taskNotices} onRead={nudge ? undefined : markViewed} initialId={workflowId} busy={busy} error={error} perform={perform} retryUncertain={uncertain ? () => void perform(uncertain) : undefined} onClose={() => setWorkflowOpen(false)} />}
       {recoveryOpen && <CollaborationRecovery busy={busy} onClose={() => setRecoveryOpen(false)}>
         {error && <p className="coop-feedback error" role="status">{error}</p>}
         {uncertain && !busy && <div className="coop-recovery">上次提交结果未确认。<button type="button" onClick={() => void perform(uncertain)}>核对并重试</button></div>}
@@ -310,8 +310,8 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
         {error && <p className="coop-feedback error" role="alert">{error}</p>}
         <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable || !!editor.workflow} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || !editor.title.trim()}>保存修改</button></div>
       </form></div>}
-      {ghost && <div className="coop-drag-ghost" style={{ left: Math.min(ghost.x, window.innerWidth - 220), top: Math.min(ghost.y, window.innerHeight - 70) }}><GripVertical size={17} />{ghost.title}</div>}
       </div>
+      {ghost && <div className={`coop-drag-ghost${ghost.task.ownerId === null ? " buffer" : ""}`} aria-hidden="true" inert style={{ left: ghost.x, top: ghost.y, width: ghost.width }}>{card(ghost.task, true)}</div>}
     </dialog>, document.body)}
     {nudge && <TaskNudge key={nudge.id} notice={nudge} onRead={markRead} onClose={() => setNudge(null)} />}
   </>;
