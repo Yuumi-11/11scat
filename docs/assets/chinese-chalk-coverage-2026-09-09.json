@@ -1,0 +1,42 @@
+[
+  {
+    "font": "Chalk-S",
+    "bytes": 5145856,
+    "sha256": "ae91095c2593274fd9440b638a8df59808366f4480f4b46b0f648ebf0d7c1ce8",
+    "mappedCharacters": 8223,
+    "gb2312HanTotal": 6763,
+    "gb2312HanCovered": 3384,
+    "sampleMissing": "业书务审户时笔认记间领",
+    "sampleSubsetBytes": 16784
+  },
+  {
+    "font": "Chalk JP",
+    "bytes": 11949376,
+    "sha256": "36024558db4ceab77c271c81e3d56d6a81fdba8a47db3c8b0533bd36a1daf972",
+    "mappedCharacters": 10170,
+    "gb2312HanTotal": 6763,
+    "gb2312HanCovered": 3779,
+    "sampleMissing": "业书务审户时认记间领",
+    "sampleSubsetBytes": 24168
+  },
+  {
+    "font": "Yozai Medium",
+    "bytes": 15238394,
+    "sha256": "05f50f252b45197d0d6148a4abc3e37c7cd4cfdf03c955b57c25d53d924f835f",
+    "mappedCharacters": 26006,
+    "gb2312HanTotal": 6763,
+    "gb2312HanCovered": 6763,
+    "sampleMissing": "",
+    "sampleSubsetBytes": 11644
+  },
+  {
+    "font": "Xiaolai",
+    "bytes": 22220806,
+    "sha256": "e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2",
+    "mappedCharacters": 44871,
+    "gb2312HanTotal": 6763,
+    "gb2312HanCovered": 6763,
+    "sampleMissing": "",
+    "sampleSubsetBytes": 9356
+  }
+]
