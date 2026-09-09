@@ -247,10 +247,10 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
         {compactClaim && claimButton}
         <button className="coop-more" type="button" title="任务详情" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => edit(task)}><Ellipsis size={18} aria-hidden="true" /></button>
         {canComplete && <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button>}</div>
+      {description && <p className="coop-task-description">{description}</p>}
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
-      {description && <p className="coop-task-description">{description}</p>}
       {workflow && canComplete && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" title="催办认领者" disabled={unavailable} onClick={() => void perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action: "nudge" })}><BellRing size={14} />催办</button>}
       {workflow && <button type="button" className={`coop-workflow-badge ${workflow.status}`} onClick={showWorkflow}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</button>}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
