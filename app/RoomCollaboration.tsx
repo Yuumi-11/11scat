@@ -251,7 +251,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
-      {workflow && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" aria-label={`认领者：${ownerName(workflow.claimantId)}`}>{ownerName(workflow.claimantId)}</span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}
+      {workflow && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" aria-label={`认领者：${ownerName(workflow.claimantId)}`} title="中文字体：崇羲篆体 · 王心怡 / 小学堂 · CC BY-ND 3.0 TW"><span className="coop-claim-stamp-name">{ownerName(workflow.claimantId)}</span></span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
       {pending && <button type="button" className="coop-pending-label" onClick={() => setRecoveryOpen(true)}><CircleAlert size={12} aria-hidden="true" />查看待处理操作</button>}
     </article>;
