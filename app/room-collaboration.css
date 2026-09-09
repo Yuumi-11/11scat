@@ -187,10 +187,48 @@
 @media (prefers-reduced-motion: no-preference) { body.task-nudge-shake > main, .task-nudge-shake .task-nudge-dialog, .task-nudge-shake .room-collaboration-dialog { animation: task-nudge-shake .6s ease-out; } }
 
 /* Settings remain in the workflow dialog at every viewport width. */
-.coop-workflows:has(.coop-workflow-detail) { width: min(1060px, calc(100vw - 32px)); }
-.coop-workflow-detail { display: grid; grid-template-columns: minmax(0, 1.63fr) minmax(0, 1fr); gap: 24px; }
-.coop-workflow-main { min-width: 0; }
+.coop-workflows:has(.coop-workflow-detail) { width: min(1060px, calc(100vw - 32px)); height: calc(100dvh - 48px); max-height: 900px; box-sizing: border-box; overflow: hidden; }
+.coop-workflows > header { flex-shrink: 0; }
+.coop-workflow-detail { display: grid; grid-template-columns: minmax(0, 1.63fr) minmax(0, 1fr); gap: 24px; flex: 1; overflow: hidden; }
+.coop-workflow-main { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 6px; }
 .coop-workflow-heading { flex-wrap: wrap; justify-content: flex-start; }
-.coop-workflow-settings { box-sizing: border-box; width: 100%; max-height: none; overflow: visible; align-self: start; padding: 0 0 0 20px; border: 0; border-left: 1px solid var(--line); border-radius: 0; }
+.coop-workflow-settings { box-sizing: border-box; width: 100%; min-height: 0; max-height: none; overflow: hidden; align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding: 0 0 0 20px; border: 0; border-left: 1px solid var(--line); border-radius: 0; }
 .coop-workflow-settings h4 { margin: 0; font-size: 15px; }
-@media (max-width: 640px) { .coop-workflow-detail { grid-template-columns: minmax(0, 1fr); gap: 20px; } .coop-workflow-settings { border-left: 0; border-top: 1px solid var(--line); padding: 18px 0 0; } }
+.coop-workflow-settings > * { flex-shrink: 0; }
+.coop-workflow-settings label { gap: 3px; }
+.coop-workflow-settings :is(input, textarea) { box-sizing: border-box; padding: 6px 8px; }
+.coop-workflow-settings .workflow-description-input { display: flex; flex-direction: column; flex: 1 1 60px; min-height: 44px; }
+.coop-workflow-settings .workflow-description-input textarea { flex: 1; min-height: 26px; height: 0; resize: none; }
+.workflow-choices { min-width: 0; margin: 0; padding: 0; border: 0; }
+.workflow-choices legend, .workflow-calendar > span { display: block; margin-bottom: 3px; padding: 0; color: var(--muted); font-size: 12px; }
+.workflow-choices > div { display: flex; }
+.workflow-choices button { flex: 1; min-width: 0; min-height: 31px; padding: 5px 2px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); color: var(--ink); font: inherit; font-size: 12px; white-space: nowrap; }
+.workflow-choices button + button { margin-left: -1px; }
+.workflow-choices button:first-child { border-radius: 5px 0 0 5px; }
+.workflow-choices button:last-child { border-radius: 0 5px 5px 0; }
+.workflow-choices button[aria-pressed="true"] { position: relative; border-color: var(--theme-accent); background: var(--theme-soft); color: var(--theme-accent-dark); box-shadow: inset 0 -2px var(--theme-accent); }
+.workflow-dates { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.workflow-calendar { min-width: 0; }
+.workflow-calendar > div { position: relative; display: flex; }
+.workflow-calendar button { min-width: 0; min-height: 31px; display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); font: inherit; font-size: 11px; }
+.workflow-calendar button:first-child { flex: 1; }
+.workflow-calendar button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-calendar svg { flex-shrink: 0; }
+.coop-workflow-settings .workflow-calendar input { position: absolute; bottom: 0; left: 0; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+.workflow-calendar .workflow-date-clear { border: 0; padding: 2px; }
+.coop-workflow-settings .coop-allday { height: 31px; gap: 3px; white-space: nowrap; }
+.coop-workflow-settings .coop-allday input { width: 14px; height: 14px; margin: 0; }
+.coop-workflow-settings .coop-workflow-actions { justify-content: flex-end; }
+.coop-workflow-settings .coop-feedback { margin: 0; font-size: 11px; }
+@media (max-width: 640px) {
+  .coop-workflows:has(.coop-workflow-detail) { width: calc(100vw - 16px); height: calc(100dvh - 16px); padding: 12px; gap: 8px; }
+  .coop-workflow-detail { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(50px, 1fr) minmax(390px, 3fr); gap: 8px; }
+  .coop-workflow-settings { border-left: 0; border-top: 1px solid var(--line); padding: 8px 0 0; gap: 5px; }
+}
+@media (max-height: 700px) {
+  .coop-workflows:has(.coop-workflow-detail) { height: calc(100dvh - 16px); padding: 12px; gap: 8px; }
+  .coop-workflow-settings { gap: 4px; }
+  .coop-workflow-settings :is(input, textarea) { padding: 4px 6px; }
+  .workflow-choices button, .workflow-calendar button, .coop-workflow-settings .coop-allday { min-height: 27px; height: 27px; }
+  .coop-workflow-settings .coop-workflow-actions button { padding: 5px 8px; }
+}
