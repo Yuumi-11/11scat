@@ -25,6 +25,11 @@ export async function DELETE(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!(await currentIdentityId())) return new NextResponse("Unauthorized", { status: 401 });
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try { if (new URL(origin).host !== request.headers.get("host")) return new NextResponse("Forbidden", { status: 403 }); }
+    catch { return new NextResponse("Forbidden", { status: 403 }); }
+  }
   if (!request.body) return NextResponse.json({ error: "请选择文件" }, { status: 400 });
   let name = "file";
   try { name = decodeURIComponent(request.headers.get("x-file-name") || "file"); } catch { /* keep fallback */ }
@@ -35,6 +40,8 @@ export async function POST(request: NextRequest) {
   }
   await ensureCloudFolders();
   const parent = resolveCloudPath(request.nextUrl.searchParams.get("path") || "");
+  const taskAttachment = parent.normalized === "tasks" || parent.normalized.startsWith("tasks/");
+  if (taskAttachment && contentLength > 20 * 1024 * 1024) return NextResponse.json({ error: "单个附件不能超过20 MB" }, { status: 413 });
   await mkdir(parent.resolved, { recursive: true, mode: 0o700 });
   const temporaryPath = path.join(parent.resolved, `.${crypto.randomUUID()}.upload`);
   const handle = await open(temporaryPath, "wx", 0o600);
@@ -46,6 +53,7 @@ export async function POST(request: NextRequest) {
       if (done) break;
       if (!value?.byteLength) continue;
       size += value.byteLength;
+      if (taskAttachment && size > 20 * 1024 * 1024) throw new Error("TASK_ATTACHMENT_TOO_LARGE");
       await assertCloudCapacity(size);
       await handle.write(value);
     }
@@ -57,6 +65,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     await handle.close().catch(() => undefined);
     await rm(temporaryPath, { force: true }).catch(() => undefined);
-    return NextResponse.json({ error: error instanceof CloudCapacityError ? error.message : "上传失败，请重试" }, { status: error instanceof CloudCapacityError ? 507 : 500 });
+    const tooLarge = (error as Error).message === "TASK_ATTACHMENT_TOO_LARGE";
+    return NextResponse.json({ error: tooLarge ? "单个附件不能超过20 MB" : error instanceof CloudCapacityError ? error.message : "上传失败，请重试" }, { status: tooLarge ? 413 : error instanceof CloudCapacityError ? 507 : 500 });
   }
 }

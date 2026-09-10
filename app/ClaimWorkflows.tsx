@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Archive, ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { TaskDescription } from "./TaskDescription";
 import { WorkflowSettings } from "./WorkflowSettings";
 import { TaskNoticeDot } from "./TaskNoticeDot";
 import { workflowEventLabels, type TaskNotice } from "./collaboration-notifications";
@@ -68,7 +69,7 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     </div></div>
     <div className="coop-workflow-actions">{workflow.claimantId === identityId && <button type="button" className="coop-delete" disabled={disabled} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void act("delete-claimed-task").then(() => setDeleteArmed(false)); }}><Trash2 size={15} />{deleteArmed ? "确认删除自己收集箱中的任务" : "删除我的任务"}</button>}
     {deleteArmed && <button type="button" disabled={disabled} onClick={() => setDeleteArmed(false)}>取消删除</button>}</div>
-    {workflow.fields.content && <p className="coop-workflow-description">{workflow.fields.content}</p>}
+    {workflow.fields.content && <TaskDescription content={workflow.fields.content} />}
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>
     <ol className="coop-workflow-events">{workflow.events.filter(event => event.type !== "completed").map(event => <li key={event.id}><div><strong><TaskNoticeDot ids={notices.filter(item => item.eventId === event.id && item.workflowId === workflow.id).map(item => item.id)} onRead={onRead} />{event.actorId ? name(event.actorId) : "系统"} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.type === "updated" && event.comment === "任务详情已同步到关联任务；待审批任务需按最新内容重新提交" ? "旧记录未保存具体修改内容" : event.comment}</p>}{event.type === "nudge" && workflow.claimantId === identityId && !workflow.events.some(item => item.type === "reply-nudge" && item.replyTo === event.id) && <button type="button" className="coop-workflow-back" disabled={disabled} onClick={() => { setReplyTo(event.id); setComment(""); }}>回复催办</button>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
     {(workflow.error || workflow.syncError || error || fileError) && <p className="coop-feedback error" role="alert">{fileError || error || workflow.syncError || workflow.error}</p>}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { TaskDescriptionEditor } from "./TaskDescription";
 import { CalendarDays, X } from "lucide-react";
 import type { ClaimWorkflow, TaskFields, WorkflowCommand } from "./collaboration-types";
 
@@ -21,6 +22,7 @@ function Choices({ label, value, options, disabled, change }: { label: string; v
 }
 
 export function WorkflowSettings({ workflow, disabled, perform }: { workflow: ClaimWorkflow; disabled: boolean; perform: (command: WorkflowCommand) => Promise<boolean> }) {
+  const [uploading, setUploading] = useState(false);
   // Keep an unsaved draft intact while unrelated workflow events arrive. Its
   // original version makes concurrent changes fail instead of being overwritten.
   const [draft, setDraft] = useState<{ fields: TaskFields; version: number; start: string; due: string; tags: string } | null>(null);
@@ -30,7 +32,7 @@ export function WorkflowSettings({ workflow, disabled, perform }: { workflow: Cl
   const change = (patch: Partial<TaskFields>, inputs: Partial<{ start: string; due: string; tags: string }> = {}) => setDraft({ version: draft?.version ?? workflow.version, fields: { ...fields, ...patch }, start, due, tags, ...inputs });
   return <form className="coop-editor coop-workflow-settings" aria-label="详细设置" onSubmit={event => {
     event.preventDefault();
-    if (!draft) return;
+    if (!draft || uploading) return;
     const dates = {
       startDate: start === dateInput(fields.startDate, fields.isAllDay) ? fields.startDate : apiDate(start, fields.isAllDay),
       dueDate: due === dateInput(fields.dueDate, fields.isAllDay) ? fields.dueDate : apiDate(due, fields.isAllDay, true),
@@ -40,7 +42,7 @@ export function WorkflowSettings({ workflow, disabled, perform }: { workflow: Cl
     <h4>详细设置</h4>
     {draft && draft.version !== workflow.version && <p className="coop-feedback" role="status">流程已更新，请关闭详情后重新打开，再修改保存。</p>}
     <label>任务标题<input required maxLength={500} value={fields.title} disabled={disabled} onChange={event => change({ title: event.target.value })} /></label>
-    <label className="workflow-description-input">说明<textarea rows={2} maxLength={10000} value={fields.content} disabled={disabled} onChange={event => change({ content: event.target.value })} /></label>
+    <TaskDescriptionEditor value={fields.content} disabled={disabled} taskKey={workflow.id} onChange={content => change({ content })} onUploading={setUploading} />
     <Choices label="优先级" value={String(fields.priority)} options={[["1", "低"], ["3", "中"], ["5", "高"]]} disabled={disabled} change={value => change({ priority: fields.priority === Number(value) ? 0 : Number(value) as TaskFields["priority"] })} />
     <div className="workflow-dates">
     <CalendarField label="开始时间" value={start} allDay={fields.isAllDay} disabled={disabled} change={value => change({}, { start: value })} />
@@ -50,6 +52,6 @@ export function WorkflowSettings({ workflow, disabled, perform }: { workflow: Cl
     <Choices label="重复" value={fields.repeatFlag} options={[["", "不重复"], ...["DAILY", "WEEKLY", "MONTHLY"].map((period, index): [string, string] => [`RRULE:FREQ=${period};INTERVAL=1`, ["每天", "每周", "每月"][index]]), ...(fields.repeatFlag && !["DAILY", "WEEKLY", "MONTHLY"].some(period => fields.repeatFlag === `RRULE:FREQ=${period};INTERVAL=1`) ? [[fields.repeatFlag, "现有规则"] as [string, string]] : [])]} disabled={disabled} change={value => change({ repeatFlag: value })} />
     <Choices label="提醒" value={fields.reminders.length > 1 ? "custom" : fields.reminders[0] || ""} options={[["", "不提醒"], ["TRIGGER:PT0S", "准时"], ["TRIGGER:-PT15M", "提前15分"], ["TRIGGER:-PT1H", "提前1时"], ...((fields.reminders.length > 1 || (fields.reminders[0] && !["TRIGGER:PT0S", "TRIGGER:-PT15M", "TRIGGER:-PT1H"].includes(fields.reminders[0]))) ? [[fields.reminders.length > 1 ? "custom" : fields.reminders[0], "现有提醒"] as [string, string]] : [])]} disabled={disabled} change={value => { if (value !== "custom") change({ reminders: value ? [value] : [] }); }} />
     <label>标签<input value={tags} placeholder="用逗号分隔" disabled={disabled} onChange={event => change({}, { tags: event.target.value })} /></label>
-    <div className="coop-workflow-actions"><button type="submit" className="primary" disabled={disabled || !draft || !fields.title.trim() || draft.version !== workflow.version}>保存修改</button></div>
+    <div className="coop-workflow-actions"><button type="submit" className="primary" disabled={disabled || uploading || !draft || !fields.title.trim() || draft.version !== workflow.version}>保存修改</button></div>
   </form>;
 }

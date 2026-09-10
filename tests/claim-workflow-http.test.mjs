@@ -40,8 +40,8 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     notices = (await (await call('bob', '/api/room/tasks?revision=1')).json()).notices; assert.ok(!notices.some(item => item.id === nudgeNotice.id));
     assert.ok((await (await call('alice', '/api/room/tasks?revision=1')).json()).notices.some(item => item.eventType === 'reply-nudge'));
     response = await call('bob', '/api/ticktick/complete', { projectId: 'inbox-bob', taskId: w.targetId }); assert.equal(response.status, 403); assert.match((await response.json()).error, /审批/);
-    response = await act('bob', 'update-workflow', { fields: { content: 'HTTP 修改详情' } }); assert.equal(response.status, 200); w = (await response.json()).workflow;
-    const edited = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(edited.alice.original.content, 'HTTP 修改详情'); assert.equal(edited.bob[w.targetId].content, 'HTTP 修改详情');
+    response = await act('bob', 'update-workflow', { fields: { content: 'HTTP 修改详情\n[附件：测试.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Ftest%2Ftest.pdf)' } }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    const edited = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(edited.alice.original.content, 'HTTP 修改详情\n[附件：测试.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Ftest%2Ftest.pdf)'); assert.equal(edited.bob[w.targetId].content, 'HTTP 修改详情\n[附件：测试.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Ftest%2Ftest.pdf)');
     edited.bob[w.targetId].status = 2;
     await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(edited));
     const externallyChecked = await (await call('bob')).json(); w = externallyChecked.workflows.find(item => item.id === w.id);

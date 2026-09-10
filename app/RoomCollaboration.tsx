@@ -12,6 +12,8 @@ import { CollaborationRecovery } from "./CollaborationRecovery";
 import type { TaskNotice } from "./collaboration-notifications";
 import { TaskNoticeDot } from "./TaskNoticeDot";
 import { TaskNudge } from "./TaskNudge";
+import { descriptionAttachments } from "./task-description-attachments";
+import { TaskDescriptionEditor, TaskAttachments } from "./TaskDescription";
 import { taskDescriptionPreview } from "./task-description";
 import { loadTaskStampFonts } from "./task-stamp-fonts";
 
@@ -28,6 +30,7 @@ const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
 export function RoomCollaboration({ identityId, onChanged, onNotice }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void }) {
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [open, setOpen] = useState(false);
   const [stampFontsReady, setStampFontsReady] = useState(false);
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
@@ -223,7 +226,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
     }
   }
   function card(task: RoomTask, preview = false) {
-    const description = task.ownerId === null ? taskDescriptionPreview(task.content || task.desc || "") : "";
+    const description = task.ownerId === null ? taskDescriptionPreview(descriptionAttachments(task.content || task.desc || "").text) : "";
     const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
     const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
@@ -258,6 +261,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
         <button className="coop-more" type="button" title="编辑任务与工作流程" aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => { if (workflow) showWorkflow(); else edit(task); }}><Ellipsis size={18} aria-hidden="true" /></button>
         {canComplete && <button className="coop-complete" type="button" title="标记完成" aria-label={`完成任务 ${task.title}`} disabled={controlsLocked} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button>}</div>
       {description && <p className="coop-task-description">{description}</p>}
+      <TaskAttachments content={task.content || ""} />
       {(collaborationDate(task) || task.priority !== 0 || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{collaborationDate(task) && <span title={task.dueDate === collaborationDate(task) ? "截止时间" : "开始时间"}>{dateLabel(task)}</span>}{task.priority !== 0 && <span className="coop-priority">{priorities[task.priority]}优先级</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
@@ -303,19 +307,20 @@ export function RoomCollaboration({ identityId, onChanged, onNotice }: { identit
       <span className="coop-sr-only" aria-live="polite">{keyboardDrag ? `正在移动 ${keyboardDrag.task.title}，目标 ${ownerName(keyboardDrag.owner || null)}，方向键选择，Enter 放下，Esc 取消` : ""}</span>
       {editor && <div className="coop-editor-backdrop"><form className="coop-editor" aria-label="编辑协作任务" onSubmit={event => {
         event.preventDefault();
+        if (attachmentUploading) return;
         void perform({ id: crypto.randomUUID(), ...(editor.workflow ? { action: "update-workflow" as const, workflowId: editor.workflow.id, version: editor.workflow.version } : { action: "update" as const, source: taskSource(editor.task) }), fields: { title: editor.title, content: editor.content, priority: editor.priority,
           startDate: editor.allDay === editor.task.isAllDay && editor.start === dateInput(editor.task.startDate, editor.task.isAllDay) ? editor.task.startDate : apiDate(editor.start, editor.allDay),
           dueDate: editor.allDay === editor.task.isAllDay && editor.due === dateInput(editor.task.dueDate, editor.task.isAllDay) ? editor.task.dueDate : apiDate(editor.due, editor.allDay, true),
           isAllDay: editor.allDay, timeZone: editor.task.timeZone, tags: editor.tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean), repeatFlag: editor.repeat, reminders: editor.reminders } }).then(done => { if (done) setEditor(null); });
       }}><div className="coop-editor-heading"><h3>编辑任务 · {ownerName(editor.task.ownerId)}</h3><button className="coop-icon" type="button" disabled={busy} aria-label="关闭任务编辑" onClick={() => setEditor(null)}><X size={19} /></button></div>
         <label>任务标题<input autoFocus required maxLength={500} value={editor.title} disabled={unavailable} onChange={event => setEditor({ ...editor, title: event.target.value })} /></label>
-        <label>说明<textarea rows={3} maxLength={10000} value={editor.content} disabled={unavailable} onChange={event => setEditor({ ...editor, content: event.target.value })} /></label>
+        <TaskDescriptionEditor value={editor.content} disabled={unavailable} taskKey={editor.workflow?.id || editor.task.id} onChange={content => setEditor(current => current ? { ...current, content } : null)} onUploading={setAttachmentUploading} />
         <div className="coop-editor-row"><label>优先级<select value={editor.priority} disabled={unavailable} onChange={event => setEditor({ ...editor, priority: Number(event.target.value) as TaskFields["priority"] })}>{Object.entries(priorities).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="coop-allday"><input type="checkbox" checked={editor.allDay} disabled={unavailable} onChange={event => { const allDay = event.target.checked; setEditor({ ...editor, allDay, start: editor.start ? allDay ? editor.start.slice(0, 10) : `${editor.start.slice(0, 10)}T09:00` : "", due: editor.due ? allDay ? editor.due.slice(0, 10) : `${editor.due.slice(0, 10)}T18:00` : "" }); }} />全天</label></div>
         <div className="coop-editor-row"><label>开始时间<input type={editor.allDay ? "date" : "datetime-local"} value={editor.start} disabled={unavailable} onChange={event => setEditor({ ...editor, start: event.target.value })} /></label><label>截止时间<input type={editor.allDay ? "date" : "datetime-local"} value={editor.due} disabled={unavailable} onChange={event => setEditor({ ...editor, due: event.target.value })} /></label></div>
         <label>标签<input value={editor.tags} placeholder="用逗号分隔" disabled={unavailable} onChange={event => setEditor({ ...editor, tags: event.target.value })} /></label>
         <div className="coop-editor-row"><label>重复<select value={editor.repeat} disabled={unavailable} onChange={event => setEditor({ ...editor, repeat: event.target.value })}><option value="">不重复</option><option value="RRULE:FREQ=DAILY;INTERVAL=1">每天</option><option value="RRULE:FREQ=WEEKLY;INTERVAL=1">每周</option><option value="RRULE:FREQ=MONTHLY;INTERVAL=1">每月</option>{editor.repeat && !["RRULE:FREQ=DAILY;INTERVAL=1", "RRULE:FREQ=WEEKLY;INTERVAL=1", "RRULE:FREQ=MONTHLY;INTERVAL=1"].includes(editor.repeat) && <option value={editor.repeat}>保留现有重复规则</option>}</select></label><label>提醒<select value={editor.reminders.length > 1 ? "custom" : editor.reminders[0] || ""} disabled={unavailable} onChange={event => { if (event.target.value !== "custom") setEditor({ ...editor, reminders: event.target.value ? [event.target.value] : [] }); }}><option value="">不提醒</option><option value="TRIGGER:PT0S">到时间提醒</option><option value="TRIGGER:-PT15M">提前 15 分钟</option><option value="TRIGGER:-PT1H">提前 1 小时</option>{(editor.reminders.length > 1 || (editor.reminders[0] && !["TRIGGER:PT0S", "TRIGGER:-PT15M", "TRIGGER:-PT1H"].includes(editor.reminders[0]))) && <option value={editor.reminders.length > 1 ? "custom" : editor.reminders[0]}>保留现有提醒</option>}</select></label></div>
         {error && <p className="coop-feedback error" role="alert">{error}</p>}
-        <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable || !!editor.workflow} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || !editor.title.trim()}>保存修改</button></div>
+        <div className="coop-editor-buttons"><button type="button" className="coop-delete" disabled={unavailable || !!editor.workflow} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void perform({ id: crypto.randomUUID(), action: "delete", source: taskSource(editor.task) }).then(done => { if (done) setEditor(null); }); }}><Trash2 size={16} />{deleteArmed ? "确认删除此任务" : "删除"}</button><button type="submit" className="coop-save" disabled={unavailable || attachmentUploading || !editor.title.trim()}>保存修改</button></div>
       </form></div>}
       </div>
       {ghost && <div className={`coop-drag-ghost${ghost.task.ownerId === null ? " buffer" : ""}`} aria-hidden="true" inert style={{ left: ghost.x, top: ghost.y, width: ghost.width }}>{card(ghost.task, true)}</div>}
