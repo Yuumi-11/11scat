@@ -38,7 +38,7 @@ Subject: ONE very cute simple sitting kitten, front-facing, with a slightly tilt
 
 ## 第二版：气球绳线与猫咪手绘感
 
-2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是当前气球和猫咪最终采用的提示词，取代上方第一版对应结果。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
+2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球已获用户认可，猫咪的当前候选见下方第三版记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
 
 ### balloons：当前版本
 
@@ -48,10 +48,25 @@ Three simple softly lopsided oval balloons: dusty pink #e6b1ba at left, pastel y
 Most important: the three hanging strings must unmistakably be HAND-DRAWN CHALK MARKS ON A BOARD. Use ONE thin dry warm-ivory #f5efdb stroke per string, with a naturally wandering path, visible pressure changes, short interruptions, crumbly grain breaking THROUGH the line, and modest hesitant kinks. NOT smooth ribbon, NOT two parallel outlines, NOT a solid continuous tube, NOT rope texture. Strings much thinner than the balloon outlines: roughly 5 to 9 px on a 1254 px canvas. The overall path has only a few loose bends and the three lines meet at a simple lower point with no bow. Every part of each string must show chalk friction and transparency, not a smooth solid strip with a rough edge. Sparse modest marks like a person sketched the three strings quickly with the tip of a worn chalk stick. Match physical chalk texture of the balloon fill. Keep the bunch short enough for a square web motif legible at 160 CSS pixels. Cute, relaxed, hand-drawn, very simple.
 ```
 
-### cat：当前版本
+### cat：第二版记录
 
 ```text
 Use case: stylized-concept. Create ONE original transparent chalk-doodle kitten asset for a classroom website. Draw one sitting kitten in warm ivory #f5efdb and tiny dusty-pink #e6b1ba accents, the square transparent canvas, and its use as a small decoration on grey-green chalkboard #426e63. This must feel like a charming quick 15-second sketch by a person using an ordinary worn stick of chalk.
 Use just a few economical SINGLE chalk strokes. A slightly lopsided somewhat squarish-rounded head with two unequal casually drawn triangular ears; avoid a polished perfect oval. A tiny body suggested by one irregular U-shaped stroke, two short front-leg ticks, and a SINGLE thin loose curling tail to the right. No detailed paws or toes, no closed tubular tail, no anatomically modeled legs, no contour doubling. Face: two small unequal short chalk dashes for eyes, one tiny chalk nose and a casually written tiny w mouth, two quick unequal whisker strokes each side. Optional blush consists only of two very short broken rubbed pink chalk marks per cheek, not filled circles; ear centers stay empty. Interior of head and body fully transparent.
 Critical mark quality: the contour must visibly wander, change pressure, taper or skip a little, with a few imperfect joins and sparse natural overruns. Slightly wonky proportions and relaxed asymmetry are the source of cuteness. Dry broken chalk deposit with transparent grain gaps running through every stroke, not a digitally smooth contour wearing a noise filter. Stroke widths around 8 to 16 px on the 1254 px canvas, irregularly varying; light and uninflated. Keep the result legible at 160 px and its silhouette at 52 px. Avoid professional mascot finish, precise bezier curves, uniform monoline, airbrush, outlines around strokes, smooth digital fills, extensive white chalk smudge clouds, hatch clutter, decorative elements, texture outside the actual lines, any text, any background, shadow or sticker border. Center the doodle with at least 12 percent clear margin. True RGBA transparent image.
+```
+
+## 第三版：按用户简笔猫参考制作
+
+2026-09-10，用户认可第二版气球，并提供了白板上黑色简笔猫的照片，要求猫咪参考该画法。参考照片保存在 `codex-generated/chalk-handdrawn-2026-09-10/cat-user-reference.png`，仅作造型依据，不将照片中的手、木框或寝具加入网页素材。
+
+首先附参考图调用内置 imagegen 得到近似原图的造型，但返回了非透明棋盘格背景，未采用。随后将已观察的造型转写为下方完整提示词，重新生成了当前透明候选。当前眼睛和轮廓使用暖白粉笔；小爪子与外轮廓相连，尚未达到参考图中身体内部单独双弧线的画法。继续修正时服务返回 `usage_limit_reached`，恢复时间为北京时间 2026-09-15 12:40:46，修正未生成。当前文件仅表示已完成的候选，不表示爪子调整已完成。
+
+### 当前透明候选的完整提示词
+
+```text
+Use case: stylized-concept. Produce ONE transparent PNG web asset, a very simple hand-drawn WARM-IVORY CHALK CAT, with actual RGBA transparency. No backdrop of any sort. Square image, entire drawing within 12% clear margin. Only warm ivory #f5efdb marks, all negative space and grain gaps transparent. The future web backdrop is grey-green but must NOT be present in the image. Do not paint a checkerboard or paper.
+Drawing blueprint: a little plump kitten made with the economy of a casual marker doodle, translated into dry chalk. Huge tall rounded-triangle ears dominate the top, a wide cheeky head and a small squat body joined directly without a neck. The left ear is a tall soft peak near 33% across and 14% down; the right ear is a lower slightly leaning soft peak near 70% across and 23% down, so the whole cat has a gentle clockwise tilt. Each ear contains one simple hollow rounded triangular inner-ear mark. The top-center head joins the ears with one short low curved stroke. Rounded cheek outline bulges out on each side. Tiny natural pen-lift gaps where ears meet cheeks and cheeks flow into the small body. No separate head-to-body divider across the front; the face and body form one connected open interior.
+Two CHUBBY OVAL EYES tilted gently right, set apart; fill each oval with a few grainy dry chalk rubs leaving transparent micro gaps. A single tiny handwritten w shaped smile BETWEEN AND BELOW the eyes, NO nose. Exactly two short curved whisker dashes INSIDE each cheek, no whiskers projecting outside. NO blush. The rounded small body sits beneath the big head, only about one quarter of the complete height. At its bottom draw a single joined double-U/w shaped paw stroke, two little dips side by side attached to the base, with no anatomical legs or toes. A small closed oval-loop tail behind the lower-right side curves outward and back to the lower body; its hollow center remains transparent. The tail does not rise as high as the face.
+Character: affectionate, naive, slightly lopsided and easily drawn by hand, about a dozen simple strokes. No professionally polished mascot style, no extra details, no perfect vector ovals, no uniform mathematical symmetry. All contours are single chalk traces with gently varying pressure, crumbly irregular edges and small granular transparent interruptions through the strokes. Aim for fine but readable strokes around 10–16 px on a 1254px image. The chalk must look rubbed and scratched onto a rough board, with no smooth digital fills and no brush-pen calligraphy. The oval eyes are visibly CHALK-COLORED IN. No clouds of chalk dust outside the lines, no shaded fur, no ground, no shadow, no writing, no tilde, no extra props. True transparent background.
 ```
