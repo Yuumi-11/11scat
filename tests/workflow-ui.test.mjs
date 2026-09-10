@@ -38,6 +38,12 @@ test('workflow detail offers settings to every member and direct completion only
   assert.ok(history.includes('bob · 认领')); assert.ok(history.includes('提交完成')); assert.ok(history.includes('审批通过'));
   assert.ok(render('bob').includes('删除我的任务')); assert.ok(!render('alice').includes('删除我的任务'));
   assert.ok(render('alice').includes('>催办</button>')); assert.ok(!render('bob').includes('>催办</button>'));
+  workflow.fields.content = '前文 [附件：报告.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Fa%2Fb.pdf) 后文';
+  const attachmentHtml = render('alice');
+  assert.match(attachmentHtml, /前文 <a[^>]+>报告.pdf<\/a> 后文/);
+  assert.match(attachmentHtml, /aria-label="任务附件"/);
+  assert.ok(!attachmentHtml.includes('[附件：报告.pdf]'), 'raw Markdown is not shown in the description');
+  workflow.fields.content = '';
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {
     const html = render(member, 'submitted');

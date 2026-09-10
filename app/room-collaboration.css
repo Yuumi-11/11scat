@@ -241,3 +241,8 @@
 .task-attachment-status { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .coop-workflow-settings .workflow-description-input { min-height: 90px; }
 .coop-workflow-settings .workflow-description-input > label { flex-shrink: 0; }
+
+.task-description-editable { box-sizing: border-box; min-height: 90px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; }
+.task-description-editable a, .task-description .coop-workflow-description a { color: var(--theme-accent-dark); text-decoration: underline; cursor: pointer; }
+.task-description-editable[aria-disabled="true"] { opacity: .7; }
+.coop-workflow-settings .task-description-editable { flex: 1; min-height: 26px; height: 0; }

@@ -1,4 +1,17 @@
 export type DescriptionAttachment = { name: string; path: string; url: string };
+export function descriptionParts(content: string): ({ text: string } | { file: DescriptionAttachment; markdown: string })[] {
+  const parts: ({ text: string } | { file: DescriptionAttachment; markdown: string })[] = [];
+  const pattern = /\[附件：([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  let cursor = 0;
+  for (const match of content.matchAll(pattern)) {
+    const file = descriptionAttachments(match[0]).attachments[0];
+    if (!file) continue;
+    parts.push({ text: content.slice(cursor, match.index) }, { file, markdown: match[0] });
+    cursor = match.index! + match[0].length;
+  }
+  parts.push({ text: content.slice(cursor) });
+  return parts;
+}
 const encodedPath = (path: string) => encodeURIComponent(path).replace(/[!'()*]/g, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 export function attachmentPath(value: string): boolean {
   return value.startsWith("tasks/") && value.length < 800 && value.split("/").every(part => !!part && part !== "." && part !== ".." && !/[\\\x00-\x1f]/.test(part));
