@@ -20,10 +20,10 @@ export function ClassroomProp({ name }: { name: ClassroomPropName }) {
 }
 export function ClassroomFullscreenIcon({ fullscreen, chalk = true }: { fullscreen: boolean; chalk?: boolean }) {
   if (!chalk) return fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />;
-  return <svg className="chalk-fullscreen-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d={fullscreen ? 'M4 10.4l6.8-.5-.3-6.3M21.5 3.9l-.2 6.5 6.7-.4M3.8 21.8l6.4-.2.4 6.5M21.4 28.2l.2-6.6 6.4.3' : 'M4.5 11.1l-.3-6.8 7.1.3M20.8 4.2l6.9.4-.3 6.5M4.3 21l.3 6.8 6.5-.4M21 27.5l6.6.3.2-7'} />
-    <path opacity=".85" d="m5.3 5.7 6 6.3m15-6.5-6.4 6.7M5.4 26.1l6.4-6m14.4 6.2-6.1-6.6" />
-  </svg>;
+  return <ChalkToolIcon name={fullscreen ? 'collapse' : 'expand'} />;
+}
+export function ChalkToolIcon({ name }: { name: 'expand' | 'collapse' | 'text' | 'clear' | 'save' }) {
+  return <span className="chalk-tool-icon" style={{ backgroundImage: `url('/classroom/chalk/${name}.svg')` }} aria-hidden="true" />;
 }
 export function useProjectionCurtain(source: object | undefined, boardOpen = false) {
   const [foldedSource, setFoldedSource] = useState<object | null>(null);
@@ -85,13 +85,14 @@ export function IdleChalkboard({ date, tasks }: { date: Date | null; tasks: Publ
   const dateText = date ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', weekday: 'short', month: 'short', day: '2-digit' }).format(date).toUpperCase() : '';
   return <div className="idle-chalkboard">
     <time className="chalk-date" dateTime={date ? classroomDay(date) : undefined}>{dateText}</time>
-    <ul className="chalk-public-tasks">{rows(candidates.slice(0, visibleCount))}</ul>
+    <ul className={`chalk-public-tasks${visibleCount === 0 && candidates.length ? ' chalk-task-overflow' : ''}`} tabIndex={visibleCount === 0 && candidates.length ? 0 : undefined} title={visibleCount === 0 && candidates.length ? '滚动查看完整任务' : undefined}>{rows(candidates.slice(0, Math.max(1, visibleCount)))}</ul>
     <ul className="chalk-public-tasks chalk-task-measure" ref={measurement} aria-hidden="true">{rows(candidates)}</ul>
   </div>;
 }
 export function CalendarCard({ name, projecting, onView, children }: { name: string; projecting?: boolean; onView?: () => void; children: ReactNode }) {
-  return <section className={`desk-calendar${projecting ? ' projecting' : ''}`} aria-label={`${name}的个人卡片`}>
+  const nameClass = `calendar-name ${/\p{Script=Han}/u.test(name) ? 'calendar-name-chinese' : 'calendar-name-latin'}`;
+  return <section className={`desk-calendar${projecting ? ' projecting' : ''}`} aria-label={`${name}的个人卡片${projecting ? '，正在投影' : ''}`}>
     <ClassroomProp name="calendar" />
-    <div className="calendar-content">{onView ? <button className="calendar-name" type="button" onClick={onView} title={`查看${name}的共享画面`}>{name}</button> : <strong className="calendar-name">{name}</strong>}{children}</div>
+    <div className="calendar-content">{onView ? <button className={nameClass} type="button" onClick={onView} title={`查看${name}的共享画面`}>{name}</button> : <strong className={nameClass}>{name}</strong>}{children}</div>
   </section>;
 }
