@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>手绘粉笔图案</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 36px clamp(18px, 5vw, 64px); background: #f5edda; color: #534738; font-family: system-ui, sans-serif; line-height: 1.65; }
+    main { max-width: 1100px; margin: auto; }
+    h1 { font-size: 28px; margin: 0 0 8px; font-weight: 600; }
+    p { margin: 8px 0 24px; color: #766b58; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-bottom: 24px; align-items: center; }
+    label { display: flex; gap: 10px; align-items: center; }
+    select { padding: 6px 10px; border: 1px solid #bda67d; border-radius: 6px; background: #fff8e9; color: inherit; font: inherit; }
+    input { width: 150px; accent-color: #527769; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+    article { min-width: 0; }
+    .board { display: grid; min-height: 276px; place-items: center; align-content: center; background: var(--board, #426e63); border: 6px solid #cfa66e; border-radius: 6px; overflow: hidden; }
+    .large { display: block; width: min(var(--size, 160px), 100%); height: auto; aspect-ratio: 1; object-fit: contain; }
+    .small { display: block; width: 52px; height: 52px; object-fit: contain; }
+    h2 { font-size: 16px; text-align: center; margin: 10px 0 4px; font-weight: 500; }
+    .files { display: flex; justify-content: center; gap: 16px; font-size: 13px; }
+    a { color: #4f7669; text-underline-offset: 4px; }
+    .note { font-size: 13px; margin-top: 26px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 460px) { body { padding: 24px 16px; } .grid { gap: 12px; } .board { min-height: 240px; } label { flex-wrap: wrap; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>手绘粉笔图案</h1>
+    <p>轻轻涂上的颜色，留一点自然的笔迹。选择底色和大小，看看它们放在黑板上的样子。</p>
+    <div class="controls">
+      <label>黑板颜色<select id="background"><option value="#426e63">教室灰绿</option><option value="#35594c">深绿</option><option value="#343b3d">炭灰</option></select></label>
+      <label>图案大小<input id="size" type="range" min="52" max="220" value="160"><output id="size-value" for="size">160 px</output></label>
+    </div>
+    <section class="grid" aria-label="四款粉笔图案">
+      <article><div class="board"><img class="large" src="heart.webp" alt="柔粉色粉笔爱心" width="512" height="512"><img class="small" src="heart.webp" alt="" width="52" height="52"></div><h2>爱心</h2><div class="files"><a href="heart.webp" download>网页图片</a><a href="heart.png" download>PNG 原图</a></div></article>
+      <article><div class="board"><img class="large" src="stars.webp" alt="淡黄、暖白与浅蓝粉笔星星" width="512" height="512"><img class="small" src="stars.webp" alt="" width="52" height="52"></div><h2>星星</h2><div class="files"><a href="stars.webp" download>网页图片</a><a href="stars.png" download>PNG 原图</a></div></article>
+      <article><div class="board"><img class="large" src="balloons.webp" alt="柔粉、淡黄与浅蓝的三个粉笔气球" width="512" height="512"><img class="small" src="balloons.webp" alt="" width="52" height="52"></div><h2>三个气球</h2><div class="files"><a href="balloons.webp" download>网页图片</a><a href="balloons.png" download>PNG 原图</a></div></article>
+      <article><div class="board"><img class="large" src="cat.webp" alt="暖白粉笔画的可爱猫咪" width="512" height="512"><img class="small" src="cat.webp" alt="" width="52" height="52"></div><h2>猫咪</h2><div class="files"><a href="cat.webp" download>网页图片</a><a href="cat.png" download>PNG 原图</a></div></article>
+    </section>
+    <p class="note">下方小样固定为 52 px。背景颜色来自页面，图片里的空白与粉笔颗粒间隙均为透明区域。</p>
+  </main>
+  <script>
+    const background = document.getElementById('background');
+    const size = document.getElementById('size');
+    background.addEventListener('change', () => document.documentElement.style.setProperty('--board', background.value));
+    size.addEventListener('input', () => {
+      document.documentElement.style.setProperty('--size', `${size.value}px`);
+      document.getElementById('size-value').value = `${size.value} px`;
+    });
+  </script>
+</body>
+</html>
