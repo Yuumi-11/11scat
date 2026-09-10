@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     if (command.action === "read-notices") return json(await store.markNoticesRead(actor, command.ids));
     after(() => store.deliverNotices().catch(() => undefined));
     if (command.action === "legacy-reset") return json(await store.resetLegacy(actor));
-    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow", "restore-workflow", "delete-claimed-task", "nudge", "reply-nudge"].includes(command.action)) {
+    if (command.action === "claim" || ["submit", "approve", "reject", "retry-workflow", "owner-complete", "update-workflow", "restore-workflow", "delete-claimed-task", "delete-owner-task", "nudge", "reply-nudge"].includes(command.action)) {
       const workflow = command.action === "claim" ? await store.claim(actor, command) : await store.workflowCommand(actor, command);
       if (isPersonalCollection(workflow)) return json({ operation: collectionOperation(workflow) }, workflow.error ? 202 : 200);
       return json({ workflow }, workflow.error || workflow.syncError ? 202 : 200);

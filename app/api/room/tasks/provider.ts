@@ -107,7 +107,10 @@ export const gateway: Gateway = {
     const saved = await gateway.get(owner, id, projectId);
     if (!saved || !sameFields(saved, fields)) throw new CollaborationError("滴答尚未确认全部修改，请继续核对或取消重试");
   },
-  async remove(owner, id) { await request(owner, `/project/{inbox}/task/${encodeURIComponent(id)}`, { method: "DELETE" }, true); },
+  async remove(owner, id, projectId) {
+    if (!validId(id) || (projectId !== undefined && !validId(projectId))) throw new CollaborationError("任务编号无效", 400);
+    await request(owner, `/project/${projectId ? encodeURIComponent(projectId) : "{inbox}"}/task/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
+  },
   async reopen(owner, before) {
     const existing = await gateway.get(owner, before.id, before.projectId) || await gateway.locate!(owner, before.id, before.projectId);
     if (!existing) throw new CollaborationError("关联任务缺失，请刷新后恢复任务");

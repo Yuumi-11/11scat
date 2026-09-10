@@ -109,6 +109,25 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const deletedSnapshot = await (await call('bob')).json();
     assert.ok(!deletedSnapshot.members.find(member => member.id === 'bob').tasks.some(task => task.id === laterClaim.targetId));
     assert.ok(deletedSnapshot.members.find(member => member.id === 'alice').tasks.some(task => task.id === ordinary.id));
+    const ownerDeletion = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'delete-owner-task' };
+    assert.equal((await call('bob', '/api/room/tasks', ownerDeletion)).status, 403);
+    response = await call('alice', '/api/room/tasks', ownerDeletion); assert.equal(response.status, 200);
+    assert.equal((await response.json()).workflow.status, 'done');
+    assert.equal((await call('alice', '/api/room/tasks', ownerDeletion)).status, 200);
+    const afterOwnerDeletion = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'));
+    assert.ok(!afterOwnerDeletion.alice.original); assert.equal(afterOwnerDeletion.bob[w.targetId].status, 2);
+    assert.equal((await call('alice', file.url)).status, 200, 'submitted files remain accessible after deletion');
+
+    await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '删除公共发起任务后继续审批' } });
+    const removable = (await (await call('bob')).json()).buffer.find(task => task.title === '删除公共发起任务后继续审批');
+    response = await call('bob', '/api/room/tasks', { id: randomUUID(), action: 'claim', source: { ownerId: null, taskId: removable.id, version: removable.version }, destination: 'bob' });
+    w = (await response.json()).workflow;
+    response = await act('bob', 'submit', { comment: '删除后保留的结果' }); w = (await response.json()).workflow;
+    response = await act('alice', 'delete-owner-task'); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal(w.status, 'submitted');
+    assert.ok(!(await (await call('alice')).json()).buffer.some(task => task.id === removable.id));
+    response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal(w.status, 'done'); assert.equal(w.events.find(event => event.type === 'submit').comment, '删除后保留的结果');
     assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
   } finally { child.kill(); }
 });

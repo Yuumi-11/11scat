@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { Archive, ArrowLeft, Check, ClipboardCheck, Paperclip, RotateCcw, Send, X } from "lucide-react";
 import { TaskDescription } from "./TaskDescription";
 import { WorkflowSettings } from "./WorkflowSettings";
 import { TaskNoticeDot } from "./TaskNoticeDot";
@@ -38,11 +38,10 @@ export function WorkflowList({ workflows, archived, setArchived, select, name, n
 function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back, notices, onRead }: { notices: TaskNotice[]; onRead?: (ids: string[]) => void; workflow: ClaimWorkflow; identityId: string; name: (id: string) => string; busy: boolean; error: string; perform: (command: WorkflowCommand) => Promise<boolean>; back: () => void }) {
   const [comment, setComment] = useState(""), [files, setFiles] = useState<WorkflowFile[]>([]), [uploading, setUploading] = useState(false), [fileError, setFileError] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [deleteArmed, setDeleteArmed] = useState(false);
   const uploadLock = useRef(false), input = useRef<HTMLInputElement>(null);
   const submit = !workflow.taskAnomaly && !workflow.editPending && workflow.claimantId === identityId && ["working", "rejected"].includes(workflow.status);
   const review = !workflow.taskAnomaly && !workflow.editPending && workflow.reviewerId === identityId && workflow.status === "submitted";
-  const retry = (workflow.reopenPending && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || workflow.editPending || (workflow.status === "creating" && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || (workflow.status === "approving" && workflow.reviewerId === identityId);
+  const retry = (workflow.ownerDeletePending && workflow.reviewerId === identityId) || (workflow.reopenPending && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || workflow.editPending || (workflow.status === "creating" && [workflow.claimantId, workflow.reviewerId].includes(identityId)) || (workflow.status === "approving" && workflow.reviewerId === identityId);
   const disabled = busy || uploading;
   async function upload(selected: File[]) {
     if (uploadLock.current || busy || !(submit || review)) return;
@@ -67,8 +66,6 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     <div className="coop-workflow-heading"><h4>{workflow.title}</h4><span className={`coop-workflow-status ${workflow.status}`}>{workflow.reopenPending ? "正在恢复未完成" : workflow.needsSubmission ? "待补充提交" : workflowStatus[workflow.status]}</span>
     <div className="coop-workflow-actions">{workflow.reviewerId === identityId && !["creating", "done"].includes(workflow.status) && <button type="button" className="coop-nudge" disabled={disabled} onClick={() => void act("nudge")}>催办</button>}{workflow.reviewerId === identityId && workflow.status !== "done" && <button type="button" disabled={disabled} onClick={() => void act("owner-complete")}><Check size={15} />直接完成</button>}
     </div></div>
-    <div className="coop-workflow-actions">{workflow.claimantId === identityId && <button type="button" className="coop-delete" disabled={disabled} onClick={() => { if (!deleteArmed) setDeleteArmed(true); else void act("delete-claimed-task").then(() => setDeleteArmed(false)); }}><Trash2 size={15} />{deleteArmed ? "确认删除自己收集箱中的任务" : "删除我的任务"}</button>}
-    {deleteArmed && <button type="button" disabled={disabled} onClick={() => setDeleteArmed(false)}>取消删除</button>}</div>
     {workflow.fields.content && <TaskDescription content={workflow.fields.content} />}
     <p className="coop-workflow-people">{name(workflow.claimantId)} 认领 · {name(workflow.reviewerId)} 审批</p>
     <ol className="coop-workflow-events">{workflow.events.filter(event => event.type !== "completed").map(event => <li key={event.id}><div><strong><TaskNoticeDot ids={notices.filter(item => item.eventId === event.id && item.workflowId === workflow.id).map(item => item.id)} onRead={onRead} />{event.actorId ? name(event.actorId) : "系统"} · {eventLabels[event.type] || event.type}</strong><time>{new Date(event.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>{event.comment && <p>{event.type === "updated" && event.comment === "任务详情已同步到关联任务；待审批任务需按最新内容重新提交" ? "旧记录未保存具体修改内容" : event.comment}</p>}{event.type === "nudge" && workflow.claimantId === identityId && !workflow.events.some(item => item.type === "reply-nudge" && item.replyTo === event.id) && <button type="button" className="coop-workflow-back" disabled={disabled} onClick={() => { setReplyTo(event.id); setComment(""); }}>回复催办</button>}{event.files.map(file => <a key={file.id} href={file.url} download={file.name}><Paperclip size={14} />{file.name}</a>)}</li>)}</ol>
@@ -84,6 +81,6 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     {retry && <button type="button" className="coop-save" disabled={disabled} onClick={() => void act("retry-workflow")}>{workflow.reopenPending ? "重试同步" : "核对并继续"}</button>}
     {workflow.status === "submitted" && !review && <p className="coop-workflow-people">等待 {name(workflow.reviewerId)} 审批</p>}
     </section>
-    <WorkflowSettings workflow={workflow} disabled={disabled} perform={perform} />
+    <WorkflowSettings workflow={workflow} identityId={identityId} disabled={disabled} perform={perform} />
   </div>;
 }

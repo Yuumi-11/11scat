@@ -96,6 +96,93 @@ test('claimant deletion preserves submitted results, retries lost responses and 
   w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
 });
 
+test('initiator can delete their original task at every workflow stage without touching claimant progress', async () => {
+  for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done']) {
+    const f = await fixture(), task = await personal(f);
+    let w = await claim(f, task, 'offline', 'bob');
+    const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+    state.workflows[w.id].status = status;
+    await writeFile(file, JSON.stringify(state));
+    const target = structuredClone(f.accounts.bob.get(w.targetId));
+    for (const actor of ['bob', 'offline']) await assert.rejects(act(f, w, actor, 'delete-owner-task'), { status: 403 });
+    assert.ok(f.accounts.alice.has(task.id));
+    const command = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'delete-owner-task' };
+    w = await f.store.workflowCommand('alice', command);
+    assert.equal(w.status, status); assert.equal(w.error, ''); assert.ok(!w.taskAnomaly);
+    assert.equal(f.accounts.alice.size, 0); assert.deepEqual(f.accounts.bob.get(w.targetId), target);
+    assert.ok(w.events.some(event => event.type === 'owner-task-deleted' && event.actorId === 'alice'));
+    await f.store.workflowCommand('alice', command);
+    assert.equal(f.counts.removes, 1); assert.equal(f.counts.creates, 1);
+  }
+});
+
+test('deleting a public source preserves submissions and permits later edits and approval', async () => {
+  const f = await fixture(), task = await f.create('发起者可删除的公共任务');
+  let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '已提交的结果' });
+  w = await act(f, w, 'alice', 'delete-owner-task');
+  assert.equal(w.status, 'submitted'); assert.equal(w.error, '');
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+  assert.equal((await f.store.revision()).bufferCount, 0);
+  assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 1);
+  assert.equal(f.counts.removes, 0, 'a public-only source needs no Dida deletion');
+  w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '补充说明' } });
+  assert.equal(w.error, ''); assert.equal(w.status, 'submitted');
+  assert.equal(w.events.find(event => event.type === 'submit').comment, '已提交的结果');
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done'); assert.equal(w.error, '');
+  assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+});
+
+test('initiator deletion resumes a lost response after restart and retains legacy public links until confirmed', async () => {
+  const f = await fixture(), task = await f.create('旧公共流程'); let w = await claim(f, task);
+  const original = await personal(f);
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  state.workflows[w.id].reviewerTaskId = original.id;
+  await writeFile(file, JSON.stringify(state));
+  f.loseDelete();
+  w = await act(f, w, 'alice', 'delete-owner-task');
+  assert.ok(w.ownerDeletePending); assert.ok(w.error);
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 1);
+  await assert.rejects(act(f, w, 'bob', 'retry-workflow'), { status: 403 });
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  w = await act(f, w, 'alice', 'retry-workflow');
+  assert.ok(!w.ownerDeletePending); assert.equal(w.error, '');
+  assert.equal(f.counts.removes, 1); assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.size, 1);
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+  w = await act(f, w, 'alice', 'owner-complete');
+  assert.equal(w.status, 'done'); assert.equal(w.error, '');
+});
+
+test('initiator deletion supports a relocated exact task and does not delete later repeating occurrences', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.alice.get(task.id).projectId = 'other-project';
+  const remove = f.gateway.remove;
+  f.gateway.remove = async (owner, id, projectId) => { assert.equal(owner, 'alice'); assert.equal(id, task.id); assert.equal(projectId, 'other-project'); await remove(owner, id); };
+  w = await act(f, w, 'alice', 'delete-owner-task'); assert.equal(w.error, ''); assert.equal(f.counts.removes, 1);
+  const g = await fixture(), repeated = await personal(g, { repeatFlag: 'RRULE:FREQ=DAILY;INTERVAL=1', dueDate: '2026-09-10T12:00:00+0800' });
+  let recurring = await claim(g, repeated);
+  g.accounts.alice.get(repeated.id).dueDate = '2026-09-11T12:00:00+0800';
+  recurring = await act(g, recurring, 'alice', 'delete-owner-task');
+  assert.match(recurring.error, /其他日期/); assert.equal(g.counts.removes, 0); assert.equal(g.accounts.bob.size, 1);
+});
+
+test('initiator deletion during unfinished creation or editing does not interrupt continuation', async () => {
+  const f = await fixture(), task = await f.create('建立尚未确认');
+  f.loseCreate(); let w = await claim(f, task); assert.equal(w.status, 'creating');
+  w = await act(f, w, 'alice', 'delete-owner-task'); assert.equal(w.status, 'creating');
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.equal(w.status, 'working'); assert.equal(f.counts.creates, 1);
+  f.gateway.update = async () => { throw new Error('update unavailable'); };
+  w = await act(f, w, 'alice', 'update-workflow', { fields: { content: '待同步的修改' } }); assert.ok(w.editPending);
+  w = await act(f, w, 'alice', 'delete-owner-task'); assert.ok(w.editPending);
+  f.gateway.update = async (owner, id, fields) => Object.assign(f.accounts[owner].get(id), fields);
+  w = await act(f, w, 'bob', 'retry-workflow'); assert.ok(!w.editPending); assert.equal(w.error, '');
+  w = await act(f, w, 'bob', 'submit'); assert.equal(w.status, 'submitted');
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+  assert.equal((await f.store.snapshot('alice')).buffer.length, 0);
+});
+
 test('absent original tasks do not block submit, approval or direct completion and are never recreated', async () => {
   for (const deletionTime of ['before-submit', 'after-submit', 'direct']) {
     const f = await fixture(), task = await personal(f); let w = await claim(f, task);

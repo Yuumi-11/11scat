@@ -114,7 +114,7 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
     const output = path.join(dir, 'provider.mjs');
     await build({ entryPoints: ['app/api/room/tasks/provider.ts'], bundle: true, platform: 'node', format: 'esm', outfile: output, logLevel: 'silent' });
     const { gateway } = await import(pathToFileURL(output).href);
-    let searchCount = 0, failure = null, task = { id: 'moved', projectId: 'other-list', status: 0, ...taskFields({ title: 'original' }) };
+    let searchCount = 0, failure = null, removed = false, task = { id: 'moved', projectId: 'other-list', status: 0, ...taskFields({ title: 'original' }) };
     globalThis.fetch = async (url, init) => {
       assert.equal(init.headers.Authorization, 'Bearer token-alice');
       const route = new URL(url).pathname.replace('/open/v1', '');
@@ -124,7 +124,10 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
       if (route === '/task/completed') return Response.json([{ id: 'history-only', projectId: 'inbox-alice', status: 2, title: '历史完成' }]);
       if (route === '/project/outside-filter/task/older-moved') return Response.json({ ...task, id: 'older-moved', projectId: 'outside-filter' });
       if (route === '/project/other-list/task/moved/complete') { task.status = 2; return new Response(null, { status: 204 }); }
-      if (route === '/project/other-list/task/moved') return Response.json(task);
+      if (route === '/project/other-list/task/moved') {
+        if (init.method === 'DELETE') { removed = true; return new Response(null, { status: 204 }); }
+        return removed ? new Response(null, { status: 404 }) : Response.json(task);
+      }
       if (route === '/task/moved') { task = { ...task, ...JSON.parse(init.body) }; return Response.json(task); }
       return new Response(null, { status: 404 });
     };
@@ -136,6 +139,9 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
     await gateway.update('alice', 'moved', taskFields({ title: 'updated' }), remoteVersion(task), 'other-list');
     assert.equal(task.title, 'updated'); assert.equal(task.projectId, 'other-list');
     await gateway.complete('alice', 'moved', 'other-list'); assert.equal(task.status, 2);
+    await gateway.remove('alice', 'moved', 'other-list'); assert.ok(removed);
+    assert.equal(await gateway.get('alice', 'moved', 'other-list'), null);
+    await assert.rejects(gateway.remove('alice', 'moved', '../foreign'), { status: 400 });
     for (const result of [() => new Response(null, { status: 401 }), () => new Response(null, { status: 429 }), () => new Response(null, { status: 500 }), () => new Response('broken-json'), () => Response.json({ tasks: [] })]) {
       failure = result; await gateway.inbox('alice');
       await assert.rejects(gateway.locate('alice', 'absent'));

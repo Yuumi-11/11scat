@@ -18,6 +18,11 @@ test('workflow detail offers settings to every member and direct completion only
   for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done']) {
     const html = render(member, status); assert.match(html, /<form[^>]+aria-label="详细设置"/); assert.ok(!html.includes(">详细设置</button>"));
     assert.equal(html.includes('直接完成'), member === 'alice' && status !== 'done');
+    const settings = html.match(/<form[^>]+aria-label="详细设置"[\s\S]*?<\/form>/)[0];
+    assert.equal(settings.includes('删除发起任务'), member === 'alice');
+    assert.equal(settings.includes('删除我的任务'), member === 'bob');
+    const deletion = [...settings.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(match => match[0].includes('删除发起任务'))?.[0];
+    if (member === 'alice') assert.ok(!deletion.includes('disabled'), 'initiator deletion stays enabled without unsaved edits');
   }
   assert.ok(render('bob').includes('提交完成')); assert.ok(!render('bob', 'working', true).includes('提交完成'));
   assert.ok(render('charlie', 'working', true).includes('核对并继续'));
