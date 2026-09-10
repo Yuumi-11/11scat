@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 const out = 'public/classroom/chalk';
 await mkdir(out, {recursive:true});
 const icons = {
+  close: ['M7.1 6.8 24.7 25 M24.1 7.2 7.3 24.6'],
   expand: ['M4.6 11.2 4.1 4.6 11.3 4.3 M20.9 4.6 27.7 4.1 27.3 11.4 M4.2 20.9 4.6 27.6 11.2 27.3 M21 27.4 27.5 27.8 27.9 21','M5.4 5.8 12 12.4 M26.3 5.6 20 12 M5.6 26.3 12 20.1 M26.4 26.2 20 19.8'],
   collapse: ['M3.9 10.2 10.7 10.6 10.4 3.8 M21.4 3.7 21.1 10.5 28.1 10.1 M3.9 21.6 10.5 21.1 10.9 28 M21.2 28.1 21.7 21.5 28 21.7','M4 4.6 9.8 9.7 M27.4 4.5 22 9.8 M4.4 27.7 9.8 22 M27.5 27.2 22.1 22'],
   text: ['M5.5 8.7 5.8 5.7 Q15 5.1 26.4 5.8 L26.1 8.9','M16.1 6.4 15.7 26.1 M10.8 26 21.2 26.5'],
@@ -38,6 +39,7 @@ function svg(size, strokes) {
   const w=size===32?2.3:3.9;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><defs><mask id="chalk" maskUnits="userSpaceOnUse" x="0" y="0" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="white"/>${grain(size,size===32?620:1800)}</mask></defs><g mask="url(#chalk)" stroke-linecap="round" stroke-linejoin="round">${strokes.map(s=>`${s.fill?`<path d="${s.d}" fill="${s.fill}" fill-opacity=".09"/>`:''}<path d="${s.d}" fill="none" stroke="${s.color}" stroke-width="${w}" opacity=".82"/><path d="${s.d}" transform="translate(${size*.002} ${size*-.0015})" fill="none" stroke="${s.color}" stroke-width="${w*.48}" opacity=".63"/><path d="${s.d}" fill="none" stroke="${s.color}" stroke-width="${w*1.25}" stroke-dasharray="${size*.007} ${size*.027}" opacity=".29"/>`).join('')}</g></svg>\n`;
 }
-for(const [name,paths] of Object.entries(icons)) await writeFile(`${out}/${name}.svg`,svg(32,paths.map(d=>({d,color:'#f6f1dc'}))));
-for(const [name,strokes] of Object.entries(motifs)) await writeFile(`${out}/${name}.svg`,svg(160,strokes));
-console.log('Created 5 tool icons and 4 chalk motifs, all editable vectors.');
+const requested = new Set(process.argv.slice(2));
+for(const [name,paths] of Object.entries(icons)) if (!requested.size || requested.has(name)) await writeFile(`${out}/${name}.svg`,svg(32,paths.map(d=>({d,color:'#f6f1dc'}))));
+for(const [name,strokes] of Object.entries(motifs)) if (!requested.size || requested.has(name)) await writeFile(`${out}/${name}.svg`,svg(160,strokes));
+console.log('Created requested editable chalk vectors.');

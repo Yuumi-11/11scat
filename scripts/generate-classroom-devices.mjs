@@ -3,12 +3,15 @@ const root = 'public/classroom/';
 for (const lit of [true, false]) {
   const screen = lit ? '#e9efeb' : '#354340';
   const tablet = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 240">
-    <path fill="#929b93" d="M62 69 83 223 324 223 285 59Z"/>
-    <path fill="#aab3a6" d="M58 207h248l22 18H47Z"/>
-    <rect x="32" y="17" width="288" height="199" rx="12" fill="#778b7f"/>
-    <rect x="38" y="22" width="276" height="187" rx="8" fill="#405951"/>
-    <rect x="46" y="32" width="260" height="167" rx="3" fill="${screen}"/>
-    <circle cx="176" cy="27" r="2" fill="#a5b7ac"/>
+    <path fill="#b48d94" d="m301 88 38 138h-57Z"/>
+    <path fill="#ceabb1" d="m304 109 23 107h-40Z"/>
+    <path fill="#d8b4bd" d="M30 213h290l21 13H24Z"/>
+    <path fill="#ebcdd2" d="M31 213h286l11 6H25Z"/>
+    <rect x="31" y="12" width="293" height="207" rx="13" fill="#d6adb7"/>
+    <rect x="35" y="15" width="285" height="201" rx="11" fill="#eac8ce"/>
+    <rect x="40" y="20" width="275" height="191" rx="9" fill="#454a49"/>
+    <rect x="45" y="26" width="265" height="180" rx="6" fill="${lit ? '#f0eeee' : screen}"/>
+    <circle cx="176" cy="23" r="1.3" fill="#778b88"/>
     ${!lit ? '<path d="M62 48h155L62 142Z" fill="#7d9690" opacity=".10"/>' : ''}
   </svg>\n`;
   const laptop = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 240">
@@ -32,8 +35,10 @@ for (const lit of [true, false]) {
 const camera = await readFile(`${root}camera-flat.svg`, 'utf8');
 const projector = await readFile(`${root}projector-rear.svg`, 'utf8');
 await writeFile(`${root}projector-off.svg`, projector.replace('fill="#6e9274"', 'fill="#7a8475"'));
-await writeFile(`${root}projector-on.svg`, projector.replace('fill="#6e9274"', 'fill="#df8768"'));
-await writeFile(`${root}camera-on.svg`, camera.replace('</svg>', '<circle cx="120" cy="68" r="4" fill="#d97968"/><circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>'));
+const lamp = (x,y,r) => `<circle cx="${x}" cy="${y}" r="${r * 2.8}" fill="url(#record-light)"/><circle cx="${x}" cy="${y}" r="${r}" fill="#ef917b"/><circle cx="${x-r*.18}" cy="${y-r*.2}" r="${r*.42}" fill="#ffe7ce"/>`;
+const glow = '<defs><radialGradient id="record-light"><stop stop-color="#f6a78e" stop-opacity=".55"/><stop offset=".48" stop-color="#f0967d" stop-opacity=".23"/><stop offset="1" stop-color="#f0967d" stop-opacity="0"/></radialGradient></defs>';
+await writeFile(`${root}projector-on.svg`, projector.replace('<circle cx="116" cy="88" r="2" fill="#6e9274"/>',glow+lamp(116,88,2.6)));
+await writeFile(`${root}camera-on.svg`, camera.replace('</svg>', glow+lamp(120,68,4)+'<circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>'));
 const mic = await readFile(`${root}microphone-flat.svg`, 'utf8');
 await writeFile(`${root}microphone-on.svg`, mic.replace('</svg>', '<circle cx="61" cy="60" r="3" fill="#d97968"/><path d="M32 29v23M89 29v23" stroke="#9bb6a4" stroke-width="3" stroke-linecap="round"/></svg>'));
 await writeFile(`${root}microphone-off.svg`, mic.replace('</svg>', '<path d="m45 24 31 35" stroke="#c9b9a0" stroke-width="3" stroke-linecap="round"/></svg>'));

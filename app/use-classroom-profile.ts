@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ClassroomProfile } from './classroom-members';
 export function useClassroomProfile(joined: boolean, broadcast: (message: object) => void) {
-  const [profile, setProfile] = useState<ClassroomProfile>({ members: [], seats: [], font: 'sans' });
+  const [profile, setProfile] = useState<ClassroomProfile>({ members: [], seats: [], font: 'youyuan' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {

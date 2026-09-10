@@ -9,4 +9,4 @@
   <circle cx="77" cy="97" r="14" fill="#586860"/>
   <path fill="#829187" d="M65 93q2-8 10-9l-4 8z"/>
   <rect x="106" y="76" width="17" height="9" rx="2" fill="#c1bca5"/>
-<circle cx="120" cy="68" r="4" fill="#d97968"/><circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>
+<defs><radialGradient id="record-light"><stop stop-color="#f6a78e" stop-opacity=".55"/><stop offset=".48" stop-color="#f0967d" stop-opacity=".23"/><stop offset="1" stop-color="#f0967d" stop-opacity="0"/></radialGradient></defs><circle cx="120" cy="68" r="11.2" fill="url(#record-light)"/><circle cx="120" cy="68" r="4" fill="#ef917b"/><circle cx="119.28" cy="67.2" r="1.68" fill="#ffe7ce"/><circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>

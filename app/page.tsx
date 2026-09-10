@@ -23,7 +23,7 @@ import { CloudDrive } from "./CloudDrive";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
-import { BoardLayerNavigation, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
+import { BlackboardSurface, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
 import { ActivityInput, ClassroomSeatingSettings, DeviceCard } from './ClassroomDevices';
 import { fixedClassroomSeats, memberDevices } from './classroom-members';
 import { useClassroomProfile } from './use-classroom-profile';
@@ -2349,14 +2349,16 @@ export default function Home() {
               if (activeBoard) { setActiveBoardId(""); projection.reveal(); return; }
               projection.toggle();
             }} />
-            {!projection.open && <BoardLayerNavigation index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} />}
+            {!projection.open && <BlackboardSurface index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} drawing={!!activeBoard}>
             {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
-            {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
+            {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} onClose={() => { setActiveBoardId(''); projection.fold(); }} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
             }} /> : !projection.open ? <IdleChalkboard date={classroomDate} tasks={publicTasks} /> : null}
+            </BlackboardSurface>}
+            {projection.open && <button className="main-fullscreen-button" type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? '退出主窗口全屏' : '主窗口全屏'}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={false} /></button>}
             <div className={projection.open ? "projection-sheet is-open" : "projection-sheet"} aria-hidden={!projection.open}>
               {activeMedia && projection.open && <>
               <MediaVideo
@@ -2387,7 +2389,6 @@ export default function Home() {
 
               </>}
             </div>
-            <div className="board-ledge" aria-hidden="true">{!activeBoard && <div className="ledge-decoration"><span className="chalk-eraser" /><span className="chalk-stick" /><span className="chalk-stick" style={{background: '#efd28a'}} /><span className="chalk-stick" style={{background: '#e0a7b5'}} /></div>}</div>
           </div></div>
           {boardNotice && <p className="board-notice" role="status">{boardNotice}</p>}
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}

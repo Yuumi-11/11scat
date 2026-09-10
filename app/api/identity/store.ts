@@ -55,7 +55,7 @@ export async function getClassroomProfile() {
   const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '' }));
   const available = new Set(members.map(member => member.id));
   const seats = [...new Set([...(store.classroom?.seats || []), ...members.map(member => member.id)])].filter(id => available.has(id)).slice(0, 2);
-  return { members, seats, font: store.classroom?.font || 'sans' };
+  return { members, seats, font: store.classroom?.font || 'youyuan' };
 }
 
 export function updateClassroomProfile(seats: string[], font: string) {

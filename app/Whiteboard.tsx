@@ -30,10 +30,11 @@ function makeBoardTextUpdate(current: BoardText, patch: Partial<BoardText>): Boa
   return { ...current, ...patch, updatedAt: Date.now(), revision: makeBoardRevision(current.revision) };
 }
 
-export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke, onDeleteStroke, onClear, onUpsertText, onDeleteText, onSaved, onExport }: {
+export function Whiteboard({ board, fullscreen, onToggleFullscreen, onClose, onAddStroke, onDeleteStroke, onClear, onUpsertText, onDeleteText, onSaved, onExport }: {
   board: RoomBoard;
   fullscreen: boolean;
   onToggleFullscreen: () => Promise<void>;
+  onClose: () => void;
   onAddStroke: (stroke: BoardStroke, epoch: string) => void;
   onDeleteStroke: (strokeId: string, epoch: string) => void;
   onClear: () => void;
@@ -272,6 +273,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
 
   return (
     <div className="whiteboard-shell">
+      <button className="board-close-button" type="button" onClick={onClose} aria-label="关闭画板" title="关闭画板，返回默认黑板"><ChalkToolIcon name="close" /></button>
       <div className={`whiteboard-paper tool-${tool}`} ref={paperRef}>
         <canvas className="chalk-stroke-canvas" ref={canvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke} onLostPointerCapture={finishStroke} />
         <canvas className="chalk-text-canvas" ref={textCanvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-hidden="true" />

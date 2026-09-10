@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Expand, Minimize2 } from 'lucide-react';
 import { fittingChalkTaskCount, classroomDay, type PublicTaskPreview } from './classroom-view';
+import { CHALK_COLORS } from './board-painter.mjs';
 
 export type ClassroomPropName = 'calendar' | 'chalk-cup' | 'projector' | 'microphone' | 'camera' | 'taskboard' | 'folder' | 'settings' | 'bell';
 export function ClassroomProp({ name, active = false }: { name: ClassroomPropName; active?: boolean }) {
@@ -22,7 +23,7 @@ export function ClassroomFullscreenIcon({ fullscreen, chalk = true }: { fullscre
   if (!chalk) return fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />;
   return <ChalkToolIcon name={fullscreen ? 'collapse' : 'expand'} />;
 }
-export function ChalkToolIcon({ name }: { name: 'expand' | 'collapse' | 'text' | 'clear' | 'save' }) {
+export function ChalkToolIcon({ name }: { name: 'expand' | 'collapse' | 'text' | 'clear' | 'save' | 'close' }) {
   return <span className="chalk-tool-icon" style={{ backgroundImage: `url('/classroom/chalk/${name}.svg')` }} aria-hidden="true" />;
 }
 export function useProjectionCurtain(source: object | undefined, boardOpen = false) {
@@ -43,9 +44,26 @@ export function ProjectorControl({ open, hasSource, disabled, onClick }: { open:
 }
 export function BoardLayerNavigation({ index, count, onStep }: { index: number; count: number; onStep: (direction: -1 | 1) => void }) {
   return <div className="board-layer-navigation" aria-label="推拉黑板">
-    <button className="board-layer-side previous" type="button" aria-label="前一块黑板" disabled={index === 0} onClick={() => onStep(-1)}><span aria-hidden="true">‹</span></button>
-    <button className="board-layer-side next" type="button" aria-label="后一块黑板" disabled={index >= count - 1} onClick={() => onStep(1)}><span aria-hidden="true">›</span></button>
+    <button className="board-layer-side previous" type="button" aria-label="前一块黑板" disabled={index === 0} onClick={() => onStep(-1)}><span className="board-slide-grip" aria-hidden="true"><svg viewBox="0 0 20 48"><path d="M12 19 7 24 12 29" /></svg></span></button>
+    <button className="board-layer-side next" type="button" aria-label="后一块黑板" disabled={index >= count - 1} onClick={() => onStep(1)}><span className="board-slide-grip" aria-hidden="true"><svg viewBox="0 0 20 48"><path d="m8 19 5 5-5 5" /></svg></span></button>
     <span className="board-layer-position" aria-label={`第 ${index + 1} 块，共 ${count} 块黑板`}>{index + 1} / {count}</span>
+  </div>;
+}
+export function BlackboardSurface({ index, count, onStep, drawing, children }: {
+  index: number; count: number; onStep: (direction: -1 | 1) => void; drawing: boolean; children: ReactNode;
+}) {
+  return <div className="blackboard-cabinet" data-has-previous={index > 0} data-has-next={index < count - 1}>
+    <div className="blackboard-back" aria-hidden="true" />
+    <div className="blackboard-front">
+      {children}
+      <div className="board-ledge" aria-hidden="true" />
+      {!drawing && <div className="chalk-palette idle-chalk-palette" aria-hidden="true">
+        <span className="chalk-slot ledge-eraser"><span className="chalk-eraser" /></span>
+        {CHALK_COLORS.map(item => <span className="chalk-slot chalk-choice" key={item.color}><span className="chalk-stick" style={{ background: item.color }} /></span>)}
+        <span className="rainbow-chalk chalk-slot-empty" />
+      </div>}
+    </div>
+    <BoardLayerNavigation index={index} count={count} onStep={onStep} />
   </div>;
 }
 export function EmergencyExit({ onClick }: { onClick?: () => void }) {
