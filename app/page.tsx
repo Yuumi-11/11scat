@@ -1,7 +1,6 @@
 "use client";
 
 import { AudioPlayer } from "./AudioPlayer";
-import { MusicListening as MusicWindow } from "./MusicListening";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, CameraOff, ChevronLeft, ChevronRight, Cloud, MicOff, MonitorUp, Palette, Presentation, Volume2, VolumeX, Plus, X, Paperclip, CalendarDays, CalendarOff, File, Download, Undo2, Quote, Copy, Check, Bell, ImagePlus, LogOut, PictureInPicture2, Square, MessageCircle, ListTodo, Monitor, UserRound } from "lucide-react";
@@ -2285,7 +2284,6 @@ export default function Home() {
         <div className="session-status"><span className="pulse" />一一主人专属</div>
         <div className="topbar-actions">
           <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} />
-          <MusicWindow />
           <button className={cloudStatus?.warning ? "cloud-button warning" : "cloud-button"} type="button" onClick={openCloud} title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}>
             <Cloud aria-hidden="true" />
             云盘

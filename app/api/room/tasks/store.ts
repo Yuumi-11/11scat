@@ -303,8 +303,8 @@ export class CollaborationStore {
       receipt.retryAt = Date.now() + 60000; await this.saveWorkflow(state, workflow);
       const restored = await this.gateway.reopen(workflow.claimantId, receipt.before);
       if (restored.id !== target.id || restored.projectId !== receipt.before.projectId || restored.status || !sameFields(restored, receipt.before)) throw new CollaborationError("恢复结果与关联任务不符，请检查滴答后重试");
-      // Rebaseline only the checkbox change. Concurrent configuration edits
-      // still invalidate approval, including changes to the source task.
+      // Refresh the receipt when only the checkbox changed. Content changes
+      // remain subject to the reviewer's decision, not submission-version checks.
       if (workflow.submitted && sameFields(restored, workflow.submittedFields?.target || workflow.fields)) workflow.submitted.target = remoteVersion(restored);
       delete workflow.reopenReceipt; workflow.reopenPending = false; workflow.syncError = undefined;
       workflow.events.push({ id: randomUUID(), actorId: "", type: "external-task-reopened", at: Date.now(), comment: workflow.status === "submitted" ? "已恢复未完成，继续等待原审批，提交材料保留" : "已恢复未完成，等待认领者补充成果并提交", files: [] });
@@ -497,10 +497,15 @@ export class CollaborationStore {
         if (!task && side === "source") { approval.sourceDone = true; await this.saveWorkflow(state, workflow); continue; }
         if (!task) throw new CollaborationError("尚不能确认任务的完成结果，请核对后重试");
         if (task.status !== 2) {
-          if (task.status || remoteVersion(task) !== workflow.submitted![side]) throw new CollaborationError("任务在提交后发生变化，暂未勾选，请核对后重试");
+          if (task.status) throw new CollaborationError("关联任务状态暂不支持完成，请检查滴答后重试");
+          if (workflow.fields.repeatFlag && (taskFields(task).startDate !== workflow.fields.startDate || taskFields(task).dueDate !== workflow.fields.dueDate)) throw new CollaborationError("重复任务日期已变化，暂不自动操作下一次任务，请在滴答检查本次完成记录");
           const sent = side === "source" ? "sourceSent" : "targetSent";
           if (approval[sent] && (approval.repeating || workflow.fields.repeatFlag)) throw new CollaborationError("重复任务的完成响应未确认，已停止重复勾选，请核对滴答中的本次任务");
-          approval.repeating ||= !!workflow.fields.repeatFlag;
+          approval.repeating ||= !!(workflow.fields.repeatFlag || task.repeatFlag);
+          // Complete the current linked task. Keep its receipt for retries and
+          // later checkbox requests without requiring a new submission.
+          workflow.submitted ||= { source: "", target: "" };
+          workflow.submitted[side] = remoteVersion(task);
           approval[sent] = true; await this.saveWorkflow(state, workflow);
           await this.gateway.complete(owner, id, workflow.projects?.[side]);
         }
@@ -549,7 +554,8 @@ export class CollaborationStore {
       }
       if (workflow.approval) workflow.approval.repeating ||= !!workflow.fields.repeatFlag;
       workflow.fields = edit.fields; workflow.title = edit.fields.title;
-      if (workflow.status === "submitted") { workflow.status = "working"; delete workflow.submitted; }
+      // Editing task details preserves pending review. Only an explicit reject
+      // asks the claimant to submit again.
       if (workflow.reopenReceipt) {
         if (sides.target.status === 2) workflow.reopenReceipt = { before: sides.target, retryAt: 0 };
         else if (!sides.target.status) { delete workflow.reopenReceipt; workflow.reopenPending = false; }
@@ -694,7 +700,6 @@ export class CollaborationStore {
           workflow.submittedFields = { source: sides.source ? taskFields(sides.source) : workflow.fields, target: taskFields(sides.target) };
           workflow.needsSubmission = false;
         }
-        else if (command.action === "approve" && ((sides.source && remoteVersion(sides.source) !== workflow.submitted?.source) || remoteVersion(sides.target) !== workflow.submitted?.target)) throw new CollaborationError("任务在提交后发生变化，请打回后重新提交");
       }
       workflow.events.push({ id: command.id, signature, actorId: actor, type: command.action, at: Date.now(), comment: comment.trim(), files });
       workflow.status = submit ? "submitted" : command.action === "reject" ? "rejected" : "approving";

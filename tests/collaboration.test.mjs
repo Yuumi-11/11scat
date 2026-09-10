@@ -164,13 +164,17 @@ test('recovery of the public claimant task never creates a publisher task and su
   assert.equal(f.counts.creates, 2, 'old restoration request cannot restore a later anomaly');
 });
 
-test('surviving task external edits still invalidate approval after counterpart restoration', async () => {
+test('surviving task external edits allow approval after counterpart restoration', async () => {
   const f = await fixture(), task = await personal(f);
   let w = await claim(f, task); w = await act(f, w, 'bob', 'submit', { comment: 'original result' });
   f.accounts.alice.get(task.id).title = '滴答中修改后的要求'; f.accounts.bob.delete(w.targetId);
   w = await refreshed(f, w.id); w = await act(f, w, 'bob', 'restore-workflow');
   assert.equal(w.status, 'submitted');
-  await assert.rejects(act(f, w, 'alice', 'approve'), /任务在提交后发生变化/);
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done');
+  assert.equal(f.accounts.alice.get(task.id).title, '滴答中修改后的要求');
+  assert.equal(f.accounts.alice.get(task.id).status, 2);
+  assert.equal(f.accounts.bob.get(w.targetId).status, 2);
 });
 
 test('account and detail errors never mark tasks missing or create replacements', async () => {
@@ -477,17 +481,19 @@ test('sidebar original owner completes linked workflow without calling the ordin
   assert.equal(await f.store.personalCompletion('alice', task.id, async () => 'next occurrence'), 'next occurrence');
 });
 
-test('all room members can synchronize workflow details and submitted work requires a new submission', async () => {
+test('all room members can edit pending review without requiring a new submission', async () => {
   const f = await fixture(), task = await f.create('public'); let w = await claim(f, task);
-  w = await act(f, w, 'bob', 'submit'); const oldVersion = w.version;
+  w = await act(f, w, 'bob', 'submit', { comment: '保留原提交成果' }); const oldVersion = w.version;
+  const submission = structuredClone(w.events.find(event => event.type === 'submit'));
   await assert.rejects(act(f, w, 'stranger', 'update-workflow', { fields: { title: 'no' } }), { status: 403 });
   w = await act(f, w, 'offline', 'update-workflow', { fields: { title: '新标题', content: '新说明', priority: 5, dueDate: '2026-09-15T12:00:00+0800' } });
-  assert.equal(w.status, 'working'); assert.equal(w.editPending, false);
+  assert.equal(w.status, 'submitted'); assert.equal(w.editPending, false);
+  assert.deepEqual(w.events.find(event => event.type === 'submit'), submission);
   for (const remote of [f.accounts.bob.get(w.targetId)]) { assert.equal(remote.title, '新标题'); assert.equal(remote.priority, 5); assert.equal(remote.content, '新说明'); }
   assert.equal((await f.store.snapshot('alice')).buffer[0].title, '新标题');
   await assert.rejects(act(f, w, 'alice', 'approve', { version: oldVersion }), /已更新/);
-  await assert.rejects(act(f, w, 'alice', 'approve'), /状态/);
-  w = await act(f, w, 'bob', 'submit'); w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+  assert.equal(w.events.filter(event => event.type === 'submit').length, 1);
   w = await act(f, w, 'bob', 'update-workflow', { fields: { content: '完成后补充' } }); assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.get(w.targetId).content, '完成后补充'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
 });
 
@@ -540,13 +546,71 @@ test('explicit new settings can resolve a detail sync conflict while stale reque
   assert.ok(w.events.some(event => event.type === 'update-replaced'));
 });
 
-test('stale approvals are rejected and external claimant completion requires results after reopening', async () => {
+test('explicit rejection requires a new submission and external claimant completion still reopens', async () => {
   const f = await fixture(), task = await personal(f); let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
   f.accounts.bob.get(w.targetId).title = 'changed externally';
-  await assert.rejects(act(f, w, 'alice', 'approve'), /发生变化/); assert.ok(!f.accounts.alice.get(task.id).status);
+  assert.ok(!f.accounts.alice.get(task.id).status);
   w = await act(f, w, 'alice', 'reject'); f.accounts.bob.get(w.targetId).status = 2;
   await assert.rejects(act(f, w, 'bob', 'submit'), /补充完成说明/); assert.equal(f.accounts.bob.get(w.targetId).status, 0);
   await assert.rejects(act(f, { ...w, version: w.version - 1 }, 'bob', 'submit'), /已更新/);
+});
+
+test('approval accepts changed linked task contents or etags and preserves the submitted results', async () => {
+  for (const origin of ['personal', 'public']) for (const side of origin === 'personal' ? ['alice', 'bob'] : ['bob']) for (const change of ['content', 'etag']) {
+    const f = await fixture(), task = origin === 'personal' ? await personal(f) : await f.create('公共审批');
+    let w = await claim(f, task);
+    w = await act(f, w, 'bob', 'submit', { comment: '按原流程提交的成果' });
+    const submitted = structuredClone(w.events.find(event => event.type === 'submit'));
+    const current = f.accounts[side].get(side === 'alice' ? task.id : w.targetId);
+    current[change] = change === 'content' ? '后来补充的说明与附件链接' : 'provider-version-changed';
+    await assert.rejects(act(f, w, 'bob', 'approve'), { status: 403 });
+    w = await act(f, w, 'alice', 'approve');
+    assert.equal(w.status, 'done');
+    assert.equal(current[change], change === 'content' ? '后来补充的说明与附件链接' : 'provider-version-changed');
+    assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    if (origin === 'personal') assert.equal(f.accounts.alice.get(task.id).status, 2);
+    assert.deepEqual(w.events.find(event => event.type === 'submit'), submitted);
+    assert.equal(w.events.filter(event => event.type === 'submit').length, 1);
+  }
+});
+
+test('changes during completion do not invalidate approval or lose current completion receipts', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit');
+  const complete = f.gateway.complete;
+  f.gateway.complete = async (owner, id) => {
+    await complete(owner, id);
+    if (owner === 'alice') Object.assign(f.accounts.bob.get(w.targetId), { content: '完成期间更新', etag: 'new-etag' });
+  };
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'done');
+  const target = f.accounts.bob.get(w.targetId);
+  assert.equal(target.content, '完成期间更新');
+  const saved = JSON.parse(await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8'));
+  assert.equal(saved.workflows[w.id].submitted.target, remoteVersion({ ...target, status: 0 }));
+});
+
+test('newly recurring remote tasks still stop retries after an uncertain completion', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task), calls = 0;
+  w = await act(f, w, 'bob', 'submit');
+  f.accounts.alice.get(task.id).repeatFlag = 'RRULE:FREQ=DAILY';
+  f.gateway.complete = async () => { calls++; throw new Error('lost completion response'); };
+  w = await act(f, w, 'alice', 'approve');
+  w = await act(f, w, 'alice', 'retry-workflow');
+  assert.equal(w.status, 'approving'); assert.match(w.error, /重复任务/); assert.equal(calls, 1);
+});
+
+test('a recurring target advancing during approval is not completed as the previous occurrence', async () => {
+  const f = await fixture(), task = await personal(f, { repeatFlag: 'RRULE:FREQ=DAILY', dueDate: '2026-09-10T12:00:00Z' });
+  let w = await claim(f, task); w = await act(f, w, 'bob', 'submit');
+  const complete = f.gateway.complete, calls = [];
+  f.gateway.complete = async (owner, id) => {
+    calls.push(owner); await complete(owner, id);
+    if (owner === 'alice') f.accounts.bob.get(w.targetId).dueDate = '2026-09-11T12:00:00.000Z';
+  };
+  w = await act(f, w, 'alice', 'approve');
+  assert.equal(w.status, 'approving'); assert.match(w.error, /重复任务日期已变化/);
+  assert.ok(!f.accounts.bob.get(w.targetId).status); assert.deepEqual(calls, ['alice']);
 });
 
 test('approval resumes partial success after restart without completing acknowledged side twice', async () => {
@@ -554,8 +618,10 @@ test('approval resumes partial success after restart without completing acknowle
   const completes = [], complete = f.gateway.complete; let fail = true;
   f.gateway.complete = async (owner, id) => { completes.push(owner); if (owner === 'bob' && fail) throw new Error('offline'); await complete(owner, id); };
   w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'approving'); assert.equal(f.accounts.alice.get(task.id).status, 2);
+  Object.assign(f.accounts.bob.get(w.targetId), { content: '重试前修改的任务', etag: 'retry-version' });
   fail = false; f.store = new CollaborationStore(f.dir, f.gateway); w = await act(f, w, 'alice', 'retry-workflow');
   assert.equal(w.status, 'done'); assert.deepEqual(completes, ['alice', 'bob', 'bob']);
+  assert.equal(f.accounts.bob.get(w.targetId).content, '重试前修改的任务');
 });
 
 test('lost completion response is read back, but ambiguous recurring completion is never repeated', async () => {
@@ -644,15 +710,18 @@ test('external claimant checkbox restoration retains pending review and original
   w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
 });
 
-test('external claimant checkbox never hides concurrent configuration changes from approval', async () => {
+test('external claimant checkbox restoration permits approval of changed task contents', async () => {
   for (const side of ['alice', 'bob']) {
     const f = await fixture(), task = await personal(f); let w = await claim(f, task);
     w = await act(f, w, 'bob', 'submit', { comment: '原成果' });
     f.accounts[side].get(side === 'alice' ? task.id : w.targetId).content = '审批后修改了要求';
     f.accounts.bob.get(w.targetId).status = 2;
     w = await refreshed(f, w.id); assert.equal(w.status, 'submitted');
-    await assert.rejects(act(f, w, 'alice', 'approve'), /发生变化/);
-    assert.ok(!f.accounts.alice.get(task.id).status);
+    w = await act(f, w, 'alice', 'approve');
+    assert.equal(w.status, 'done');
+    assert.equal(f.accounts.alice.get(task.id).status, 2);
+    assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    assert.equal(f.accounts[side].get(side === 'alice' ? task.id : w.targetId).content, '审批后修改了要求');
   }
 });
 

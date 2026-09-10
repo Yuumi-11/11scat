@@ -56,6 +56,11 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     assert.equal((await call('alice', file.url)).status, 403);
     const downloaded = await call('bob', file.url); assert.equal(downloaded.status, 200); assert.equal(await downloaded.text(), '完成说明'); assert.match(downloaded.headers.get('content-disposition'), /^attachment;/); assert.equal(downloaded.headers.get('x-content-type-options'), 'nosniff');
     response = await act('bob', 'submit', { attachments: [file.id], comment: '已完成' }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    response = await act('alice', 'update-workflow', { fields: { content: '提交后补充任务说明和附件链接' } });
+    assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal(w.status, 'submitted');
+    assert.equal(w.events.filter(event => event.type === 'submit').length, 1);
+    assert.ok(w.events.find(event => event.type === 'submit').files.some(item => item.id === file.id));
     const submittedExternal = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'));
     submittedExternal.bob[w.targetId].status = 2;
     await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(submittedExternal));
@@ -70,8 +75,14 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const count = (await readdir(path.join(dir, 'workflow-files'))).length;
     response = await upload('bob', new Uint8Array(20 * 1024 * 1024 + 1)); assert.equal(response.status, 413); assert.equal((await readdir(path.join(dir, 'workflow-files'))).length, count);
     response = await act('bob', 'submit'); w = (await response.json()).workflow;
+    const changedAfterSubmission = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'));
+    changedAfterSubmission.alice.original.content = '滴答中的最新说明';
+    changedAfterSubmission.bob[w.targetId].etag = 'changed-after-submission';
+    await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(changedAfterSubmission));
     response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow; assert.equal(w.status, 'done');
     const final = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8')); assert.equal(final.alice.original.status, 2); assert.equal(final.bob[w.targetId].status, 2);
+    assert.equal(final.alice.original.content, '滴答中的最新说明');
+    assert.equal(final.bob[w.targetId].etag, 'changed-after-submission');
     // A public workflow completes without creating any publisher inbox task.
     await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '直接完成测试' } });
     const publicTask = (await (await call('bob')).json()).buffer[0];
