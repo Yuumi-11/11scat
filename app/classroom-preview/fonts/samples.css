@@ -1,0 +1,17 @@
+.calendar-font-review { min-height: 100dvh; padding: 40px clamp(18px, 4vw, 70px); color: #534738; background: #f5edda url('/classroom/paper.webp') center / 600px; font-family: 'Classroom Sans', sans-serif; }
+.calendar-font-review header { max-width: 1000px; margin: auto; }
+.calendar-font-review h1 { margin: 22px 0 12px; font-size: 30px; }
+.calendar-font-review a { color: #4f7669; text-underline-offset: 4px; }
+.calendar-font-review p { line-height: 1.65; }
+.font-sample-inputs { display: flex; gap: 24px; max-width: 1000px; margin: 28px auto; }
+.font-sample-inputs label { display: grid; gap: 8px; flex: 1; }
+.font-sample-inputs input { padding: 10px 12px; min-width: 0; width: 100%; background: #fffaee; border: 1px solid #c6b690; border-radius: 6px; color: inherit; }
+.classroom-scene.calendar-font-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; max-width: 1150px; margin: auto; height: auto; min-height: 0; overflow: visible; padding: 0; background: none; }
+.calendar-font-option { min-width: 0; padding: 20px; border: 1px solid #d4c19d; border-radius: 10px; background: #fff9eb80; }
+.calendar-font-option h2 { font: 500 20px/1.4 'Classroom Sans', sans-serif; margin: 0 0 30px; }
+.calendar-sample-desk { position: relative; display: flex; align-items: end; justify-content: center; padding: 0 0 8px; }
+.calendar-sample-desk::before { content: ''; position: absolute; inset: auto -10px 0; height: 25px; background: url('/classroom/wood.webp') center / 500px; border-radius: 5px; }
+.calendar-font-option > p { min-height: 80px; margin: 24px 0 18px; font-size: 15px; }
+.calendar-font-option .calendar-content .calendar-name { font-size: 26px; }
+.calendar-font-option .calendar-content p { font-size: 18px; }
+@media(max-width: 760px) { .classroom-scene.calendar-font-grid { grid-template-columns: 1fr; max-width: 380px; }.font-sample-inputs { flex-direction: column; gap: 12px; }.calendar-font-option > p { min-height: 0; } }

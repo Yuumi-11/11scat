@@ -28,7 +28,7 @@ async function verifyIdentitySession(token?: string): Promise<boolean> {
 
 export async function proxy(request: NextRequest) {
   // An isolated, fixture-only visual preview. It is unavailable in production.
-  if (process.env.NODE_ENV === "development" && request.nextUrl.pathname === "/classroom-preview") return NextResponse.next();
+  if (process.env.NODE_ENV === "development" && ["/classroom-preview", "/classroom-preview/fonts"].includes(request.nextUrl.pathname)) return NextResponse.next();
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
   if (!(await verifyIdentitySession(token))) {
     const accessUrl = new URL("/access", request.url);

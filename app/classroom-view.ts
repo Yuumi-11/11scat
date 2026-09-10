@@ -14,15 +14,12 @@ export function taskDay(date: string | undefined, allDay = false): string {
 export function todayTasks<T extends { dueDate?: string; done: boolean; isAllDay?: boolean }>(tasks: T[], day: string): T[] {
   return tasks.filter(task => !task.done && taskDay(task.dueDate, task.isAllDay) === day);
 }
-export function chalkTaskPreview(tasks: PublicTaskPreview[]): PublicTaskPreview[] {
-  // A very long first title receives the available writing space on its own.
-  const result: PublicTaskPreview[] = []; let lines = 0;
-  for (const task of tasks) {
-    if (!task.title.trim()) continue;
-    const estimated = Math.min(3, Math.max(1, Math.ceil(Array.from(task.title).length / 22)));
-    if (result.length && lines + estimated > 5) break;
-    result.push(task); lines += estimated;
-    if (result.length === 3) break;
+export function fittingChalkTaskCount(heights: number[], availableHeight: number, gap: number): number {
+  let used = 0;
+  for (let index = 0; index < heights.length; index++) {
+    const next = used + heights[index] + (index ? gap : 0);
+    if (next > availableHeight + 0.5) return index;
+    used = next;
   }
-  return result;
+  return heights.length;
 }

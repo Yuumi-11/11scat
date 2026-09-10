@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eraser, Expand, Minimize2, PenLine, Save, Trash2, Type, GripHorizontal, Pipette } from "lucide-react";
+import { Eraser, PenLine, Save, Trash2, Type, GripHorizontal, Pipette } from "lucide-react";
+import { ClassroomFullscreenIcon } from "./ClassroomScene";
 import { BOARD_COLOR, CHALK_COLORS, CHALK_FONT, createBoardPainter, visibleBoardColor } from "./board-painter.mjs";
 
 export type BoardPoint = { x: number; y: number };
@@ -276,7 +277,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onAddStroke,
         <label className="board-width" title="画笔粗细"><span>{width}px</span><input type="range" min="2" max="28" value={width} onChange={(event) => setWidth(Number(event.target.value))} /></label>
         <button type="button" onClick={onClear} title="清屏" aria-label="清屏"><Trash2 aria-hidden="true" /></button>
         <button type="button" onClick={() => void saveBoard()} disabled={saving} title="保存到云盘 /board" aria-label="保存到云盘">{saving ? "…" : <Save aria-hidden="true" />}</button>
-        <button type="button" onClick={() => void onToggleFullscreen()} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "全屏（F）"} aria-label={fullscreen ? "退出全屏" : "全屏"}>{fullscreen ? <Minimize2 aria-hidden="true" /> : <Expand aria-hidden="true" />}</button>
+        <button type="button" onClick={() => void onToggleFullscreen()} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "全屏（F）"} aria-label={fullscreen ? "退出全屏" : "全屏"}><ClassroomFullscreenIcon fullscreen={fullscreen} /></button>
       </aside>
     </div>
   );

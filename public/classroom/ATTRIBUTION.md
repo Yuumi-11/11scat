@@ -25,6 +25,10 @@ The PNG is included unchanged. The classroom applies a green background and redu
 
 Existing **Long Cang** and **CHAWP** retain their accompanying OFL license files in `fonts/`.
 
+`fonts/calendar-pen.woff2` is a web subset of **LXGW WenKai Regular v1.522**, copyright 2021–2026 LXGW and 2020 The Klee Project Authors, from https://github.com/lxgw/LxgwWenKai/releases/tag/v1.522 . The derived web family is named **School Calendar Pen** and contains 7,832 mapped characters, including GB2312 and supporting punctuation. Full original terms: `fonts/wenkai-OFL.txt`.
+
+`fonts/calendar-brush.woff2` is a web subset of **Ma Shan Zheng Regular**, copyright 2018 The Ma Shan Zheng Project Authors, from https://github.com/google/fonts/tree/main/ofl/mashanzheng . The derived web family is named **School Calendar Brush** and contains 7,002 mapped characters. Full original terms: `fonts/mashanzheng-OFL.txt`. These fonts use SIL OFL 1.1; glyph outlines are unchanged. Missing characters fall back to the next configured handwriting face.
+
 `fonts/classroom-yan.woff2` is a web-format version of **ChenYuluoyan 2.0 Thin**, copyright 2022 Wang, Li-Yu and Liu, Wei-Chen, from https://github.com/Chenyu-otf/chenyuluoyan_thin . It contains the original 10,137 mapped characters. The family is renamed **Classroom Yan** to respect the reserved names declared in the original license. Full terms and original copyright: `fonts/ClassroomYan-OFL.txt`. Glyph outlines are unchanged. Characters absent from this font use Long Cang as a fallback.
 
 ## Vector illustrations
@@ -32,3 +36,5 @@ Existing **Long Cang** and **CHAWP** retain their accompanying OFL license files
 `taskboard-flat.svg`, `folder-flat.svg`, `settings-flat.svg`, `bell-flat.svg`, `calendar-flat.svg`, `chalk-cup-flat.svg`, `microphone-flat.svg`, `camera-flat.svg` and `projector-rear.svg` were drawn for this project using editable paths. Existing generated objects and material source atlases are documented in `docs/classroom-asset-prompts-2026-09-09.md`.
 
 The figure/door path in `emergency-exit.svg` is adapted from **MaxxL**, [ISO 7010 E002](https://commons.wikimedia.org/wiki/File:ISO_7010_E002.svg), released into the **public domain** by its author. The project applies a muted green and ivory palette and a separate right arrow in a horizontal sign. Source SVG: https://upload.wikimedia.org/wikipedia/commons/3/35/ISO_7010_E002.svg . The reference and its public-domain notice were checked on 2026-09-09.
+
+The inline bell in `app/ClassroomScene.tsx` preserves the paths and colors of `bell-flat.svg`; its mount and bell body are separate groups so only the body swings. The rough fullscreen arrows are editable paths drawn for this project, textured with the existing chalk grain.

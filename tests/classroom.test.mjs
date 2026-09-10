@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classroomDay, taskDay, todayTasks, chalkTaskPreview } from '../app/classroom-view.ts';
+import { classroomDay, taskDay, todayTasks, fittingChalkTaskCount } from '../app/classroom-view.ts';
 import { normalizeBoardStroke, normalizeBoardText, normalizeBoard, mergeBoard } from '../app/board-state.ts';
 import { isEraseStroke } from '../app/board-painter.mjs';
 import { buildChalkOutline, resample } from '../app/chalk-renderer.mjs';
@@ -20,11 +20,13 @@ test('both classmates use the same exact day, preserving all-day labels and time
   assert.deepEqual(todayTasks(tasks,day).map(t=>t.id),['today','offset']);
   assert.deepEqual(todayTasks(tasks,classroomDay(new Date('2026-09-09T16:00:00Z'))).map(t=>t.id),['tomorrow']);
 });
-test('idle public tasks preserve ordering and reserve space for long titles', () => {
-  const tasks=Array.from({length:6},(_,i)=>({id:String(i),title:'第'+i+'项'}));
-  assert.deepEqual(chalkTaskPreview(tasks).map(t=>t.id),['0','1','2']);
-  assert.equal(chalkTaskPreview([{id:'long',title:'长标题'.repeat(24)}, {id:'other',title:'长标题'.repeat(24)}]).length,1);
-  assert.deepEqual(chalkTaskPreview([]),[]);
+test('idle tasks use measured space without cutting rows or limiting the board to three tasks', () => {
+  assert.equal(fittingChalkTaskCount([60,60,60,60,60,60,60], 420, 8), 6);
+  assert.equal(fittingChalkTaskCount([180,60,60,60], 310, 8), 2);
+  assert.equal(fittingChalkTaskCount([60,60], 128, 8), 2);
+  assert.equal(fittingChalkTaskCount([60,60], 120, 8), 1);
+  assert.equal(fittingChalkTaskCount([180], 150, 8), 0);
+  assert.equal(fittingChalkTaskCount([], 420, 8), 0);
 });
 test('white chalk and eraser remain distinct after normalization and old white erasures are compatible', () => {
   const base={id:'s',color:'#ffffff',width:7,points:[{x:10,y:10}],createdAt:1,revision:'r1'};
