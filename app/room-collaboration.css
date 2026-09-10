@@ -232,3 +232,5 @@
   .workflow-choices button, .workflow-calendar button, .coop-workflow-settings .coop-allday { min-height: 27px; height: 27px; }
   .coop-workflow-settings .coop-workflow-actions button { padding: 5px 8px; }
 }
+
+.coop-workflow-heading > .coop-workflow-actions { margin-left: auto; flex-shrink: 0; }

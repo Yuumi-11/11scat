@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { workflowSettingChanges } from "../../../workflow-setting-changes.ts";
 import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
 import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
@@ -21,7 +22,7 @@ export type Gateway = {
 };
 type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; completedAt?: number };
 type Creation = { state: "new" | "sent" | "received"; beforeIds?: string[] };
-type WorkflowEdit = { id: string; fields: TaskFields; targets?: { owner: string; id: string; before: string; done: boolean }[] };
+type WorkflowEdit = { id: string; fields: TaskFields; summary?: string; targets?: { owner: string; id: string; before: string; done: boolean }[] };
 type WorkflowSide = "source" | "target";
 type TaskRecovery = { id: string; creation: Creation; done?: boolean };
 type Workflow = ClaimWorkflow & { reopenReceipt?: { before: RemoteTask; retryAt: number }; submittedFields?: { source: TaskFields; target: TaskFields }; projects?: Partial<Record<WorkflowSide, string>>; recovery?: Partial<Record<WorkflowSide, TaskRecovery>>; signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean; repeating?: boolean }; submitted?: { source: string; target: string }; edit?: WorkflowEdit };
@@ -558,7 +559,7 @@ export class CollaborationStore {
       if (workflow.status === "approving") workflow.submitted = { source: sides.source ? remoteVersion(sides.source) : "", target: remoteVersion(sides.target) };
       const event = workflow.events.find(item => item.id === edit.id)!;
       event.type = "updated";
-      event.comment = "任务详情已同步到关联任务；待审批任务需按最新内容重新提交";
+      event.comment = edit.summary || "旧记录未保存具体修改内容";
       delete workflow.edit; workflow.error = "";
     } catch (error) { workflow.error = error instanceof Error ? error.message : "任务详情尚未同步完成，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
@@ -649,7 +650,7 @@ export class CollaborationStore {
           const replaced = workflow.events.find(item => item.id === workflow.edit!.id);
           if (replaced) { replaced.type = "update-replaced"; replaced.comment = "此修改由后续详情设置替代"; }
         }
-        workflow.edit = { id: command.id, fields };
+        workflow.edit = { id: command.id, fields, summary: workflowSettingChanges(workflow.fields, fields) };
         workflow.events.push({ id: command.id, signature, actorId: actor, type: "updating", at: Date.now(), comment: "已保存详情修改，正在同步关联任务", files: [] });
         await this.saveWorkflow(state, workflow);
         return this.finishWorkflowEdit(state, workflow);
