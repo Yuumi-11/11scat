@@ -22,3 +22,5 @@
 .font-category { display: flex; gap: 12px; max-width: 1000px; margin: 16px auto; }
 .font-category button { padding: 5px 12px; color: #534738; background: transparent; border: 1px solid #baa886; border-radius: 5px; }
 .font-category button[aria-pressed=true] { background: #4f7669; color: #fff6df; border-color: #4f7669; }
+.device-font-option.classroom-scene { height: auto; min-height: 0; background: #fff9eb80; overflow: visible; display: flex; flex-direction: column; gap: 4px; }
+.device-font-option .device-card { margin: 0 auto; }

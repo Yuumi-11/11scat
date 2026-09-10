@@ -5,7 +5,7 @@ import { Expand, Minimize2 } from 'lucide-react';
 import { fittingChalkTaskCount, classroomDay, type PublicTaskPreview } from './classroom-view';
 
 export type ClassroomPropName = 'calendar' | 'chalk-cup' | 'projector' | 'microphone' | 'camera' | 'taskboard' | 'folder' | 'settings' | 'bell';
-export function ClassroomProp({ name }: { name: ClassroomPropName }) {
+export function ClassroomProp({ name, active = false }: { name: ClassroomPropName; active?: boolean }) {
   if (name === 'bell') return <svg className="classroom-prop prop-bell" viewBox="0 0 90 110" aria-hidden="true">
     <g className="bell-mount"><path fill="#786448" d="M72 10h9v42h-9z" /><path d="M76 21H51q-13 0-13 14v9" fill="none" stroke="#786448" strokeWidth="7" strokeLinecap="round" /></g>
     <g className="bell-body">
@@ -16,7 +16,7 @@ export function ClassroomProp({ name }: { name: ClassroomPropName }) {
       <path fill="#b58a41" d="M33 90h12q1 12-6 12t-6-12z" />
     </g>
   </svg>;
-  return <span className={`classroom-prop prop-${name}`} aria-hidden="true" />;
+  return <span className={`classroom-prop prop-${name}${active ? ' is-on' : ''}`} aria-hidden="true" />;
 }
 export function ClassroomFullscreenIcon({ fullscreen, chalk = true }: { fullscreen: boolean; chalk?: boolean }) {
   if (!chalk) return fullscreen ? <Minimize2 size={19} aria-hidden="true" /> : <Expand size={19} aria-hidden="true" />;
@@ -26,18 +26,27 @@ export function ChalkToolIcon({ name }: { name: 'expand' | 'collapse' | 'text' |
   return <span className="chalk-tool-icon" style={{ backgroundImage: `url('/classroom/chalk/${name}.svg')` }} aria-hidden="true" />;
 }
 export function useProjectionCurtain(source: object | undefined, boardOpen = false) {
-  const [foldedSource, setFoldedSource] = useState<object | null>(null);
+  const [expanded, setExpanded] = useState(false);
   return {
-    open: !!source && source !== foldedSource && !boardOpen,
-    toggle: () => { if (source) setFoldedSource(current => current === source ? null : source); },
-    reveal: () => setFoldedSource(null),
+    open: expanded && !boardOpen,
+    working: !!source,
+    toggle: () => setExpanded(current => !current),
+    reveal: () => setExpanded(true),
+    fold: () => setExpanded(false),
   };
 }
 export function ProjectorControl({ open, hasSource, disabled, onClick }: { open: boolean; hasSource: boolean; disabled?: boolean; onClick: () => void }) {
-  const label = open ? '收起投影' : hasSource ? '展开投影' : '共享屏幕';
-  return <button className="object-button projector-control" type="button" disabled={disabled} onClick={onClick} aria-label={label} title={label} aria-expanded={open}>
-    <ClassroomProp name="projector" />
+  const label = open ? '收起投影' : '展开投影';
+  return <button className={`object-button projector-control${hasSource ? ' is-working' : ''}`} type="button" disabled={disabled} onClick={onClick} aria-label={label} title={label} aria-expanded={open} data-working={hasSource}>
+    <ClassroomProp name="projector" active={hasSource} />
   </button>;
+}
+export function BoardLayerNavigation({ index, count, onStep }: { index: number; count: number; onStep: (direction: -1 | 1) => void }) {
+  return <div className="board-layer-navigation" aria-label="推拉黑板">
+    <button className="board-layer-side previous" type="button" aria-label="前一块黑板" disabled={index === 0} onClick={() => onStep(-1)}><span aria-hidden="true">‹</span></button>
+    <button className="board-layer-side next" type="button" aria-label="后一块黑板" disabled={index >= count - 1} onClick={() => onStep(1)}><span aria-hidden="true">›</span></button>
+    <span className="board-layer-position" aria-label={`第 ${index + 1} 块，共 ${count} 块黑板`}>{index + 1} / {count}</span>
+  </div>;
 }
 export function EmergencyExit({ onClick }: { onClick?: () => void }) {
   return <button className="wall-exit" type="button" aria-label="退出自习室" title="退出自习室" onClick={onClick}>

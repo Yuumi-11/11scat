@@ -1,4 +1,4 @@
-export type MediaSource = "camera" | "screen";
+export type MediaSource = "camera" | "screen" | "microphone";
 
 // Keep recovery requests until signaling and capture are usable again. A page
 // can become visible before PeerJS reconnects or the OS unmutes screen capture.
@@ -15,7 +15,7 @@ export function createMediaRecovery(options: {
   const flush = () => {
     pending.forEach(({ peerId, source }, key) => {
       const stream = options.stream(source);
-      const track = stream?.getVideoTracks()[0];
+      const track = source === 'microphone' ? stream?.getAudioTracks()[0] : stream?.getVideoTracks()[0];
       if (!stream || !track || track.readyState !== "live") { pending.delete(key); return; }
       if (track.muted || !options.canSend(peerId)) return;
       const previous = restartedAt.get(key);
@@ -34,7 +34,7 @@ export function createMediaRecovery(options: {
       flush();
     },
     forget(peerId: string) {
-      for (const source of ["camera", "screen"]) {
+      for (const source of ["camera", "screen", "microphone"]) {
         pending.delete(`${source}:${peerId}`);
         restartedAt.delete(`${source}:${peerId}`);
       }

@@ -11,6 +11,7 @@ export type UserRecord = {
 type IdentityStore = {
   version: 1;
   users: Record<string, UserRecord>;
+  classroom?: { seats: string[]; font: string };
 };
 
 const dataDirectory = process.env.DATA_DIR
@@ -24,7 +25,7 @@ async function readStore(): Promise<IdentityStore> {
   try {
     const parsed = JSON.parse(await readFile(storePath, "utf8")) as Partial<IdentityStore>;
     if (parsed.version !== 1 || !parsed.users || typeof parsed.users !== "object") return emptyStore();
-    return { version: 1, users: parsed.users };
+    return { version: 1, users: parsed.users, classroom: parsed.classroom };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyStore();
     throw error;
@@ -46,6 +47,27 @@ export async function getUser(identityId: string): Promise<UserRecord | null> {
 export async function listRoomMembers() {
   await writeQueue;
   return Object.entries((await readStore()).users).map(([id, user]) => ({ id, name: user.nickname || "成员" }));
+}
+
+export async function getClassroomProfile() {
+  await writeQueue;
+  const store = await readStore();
+  const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '' }));
+  const available = new Set(members.map(member => member.id));
+  const seats = [...new Set([...(store.classroom?.seats || []), ...members.map(member => member.id)])].filter(id => available.has(id)).slice(0, 2);
+  return { members, seats, font: store.classroom?.font || 'sans' };
+}
+
+export function updateClassroomProfile(seats: string[], font: string) {
+  const operation = writeQueue.then(async () => {
+    const store = await readStore();
+    if (seats.length !== Math.min(2, Object.keys(store.users).length) || new Set(seats).size !== seats.length || seats.some(id => !store.users[id])) throw new Error('请选择两位不同的房间成员');
+    if (!['sans', 'rounded', 'youyuan'].includes(font)) throw new Error('字体选项无效');
+    store.classroom = { seats, font };
+    await writeStore(store);
+  });
+  writeQueue = operation.catch(() => undefined);
+  return operation;
 }
 
 export function updateUser(identityId: string, update: (current: UserRecord | null) => UserRecord): Promise<UserRecord> {

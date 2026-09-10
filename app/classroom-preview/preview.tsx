@@ -1,49 +1,75 @@
 "use client";
 import { useState } from 'react';
-import { Check, Paperclip, Mic, Send } from 'lucide-react';
-import { CalendarCard, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from '../ClassroomScene';
+import { Check, Paperclip, Mic, Send, ChevronLeft, ChevronRight, ListTodo } from 'lucide-react';
+import { BoardLayerNavigation, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from '../ClassroomScene';
+import { ActivityInput, DeviceCard, ClassroomSeatingSettings } from '../ClassroomDevices';
+import { fixedClassroomSeats, type ClassroomProfile } from '../classroom-members';
+import { RoomSettings } from '../RoomSettings';
 import { ProjectionSample } from './ProjectionSample';
-import type { CalendarFontId, CalendarTitleId } from './font-options';
 import { Whiteboard, type RoomBoard } from '../Whiteboard';
 import { INITIAL_BOARD_EPOCH, normalizeBoard } from '../board-state';
 import { useMainFullscreen } from '../use-main-fullscreen';
 import '../main-fullscreen.css';
 import '../classroom.css';
 
-const previewSource = {};
 const previewTasks = [{id:'one',title:'整理今天的课堂笔记'}, {id:'two',title:'完成数据结构练习'}, {id:'three',title:'一起复习本周的内容'}];
-const additionalTasks = ['补充实验报告', '整理错题', '完成阅读记录', '准备下次讨论', '核对本周作业', '复习上节课的例题', '整理学习资料'].map((title, index) => ({id:`extra-${index}`, title}));
-const extendedTasks = [...previewTasks, ...additionalTasks];
-const longTitleTasks = [previewTasks[0], {id:'long-title', title:'整理今天的课堂笔记，并补充数据结构练习中没有完成的推导过程'}, previewTasks[1], {id:'last-long',title:'一起复习本周的内容，核对课堂例题并整理下一次讨论需要用到的资料'}, ...additionalTasks];
-export function ClassroomPreview({ calendarFont = 'pen', calendarTitle = 'chalk' }: { calendarFont?: CalendarFontId; calendarTitle?: CalendarTitleId }) {
+const additionalTasks = ['补充实验报告', '整理错题', '完成阅读记录', '准备下次讨论', '核对本周作业', '复习上节课的例题', '整理学习资料'].map((title, index) => ({id:'extra-'+index, title}));
+const longTitleTasks = [previewTasks[0], {id:'long-title',title:'整理今天的课堂笔记，并补充数据结构练习中没有完成的推导过程'}, previewTasks[1], {id:'last-long',title:'一起复习本周的内容，核对课堂例题并整理下一次讨论需要用到的资料'}, ...additionalTasks];
+export function ClassroomPreview({ deviceFont = 'sans' }: { deviceFont?: string }) {
   const date = useClassroomDate();
   const [side, setSide] = useState('chat');
-  const [mode, setMode] = useState('idle');
-  const [moreTasks, setMoreTasks] = useState(false);
-  const [longTitles, setLongTitles] = useState(false);
-  const [selfProjection, setSelfProjection] = useState(false);
-  const [peerProjection, setPeerProjection] = useState(false);
-  const projection = useProjectionCurtain(mode === 'projection' ? previewSource : undefined);
-  const selectMode = (next: string) => { projection.reveal(); setMode(next); };
-  const { stageRef, fullscreen, toggleFullscreen } = useMainFullscreen();
-  const [board,setBoard]=useState<RoomBoard>({id:'e6f461d2-0b17-4606-a916-eac86c03bab7',name:'画板',strokes:[],texts:[],deletedStrokeIds:[],deletedTextIds:[],epoch:INITIAL_BOARD_EPOCH,createdAt:1});
-  const [notice, setNotice]=useState('');
-  return <main className="app-shell classroom-scene" data-calendar-font={calendarFont} data-calendar-title={calendarTitle} aria-label="本地教室外观预览">
-    <section className="workspace">
-      <section className="focus-stage panel"><div className="share-canvas" ref={stageRef}>
-        <ProjectorControl open={projection.open} hasSource={mode === "projection"} onClick={() => mode === "projection" ? projection.toggle() : selectMode("projection")} />
-        {mode!=='board' && !projection.open && <IdleChalkboard date={date} tasks={longTitles ? longTitleTasks : moreTasks ? extendedTasks : previewTasks} />}
-        <div className={projection.open?'projection-sheet is-open':'projection-sheet'} aria-hidden={!projection.open}>{projection.open && <ProjectionSample />}</div>
-        {mode==='board' && <Whiteboard board={board} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke,epoch)=>setBoard(current=>current.epoch===epoch?{...current,strokes:[...current.strokes.filter(s=>s.id!==stroke.id),stroke]}:current)} onDeleteStroke={(id)=>setBoard(current=>({...current,strokes:current.strokes.filter(s=>s.id!==id),deletedStrokeIds:[...current.deletedStrokeIds,id]}))} onClear={()=>setBoard(current=>({...current,strokes:[],texts:[],epoch:Date.now()+':clear'}))} onUpsertText={text=>setBoard(current=>({...current,texts:[...current.texts.filter(t=>t.id!==text.id),text]}))} onDeleteText={id=>setBoard(current=>({...current,texts:current.texts.filter(t=>t.id!==id),deletedTextIds:[...current.deletedTextIds,id]}))} onSaved={message=>setNotice(message)} onExport={async blob=>{const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='classroom-board.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}} />}
-        {mode!=='board' && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} aria-label={fullscreen ? '退出主窗口全屏' : '主窗口全屏'} onClick={()=>void toggleFullscreen()}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
-        <div className="board-ledge" aria-hidden="true"><div className="ledge-decoration"><span className="chalk-eraser" /><span className="chalk-stick" /><span className="chalk-stick" style={{background:'#efd28a'}} /><span className="chalk-stick" style={{background:'#a4c5de'}} /><span className="chalk-stick" style={{background:'#e0a7b5'}} /></div></div>
-      </div></section>
+  const [moreTasks, setMoreTasks] = useState(false), [longTitles, setLongTitles] = useState(false);
+  const [selfScreen, setSelfScreen] = useState(false), [selfCamera, setSelfCamera] = useState(false), [microphone, setMicrophone] = useState(false);
+  const [peerScreen, setPeerScreen] = useState(false), [peerCamera, setPeerCamera] = useState(false), [peerOnline, setPeerOnline] = useState(true);
+  const [multiDevice, setMultiDevice] = useState(false), [badge, setBadge] = useState(6);
+  const [profile, setProfile] = useState<ClassroomProfile>({members:[{id:'self',name:'11',activity:'复习数据结构'},{id:'peer',name:'11scat',activity:'整理课堂笔记'}],seats:['self','peer'],font:deviceFont});
+  const [activity,setActivity] = useState('复习数据结构');
+  const [boards,setBoards] = useState<RoomBoard[]>([]), [activeBoardId,setActiveBoardId] = useState('');
+  const [activeMediaId,setActiveMediaId] = useState('');
+  const [notice,setNotice] = useState('');
+  const media = [{id:'self-screen',label:'11 · 投屏',on:selfScreen},{id:'self-camera',label:'11 · 摄像头',on:selfCamera},{id:'peer-screen',label:'11scat · 投屏',on:peerOnline && peerScreen},{id:'peer-camera',label:'11scat · 摄像头',on:peerOnline && peerCamera}].filter(item=>item.on);
+  const activeMedia = media.find(item=>item.id===activeMediaId) || media[0];
+  const board = boards.find(item=>item.id===activeBoardId);
+  const boardIndex = board ? boards.indexOf(board)+1 : 0;
+  const projection = useProjectionCurtain(activeMedia,!!board);
+  const {stageRef,fullscreen,toggleFullscreen}=useMainFullscreen();
+  const createBoard = () => {
+    if(boards.length>=12) {setNotice('最多保留 12 张画板');return;}
+    const next:RoomBoard={id:crypto.randomUUID(),name:'画板 '+(boards.length+1),strokes:[],texts:[],deletedStrokeIds:[],deletedTextIds:[],epoch:INITIAL_BOARD_EPOCH,createdAt:Date.now()};
+    setBoards(items=>[...items,next]);setActiveBoardId(next.id);projection.fold();
+  };
+  const updateBoard=(change:(current:RoomBoard)=>RoomBoard)=>setBoards(items=>items.map(item=>item.id===activeBoardId?change(item):item));
+  const stepBoard=(direction:-1|1)=>{const next=Math.max(0,Math.min(boards.length,boardIndex+direction));setActiveBoardId(next?boards[next-1].id:'');projection.fold();};
+  const toggleSelf=(kind:'screen'|'camera')=>{const on=kind==='screen'?selfScreen:selfCamera;(kind==='screen'?setSelfScreen:setSelfCamera)(!on);if(!on){setActiveBoardId('');setActiveMediaId('self-'+kind);projection.reveal();}};
+  const view=(id:string)=>{setActiveMediaId(id);setActiveBoardId('');projection.reveal();};
+  const stepMedia=(direction:number)=>{const current=media.findIndex(item=>item.id===activeMedia?.id);setActiveMediaId(media[(current+direction+media.length)%media.length].id);};
+  return <main className="app-shell classroom-scene" data-device-font={profile.font} aria-label="本地教室外观预览">
+    <section className="workspace"><section className="focus-stage panel"><div className="share-canvas" ref={stageRef}><div className="stage-content">
+      <ProjectorControl open={projection.open} hasSource={!!activeMedia} onClick={()=>{if(board){setActiveBoardId('');projection.reveal();}else projection.toggle();}} />
+      {!projection.open && <BoardLayerNavigation index={boardIndex} count={boards.length+1} onStep={stepBoard}/>}
+      {!board && !projection.open && <IdleChalkboard date={date} tasks={longTitles?longTitleTasks:moreTasks?[...previewTasks,...additionalTasks]:previewTasks}/>}
+      <div className={projection.open?'projection-sheet is-open':'projection-sheet'} aria-hidden={!projection.open}>{projection.open && activeMedia && <><ProjectionSample key={activeMedia.id} source={activeMedia.id}/>{media.length>1 && <><button className="media-nav media-prev" aria-label="查看上一个画面" onClick={()=>stepMedia(-1)}><ChevronLeft/></button><button className="media-nav media-next" aria-label="查看下一个画面" onClick={()=>stepMedia(1)}><ChevronRight/></button></>}<div className="media-caption">{activeMedia.label}<span>{media.indexOf(activeMedia)+1} / {media.length}</span></div></>}</div>
+      {board && <Whiteboard key={board.id} board={board} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen}
+        onAddStroke={(stroke,epoch)=>updateBoard(current=>current.epoch===epoch?{...current,strokes:[...current.strokes.filter(item=>item.id!==stroke.id),stroke]}:current)}
+        onDeleteStroke={id=>updateBoard(current=>({...current,strokes:current.strokes.filter(item=>item.id!==id),deletedStrokeIds:[...current.deletedStrokeIds,id]}))}
+        onClear={()=>updateBoard(current=>({...current,strokes:[],texts:[],epoch:Date.now()+':clear'}))}
+        onUpsertText={text=>updateBoard(current=>({...current,texts:[...current.texts.filter(item=>item.id!==text.id),text]}))}
+        onDeleteText={id=>updateBoard(current=>({...current,texts:current.texts.filter(item=>item.id!==id),deletedTextIds:[...current.deletedTextIds,id]}))}
+        onSaved={message=>setNotice(message)} onExport={async blob=>{const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='classroom-board.png';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}} />}
+      {!board && <button className={'main-fullscreen-button'+(projection.open?'':' is-chalk')} aria-label={fullscreen?'退出主窗口全屏':'主窗口全屏'} onClick={()=>void toggleFullscreen()}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open}/></button>}
+      <div className="board-ledge" aria-hidden="true">{!board && <div className="ledge-decoration"><span className="chalk-eraser"/><span className="chalk-stick"/><span className="chalk-stick" style={{background:'#efd28a'}}/><span className="chalk-stick" style={{background:'#e0a7b5'}}/></div>}</div>
+    </div></div></section>
       <aside className="side-panel panel"><div className="side-tabs"><button className={side==='chat'?'active':''} onClick={()=>setSide('chat')}>传纸条</button><button className={side==='tasks'?'active':''} onClick={()=>setSide('tasks')}>同桌</button><div className="chat-bell-host"><button className="room-bell-trigger" aria-label="摇铃"><ClassroomProp name="bell" /></button></div></div>
       {side==='chat'? <div className="chat-view"><div className="message-list"><div className="message"><span>11 · 10:24</span><p>今天先把作业做完，再一起看看昨天的笔记。</p></div><div className="message own"><span>11scat · 10:24</span><p>好，做完了在任务板提交。</p></div></div><form className="chat-form" onSubmit={e=>e.preventDefault()}><div className="chat-input-row"><button className="chat-attach-button" aria-label="添加附件"><Paperclip /></button><button className="voice-record-button" aria-label="录音"><Mic /></button><textarea aria-label="输入房间消息" rows={2}/><button className="primary-button chat-send-button" aria-label="发送"><Send size={16}/></button></div></form></div>:
       <div className="task-view"><div className="task-scroll">{['11','11scat'].map((name,i)=><section className="task-person-card" key={name}><div className="activity-heading"><strong>{name}</strong></div><div className="task-person-list"><div className="task-list">{previewTasks.slice(i).map(t=><div className="task-row" key={t.id}><span className="custom-check"><Check size={14}/></span><span className="task-copy"><strong>{t.title}</strong></span></div>)}</div></div></section>)}</div></div>}</aside>
     </section>
-    <div className="scene-desks"><div className="classroom-desk"><CalendarCard name="11" projecting={selfProjection}><form className="activity-box" onSubmit={e=>e.preventDefault()}><input aria-label="我正在" defaultValue="复习数据结构" maxLength={80}/></form></CalendarCard></div><div className="classroom-desk"><CalendarCard name="11scat" projecting={peerProjection}><p>整理课堂笔记</p></CalendarCard></div><div className="classroom-desk desk-media">{(['chalk-cup','microphone','camera'] as const).map((name,i)=><button className="object-button" key={name} aria-label={['画板','麦克风','摄像头'][i]} onClick={i===0?()=>selectMode(mode==='board'?'idle':'board'):undefined}><ClassroomProp name={name}/></button>)}</div><div className="classroom-desk desk-room">{(['taskboard','folder','settings'] as const).map((name,i)=><button className="object-button" key={name} aria-label={['任务板','云盘','设置'][i]}><ClassroomProp name={name}/></button>)}</div></div>
-    <EmergencyExit />
-    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span>{[['idle','待机'],['projection','投影'],['board','画板']].map(([value,label])=><button key={value} onClick={()=>selectMode(value)} aria-pressed={mode===value}>{label}</button>)}<button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>setSelfProjection(value=>!value)} aria-pressed={selfProjection}>我的投屏</button><button onClick={()=>setPeerProjection(value=>!value)} aria-pressed={peerProjection}>同桌摄像头</button><a href="/classroom-preview/fonts">台历字体对比</a><a href="/classroom-preview/chalk-art">粉笔图案样例</a><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)setBoard(next);setNotice('已重新载入');}}>重新载入笔迹</button>{mode==='board' && <span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span>}{notice && <span role="status">{notice}</span>}</div>
+    <div className="scene-desks">{fixedClassroomSeats(profile).map((member,index)=><div className="classroom-desk" key={index}><DeviceCard kind={index===0?'tablet':'laptop'} name={member.name} online={member.id==='self'||peerOnline} self={member.id==='self'} screen={member.id==='self'?selfScreen:peerScreen} camera={member.id==='self'?selfCamera:peerCamera}
+      onScreen={member.id==='self'?()=>toggleSelf('screen'):peerScreen?()=>view('peer-screen'):undefined} onCamera={member.id==='self'?()=>toggleSelf('camera'):peerCamera?()=>view('peer-camera'):undefined}>
+      {member.id==='self'?<form className="activity-box" onSubmit={event=>event.preventDefault()}><ActivityInput value={activity} onChange={setActivity}/></form>:<p>{member.activity}</p>}
+    </DeviceCard></div>)}
+    <div className="classroom-desk desk-media"><button className="object-button" aria-label="画板" onClick={createBoard}><ClassroomProp name="chalk-cup"/></button><button className="object-button" aria-label={microphone?'关闭麦克风':'打开麦克风'} aria-pressed={microphone} onClick={()=>setMicrophone(value=>!value)}><ClassroomProp name="microphone" active={microphone}/></button><button className="object-button" aria-label={selfCamera?'关闭摄像头':'开启摄像头'} aria-pressed={selfCamera} onClick={()=>toggleSelf('camera')}><ClassroomProp name="camera" active={selfCamera}/></button></div>
+    <div className="classroom-desk desk-room"><button className="room-collaboration-trigger" aria-label="任务板"><ClassroomProp name="taskboard"/>{badge>0&&<i aria-hidden="true">{badge}</i>}</button><button className="object-button" aria-label="云盘"><ClassroomProp name="folder"/></button><RoomSettings triggerContent={<ClassroomProp name="settings"/>} sections={[{id:'seating',label:'座位与设备字体',icon:<ListTodo/>,content:<ClassroomSeatingSettings profile={profile} onChange={setProfile}/>}]} /></div></div>
+    <EmergencyExit/>
+    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span><button onClick={()=>{setActiveBoardId('');projection.fold();}}>待机</button><button onClick={()=>{setActiveBoardId('');projection.reveal();}}>投影</button><button onClick={createBoard}>画板</button><button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>toggleSelf('screen')} aria-pressed={selfScreen}>我的投屏</button><button onClick={()=>setPeerScreen(value=>!value)} aria-pressed={peerScreen}>同桌投屏</button><button onClick={()=>setPeerCamera(value=>!value)} aria-pressed={peerCamera}>同桌摄像头</button><button onClick={()=>setPeerOnline(value=>!value)} aria-pressed={!peerOnline}>同桌离开</button><button onClick={()=>setMultiDevice(value=>!value)} aria-pressed={multiDevice}>同账号多端</button>{multiDevice&&<span>同桌 2 台设备</span>}<button onClick={()=>setBadge(value=>value?0:6)}>任务板角标</button><a href="/classroom-preview/fonts">设备字体对比</a><a href="/classroom-preview/chalk-art">粉笔图案样例</a>{board&&<><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)updateBoard(()=>next);}}>重新载入笔迹</button><span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span></>}{notice&&<span role="status">{notice}</span>}</div>
   </main>;
 }

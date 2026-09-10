@@ -1,6 +1,7 @@
 "use client";
 
 import { AudioPlayer } from "./AudioPlayer";
+import { RemoteMicrophone } from "./RemoteMicrophone";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, Plus, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, Bell, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
@@ -22,7 +23,10 @@ import { CloudDrive } from "./CloudDrive";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
-import { CalendarCard, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
+import { BoardLayerNavigation, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
+import { ActivityInput, ClassroomSeatingSettings, DeviceCard } from './ClassroomDevices';
+import { fixedClassroomSeats, memberDevices } from './classroom-members';
+import { useClassroomProfile } from './use-classroom-profile';
 import { classroomDay, todayTasks, type PublicTaskPreview } from "./classroom-view";
 
 type Task = {
@@ -41,7 +45,7 @@ type ChatAttachment = { id: string; url: string; name: string; size: number; mim
 type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean; delivery?: "sending" | "failed"; error?: string };
 type OutgoingChat = { message: ChatMessage; file?: File; attachment?: ChatAttachment };
 type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done" | "isAllDay">;
-type MediaSource = "camera" | "screen";
+type MediaSource = "camera" | "screen" | "microphone";
 type MediaItem = {
   id: string;
   label: string;
@@ -205,7 +209,6 @@ export default function Home() {
   const classroomDate = useClassroomDate();
   const today = classroomDate ? classroomDay(classroomDate) : "";
   const [publicTasks, setPublicTasks] = useState<PublicTaskPreview[]>([]);
-  const [boardShelfOpen, setBoardShelfOpen] = useState(false);
   const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
   const [shareModeOpen, setShareModeOpen] = useState(false);
   const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
@@ -216,6 +219,12 @@ export default function Home() {
   const [remoteAudioBlocked, setRemoteAudioBlocked] = useState(false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
   const [shareError, setShareError] = useState("");
+  const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const microphoneBusy = useRef(false);
+  const microphoneRequest = useRef(0);
+  const [remoteMicrophones, setRemoteMicrophones] = useState<Record<string, MediaStream>>({});
+  const [microphoneError, setMicrophoneError] = useState('');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState("");
   const [roomMembers, setRoomMembers] = useState<string[]>([]);
@@ -320,6 +329,8 @@ export default function Home() {
       }
     } catch { setRoomError("画板同步数据过大，请保存后新建画板。"); }
   }, []);
+
+  const classroomProfile = useClassroomProfile(joined, broadcastRoomMessage);
 
   const updateBoards = useCallback((update: (current: RoomBoard[]) => RoomBoard[]) => {
     const next = update(boardsRef.current);
@@ -859,9 +870,13 @@ export default function Home() {
       const participants = Array.from(room.remoteParticipants.values()).filter((participant) => participant.name !== "11scat member");
       setRoomMembers(participants.map((participant) => participant.identity));
       setMemberNames(Object.fromEntries(participants.map((participant) => [participant.identity, participant.name?.trim() || participant.identity])));
+      setPeerIdentityIds(Object.fromEntries(participants.flatMap(participant => {
+        try { const value = JSON.parse(participant.metadata || '{}'); return typeof value.identityId === 'string' ? [[participant.identity, value.identityId]] : []; }
+        catch { return []; }
+      })));
     };
     const removeRemote = (identity: string, source: MediaSource) => {
-      const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
+      const setter = source === "microphone" ? setRemoteMicrophones : source === "camera" ? setRemoteCameras : setRemoteScreens;
       setter((current) => { const next = { ...current }; delete next[identity]; return next; });
     };
     room.on(RoomEvent.ParticipantConnected, () => {
@@ -870,6 +885,7 @@ export default function Home() {
       broadcastRoomMessage({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] });
     });
     room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+      removeRemote(participant.identity, "microphone");
       removeRemote(participant.identity, "camera");
       removeRemote(participant.identity, "screen");
       setMemberNames((current) => {
@@ -892,6 +908,9 @@ export default function Home() {
       refreshMembers();
     });
     room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+      if (publication.source === Track.Source.Microphone) {
+        setRemoteMicrophones(current => ({...current,[participant.identity]:new MediaStream([track.mediaStreamTrack])})); return;
+      }
       if (track.kind !== Track.Kind.Video) return;
       const source: MediaSource = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
       const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
@@ -899,12 +918,14 @@ export default function Home() {
       refreshMembers();
     });
     room.on(RoomEvent.TrackUnsubscribed, (_track, publication, participant) => {
+      if (publication.source === Track.Source.Microphone) { removeRemote(participant.identity, "microphone"); return; }
       if (publication.kind !== Track.Kind.Video) return;
       removeRemote(participant.identity, publication.source === Track.Source.ScreenShare ? "screen" : "camera");
     });
     room.on(RoomEvent.DataReceived, (payload, participant) => {
       try {
         const message = JSON.parse(new TextDecoder().decode(payload)) as ChatMessage & { type?: string; tasks?: unknown; activity?: unknown; boards?: unknown; board?: unknown };
+        if (message.type === 'classroom-settings-changed') { window.dispatchEvent(new Event('classroom-settings-changed')); return; }
         if (receiveBoardMessage(message)) return;
         if (message.type === "chat-recall" && typeof message.id === "string") {
           setMessages((current) => current.filter((item) => item.id !== message.id));
@@ -974,7 +995,7 @@ export default function Home() {
     const mediaRecovery = createMediaRecovery({
       peers: () => Array.from(connections.keys()),
       canSend: (peerId) => !disposed && Boolean(localPeer?.open && connections.get(peerId)?.open),
-      stream: (source) => source === "screen" ? screenStreamRef.current : cameraStreamRef.current,
+      stream: (source) => source === "microphone" ? microphoneStreamRef.current : source === "screen" ? screenStreamRef.current : cameraStreamRef.current,
       restart: (peerId, media, source) => {
         const key = `${source}:${peerId}`;
         const old = outgoingCalls.get(key);
@@ -1131,6 +1152,7 @@ export default function Home() {
             connection.send({ type: "media-request" });
             if (cameraStreamRef.current) callPeer(connection.peer, cameraStreamRef.current, "camera");
             if (screenStreamRef.current) callPeer(connection.peer, screenStreamRef.current, "screen");
+            if (microphoneStreamRef.current) callPeer(connection.peer, microphoneStreamRef.current, "microphone");
           }
         });
         incomingCalls.forEach((call, key) => {
@@ -1141,14 +1163,19 @@ export default function Home() {
           void call.peerConnection.getStats().then((stats) => {
             if (disposed || incomingCalls.get(key) !== call) return;
             let frames = 0;
-            stats.forEach((report) => { if (report.type === "inbound-rtp" && (report.kind === "video" || report.mediaType === "video")) frames += report.framesDecoded || 0; });
+            stats.forEach((report) => {
+              const kind = report.kind || report.mediaType;
+              if (report.type !== 'inbound-rtp') return;
+              if (key.startsWith('microphone:') && kind === 'audio') frames += report.packetsReceived || 0;
+              else if (kind === 'video') frames += report.framesDecoded || 0;
+            });
             if (frames > progress.frames) { progress.frames = frames; progress.changedAt = Date.now(); }
             const failed = ["failed", "closed"].includes(call.peerConnection.connectionState);
             if (failed || Date.now() - progress.changedAt > 20_000) {
               const connection = connections.get(call.peer);
               if (connection?.open) {
                 progress.changedAt = Date.now();
-                connection.send({ type: "media-request", repair: true, source: key.startsWith("screen:") ? "screen" : "camera" });
+                connection.send({ type: "media-request", repair: true, source: key.startsWith('microphone:') ? 'microphone' : key.startsWith("screen:") ? "screen" : "camera" });
               }
             }
           }).catch(() => undefined).finally(() => { progress.checking = false; });
@@ -1184,7 +1211,7 @@ export default function Home() {
     };
 
     const removeRemoteMedia = (peerId: string, source: MediaSource) => {
-      const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
+      const setter = source === "microphone" ? setRemoteMicrophones : source === "camera" ? setRemoteCameras : setRemoteScreens;
       setter((current) => {
         if (!current[peerId]) return current;
         const next = { ...current };
@@ -1194,7 +1221,7 @@ export default function Home() {
     };
 
     const closePeerCalls = (peerId: string) => {
-      (["camera", "screen"] as MediaSource[]).forEach((source) => {
+      (["camera", "screen", "microphone"] as MediaSource[]).forEach((source) => {
         const key = `${source}:${peerId}`;
         outgoingCalls.get(key)?.close();
         incomingCalls.get(key)?.close();
@@ -1261,7 +1288,7 @@ export default function Home() {
       if (!localPeer?.open || !connections.get(peerId)?.open) return;
       const key = `${source}:${peerId}`;
       const existing = outgoingCalls.get(key);
-      if (!media.getVideoTracks().some((track) => track.readyState === "live")) return;
+      if (!(source === "microphone" ? media.getAudioTracks() : media.getVideoTracks()).some((track) => track.readyState === "live")) return;
       if (mediaCallReusable(existing)) return;
       existing?.close();
 
@@ -1271,7 +1298,7 @@ export default function Home() {
         if (disposed || outgoingCalls.get(key) !== call) return;
         outgoingCalls.delete(key);
         call.close();
-        const currentStream = source === "camera" ? cameraStreamRef.current : screenStreamRef.current;
+        const currentStream = source === "microphone" ? microphoneStreamRef.current : source === "camera" ? cameraStreamRef.current : screenStreamRef.current;
         if (!currentStream || currentStream !== media || attempt >= 3) return;
         window.setTimeout(() => callPeer(peerId, currentStream, source, attempt + 1), 900 * (attempt + 1));
       };
@@ -1370,12 +1397,14 @@ export default function Home() {
         if (hostPeerIdRef.current === selfPeerIdRef.current) broadcastPeerList();
         if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
         if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
+          if (microphoneStreamRef.current) callPeer(peerId, microphoneStreamRef.current, "microphone");
       };
 
       connection.on("open", handleOpen);
       connection.on("data", (payload) => {
         if (!payload || typeof payload !== "object" || !("type" in payload)) return;
         const message = payload as { type: string; ids?: unknown; tasks?: unknown; id?: unknown; body?: unknown; imageUrl?: unknown; attachment?: unknown; replyTo?: unknown; identityId?: unknown; time?: unknown; createdAt?: unknown; sender?: unknown; name?: unknown; deviceId?: unknown; activity?: unknown; mobile?: unknown; boards?: unknown; board?: unknown };
+        if (message.type === 'classroom-settings-changed') { window.dispatchEvent(new Event('classroom-settings-changed')); return; }
         if (receiveBoardMessage(message)) return;
         if (message.type === "chat-recall" && typeof message.id === "string") {
           setMessages((current) => current.filter((item) => item.id !== message.id));
@@ -1400,12 +1429,13 @@ export default function Home() {
         }
         if (message.type === "media-request") {
           const request = payload as { repair?: boolean; source?: string };
-          if (request.repair === true && (request.source === "screen" || request.source === "camera")) {
+          if (request.repair === true && (request.source === "screen" || request.source === "camera" || request.source === "microphone")) {
             mediaRecovery.request(request.source, peerId);
             return;
           }
           if (cameraStreamRef.current) callPeer(peerId, cameraStreamRef.current, "camera");
           if (screenStreamRef.current) callPeer(peerId, screenStreamRef.current, "screen");
+          if (microphoneStreamRef.current) callPeer(peerId, microphoneStreamRef.current, "microphone");
           return;
         }
         if (message.type === "task-snapshot" && Array.isArray(message.tasks)) {
@@ -1492,7 +1522,7 @@ export default function Home() {
 
         const handleCall = (call: MediaConnection) => {
           const peerId = call.peer;
-          const source: MediaSource = call.metadata?.source === "screen" ? "screen" : "camera";
+          const source: MediaSource = call.metadata?.source === "microphone" ? "microphone" : call.metadata?.source === "screen" ? "screen" : "camera";
           rememberPeerName(peerId, call.metadata?.name);
           rememberPeerIdentity(peerId, call.metadata?.identityId);
           const key = `${source}:${peerId}`;
@@ -1503,11 +1533,11 @@ export default function Home() {
           call.answer();
           call.on("stream", (remoteStream) => {
             if (disposed || incomingCalls.get(key) !== call) return;
-            const setter = source === "camera" ? setRemoteCameras : setRemoteScreens;
+            const setter = source === "microphone" ? setRemoteMicrophones : source === "camera" ? setRemoteCameras : setRemoteScreens;
             setter((current) => ({ ...current, [peerId]: remoteStream }));
             setRoomError("");
             if (source === "screen") setActiveMediaId(`${peerId}-screen`);
-            remoteStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+            remoteStream.getTracks()[0]?.addEventListener("ended", () => {
               if (incomingCalls.get(key) === call) removeRemoteMedia(peerId, source);
             });
           });
@@ -1586,6 +1616,7 @@ export default function Home() {
       // direction when our own screen sender was suspended in the background.
       mediaRecovery.request("screen");
       mediaRecovery.request("camera");
+      mediaRecovery.request("microphone");
       // Re-request even when the old MediaConnection still reports open.
       connections.forEach((connection) => {
         if (!connection.open) return;
@@ -1760,6 +1791,7 @@ export default function Home() {
       setStream(nextStream);
       setShareMode(mode);
       setActiveMediaId("self-screen");
+      setActiveBoardId(""); projection.reveal();
       setActiveBoardId("");
       if (withComputerAudio && nextStream.getAudioTracks().length === 0) {
         setShareError("画面已开始共享，但当前浏览器或所选窗口没有提供电脑音频。可改选支持音频的标签页或整个屏幕。");
@@ -1886,6 +1918,8 @@ export default function Home() {
   };
 
   const createBoard = () => {
+    if (boardsRef.current.length >= 12) { setBoardNotice("最多保留 12 张画板，可在设置中删除不用的画板"); return; }
+    projection.fold();
     const board: RoomBoard = { id: crypto.randomUUID(), name: `画板 ${boardsRef.current.length + 1}`, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [], epoch: INITIAL_BOARD_EPOCH, createdAt: Date.now() };
     const next = [...boardsRef.current, board].slice(0, 12);
     boardsRef.current = next;
@@ -1961,6 +1995,44 @@ export default function Home() {
     return () => { disposed = true; };
   }, [joined]);
 
+  useEffect(() => {
+    microphoneStreamRef.current = microphoneStream;
+    outgoingCallsRef.current.forEach((call,key) => { if(key.startsWith('microphone:')) {call.close();outgoingCallsRef.current.delete(key);} });
+    if(microphoneStream) dataConnectionsRef.current.forEach((_connection,peerId) => callPeerRef.current(peerId,microphoneStream,'microphone'));
+    const track=microphoneStream?.getAudioTracks()[0];
+    const resume=()=>recoverPublishedMediaRef.current('microphone');
+    const visible=()=>{if(!document.hidden)resume();};
+    track?.addEventListener('unmute',resume);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',visible);
+    return ()=>{track?.removeEventListener('unmute',resume);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',visible);microphoneStream?.getTracks().forEach(item=>item.stop());};
+  },[microphoneStream]);
+  const stopMicrophone = () => {
+    microphoneRequest.current += 1;
+    microphoneBusy.current = false;
+    microphoneStreamRef.current?.getTracks().forEach(track=>{void roomRef.current?.localParticipant.unpublishTrack(track);track.stop();});
+    microphoneStreamRef.current=null;setMicrophoneStream(null);
+  };
+  const toggleMicrophone = async () => {
+    if(microphoneStreamRef.current){stopMicrophone();return;}
+    if(microphoneBusy.current || !joined)return;
+    microphoneBusy.current=true;setMicrophoneError('');let capture:MediaStream|null=null;
+    const request = ++microphoneRequest.current;
+    const owner = roomRef.current;
+    const cancelled = () => request !== microphoneRequest.current || intentionalLeaveRef.current;
+    const release = () => capture?.getTracks().forEach(track => { void owner?.localParticipant.unpublishTrack(track).catch(() => undefined); track.stop(); });
+    try {
+      capture=await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true}});
+      if (cancelled()) { release(); return; }
+      const track=capture.getAudioTracks()[0];
+      if (!track) throw new Error('没有可用音轨');
+      if(track)await owner?.localParticipant.publishTrack(track,{source:Track.Source.Microphone});
+      if (cancelled() || (USE_LIVEKIT && owner !== roomRef.current)) { release(); return; }
+      microphoneStreamRef.current=capture;setMicrophoneStream(capture);
+      track?.addEventListener('ended',()=>{if(microphoneStreamRef.current===capture){if(track)void roomRef.current?.localParticipant.unpublishTrack(track);microphoneStreamRef.current=null;setMicrophoneStream(null);}});
+    }catch {release();if (!cancelled()) setMicrophoneError('麦克风暂时无法开启，请检查浏览器权限与设备占用');}
+    finally{if (request === microphoneRequest.current) microphoneBusy.current=false;}
+  };
+  useEffect(() => () => { microphoneRequest.current += 1; microphoneBusy.current = false; }, [joined]);
+
   const stopCamera = () => {
     cameraStream?.getTracks().forEach((track) => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
     setCameraStream(null);
@@ -1993,6 +2065,7 @@ export default function Home() {
       if (track) await roomRef.current?.localParticipant.publishTrack(track, { source: Track.Source.Camera });
       setCameraStream(nextCameraStream);
       setActiveMediaId("self-camera");
+      setActiveBoardId(""); projection.reveal();
     } catch (error) {
       const name = (error as DOMException).name;
       setCameraError(name === "NotAllowedError"
@@ -2249,9 +2322,15 @@ export default function Home() {
   });
   mediaItems.sort((left, right) => Number(right.kind === "screen") - Number(left.kind === "screen"));
   const activeMedia = mediaItems.find((item) => item.id === activeMediaId) || mediaItems[0];
-  const activeBoard = boards.find((board) => board.id === activeBoardId);
+  const orderedBoards = [...boards].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+  const activeBoard = orderedBoards.find((board) => board.id === activeBoardId);
+  const boardIndex = activeBoard ? orderedBoards.indexOf(activeBoard) + 1 : 0;
   const projection = useProjectionCurtain(activeMedia?.stream, !!activeBoard);
 
+  const stepBoard = (direction: -1 | 1) => {
+    const index = Math.max(0, Math.min(orderedBoards.length, boardIndex + direction));
+    setActiveBoardId(index ? orderedBoards[index - 1].id : ''); projection.fold();
+  };
   const stepMedia = (direction: -1 | 1) => {
     if (mediaItems.length < 2) return;
     const currentIndex = Math.max(0, mediaItems.findIndex((item) => item.id === activeMedia?.id));
@@ -2261,19 +2340,19 @@ export default function Home() {
   };
 
   return (
-    <main className="app-shell classroom-scene" id="top">
+    <main className="app-shell classroom-scene" id="top" data-device-font={classroomProfile.profile.font}>
       <section className="workspace">
         <section className="focus-stage panel">
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
-          <div className="share-canvas" ref={stageRef}>
+          <div className="share-canvas" ref={stageRef}><div className="stage-content">
             <ProjectorControl open={projection.open} hasSource={!!activeMedia} disabled={shareStarting} onClick={() => {
-              if (!activeMedia) { openShareDialog("start"); return; }
               if (activeBoard) { setActiveBoardId(""); projection.reveal(); return; }
               projection.toggle();
             }} />
+            {!projection.open && <BoardLayerNavigation index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} />}
             {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
-            {activeBoard ? <Whiteboard board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
+            {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);
@@ -2308,8 +2387,8 @@ export default function Home() {
 
               </>}
             </div>
-            <div className="board-ledge" aria-hidden="true">{!activeBoard && <div className="ledge-decoration"><span className="chalk-eraser" /><span className="chalk-stick" /><span className="chalk-stick" style={{background: '#efd28a'}} /><span className="chalk-stick" style={{background: '#a4c5de'}} /><span className="chalk-stick" style={{background: '#e0a7b5'}} /></div>}</div>
-          </div>
+            <div className="board-ledge" aria-hidden="true">{!activeBoard && <div className="ledge-decoration"><span className="chalk-eraser" /><span className="chalk-stick" /><span className="chalk-stick" style={{background: '#efd28a'}} /><span className="chalk-stick" style={{background: '#e0a7b5'}} /></div>}</div>
+          </div></div>
           {boardNotice && <p className="board-notice" role="status">{boardNotice}</p>}
           {(shareError || cameraError) && <p className="error-message" role="alert">{shareError || cameraError}</p>}
 
@@ -2486,24 +2565,33 @@ export default function Home() {
       </section>
 
       <div className="scene-desks">
-        <div className="classroom-desk"><CalendarCard name={displayName || "你"} projecting={!!(stream || cameraStream)} onView={stream || cameraStream ? () => { projection.reveal(); setActiveBoardId(""); setActiveMediaId(stream ? "self-screen" : "self-camera"); } : undefined}><form className="activity-box" onSubmit={submitActivity}>
-                  <label htmlFor="activity-input">我正在</label>
-                  <textarea rows={2} id="activity-input" value={activity} readOnly={activitySaveStatus === "正在保存…"} onChange={(event) => { setActivity(event.target.value); setActivitySaveStatus(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (!event.nativeEvent.isComposing && event.keyCode !== 229) event.currentTarget.form?.requestSubmit(); } }} maxLength={80} placeholder="..." aria-label="填写你正在进行的事情，按 Enter 保存并同步" aria-describedby="activity-save-status" />
-                  {activitySaveStatus && <small id="activity-save-status" role="status">{activitySaveStatus}</small>}
-                </form></CalendarCard></div>
-        <div className="classroom-desk desk-classmates">{taskBoardGroups.length ? taskBoardGroups.map(group => <CalendarCard key={group.identityKey} name={group.nickname} projecting={group.peerIds.some(id => !!(remoteScreens[id] || remoteCameras[id]))} onView={group.peerIds.some(id => remoteScreens[id] || remoteCameras[id]) ? () => { const id = group.peerIds.find(id => remoteScreens[id] || remoteCameras[id])!; projection.reveal(); setActiveBoardId(""); setActiveMediaId(remoteScreens[id] ? id + "-screen" : id + "-camera"); } : undefined}><p>{group.activity}</p></CalendarCard>) : <CalendarCard name="同桌"><button className="calendar-invite" type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? "邀请链接已复制" : "点击复制邀请链接"}</button></CalendarCard>}</div>
+        {fixedClassroomSeats(classroomProfile.profile).map((member, index) => {
+          const peers = memberDevices(member.id, roomMembers, peerIdentityIds);
+          const self = member.id === identityId;
+          const screenPeer = peers.find(id => remoteScreens[id]);
+          const cameraPeer = peers.find(id => remoteCameras[id]);
+          const screenOn = !!((self && stream) || screenPeer);
+          const cameraOn = !!((self && cameraStream) || cameraPeer);
+          const view = (id: string) => { setActiveMediaId(id); setActiveBoardId(''); projection.reveal(); };
+          return <div className="classroom-desk" key={index}><DeviceCard kind={index === 0 ? 'tablet' : 'laptop'} name={self ? displayName : member.name} online={!!member.id && ((self && joined) || peers.length > 0)} screen={screenOn} camera={cameraOn} self={self}
+            onScreen={self ? () => stream ? stopShare() : screenPeer ? view(screenPeer + '-screen') : openShareDialog('start') : screenPeer ? () => view(screenPeer + '-screen') : undefined}
+            onCamera={self ? () => cameraStream ? stopCamera() : cameraPeer ? view(cameraPeer + '-camera') : void toggleCamera() : cameraPeer ? () => view(cameraPeer + '-camera') : undefined}>
+            {self ? <form className="activity-box" onSubmit={submitActivity}><ActivityInput value={activity} readOnly={activitySaveStatus === '正在保存…'} onChange={value => { setActivity(value); setActivitySaveStatus(''); }} />{activitySaveStatus && <small role="status">{activitySaveStatus}</small>}</form> : <p>{peers.map(id => memberActivities[id]).find(value => value !== undefined) ?? member.activity}</p>}
+          </DeviceCard></div>;
+        })}
         <div className="classroom-desk desk-media">
-          <button className="object-button" type="button" onClick={() => boards.length ? setBoardShelfOpen(value => !value) : createBoard()} aria-label="画板" title="画板" aria-expanded={boardShelfOpen} aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
-          <button className="object-button" type="button" aria-label="麦克风" title="麦克风"><ClassroomProp name="microphone" /></button>
-          <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"} aria-pressed={!!cameraStream}><ClassroomProp name="camera" /></button>
+          <button className="object-button" type="button" onClick={createBoard} aria-label="画板" title="画板" aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
+          <button className="object-button" type="button" onClick={() => void toggleMicrophone()} aria-label={microphoneStream ? "关闭麦克风" : "打开麦克风"} title={microphoneStream ? "关闭麦克风" : "打开麦克风"} aria-pressed={!!microphoneStream}><ClassroomProp name="microphone" active={!!microphoneStream} /></button>
+          <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"} aria-pressed={!!cameraStream}><ClassroomProp name="camera" active={!!cameraStream} /></button>
 
-          {boardShelfOpen && <div className="board-shelf" role="group" aria-label="画板"><button type="button" onClick={() => setBoardShelfOpen(false)} aria-label="关闭画板列表"><X size={16} /></button>{boards.map(board => <div key={board.id}><button type="button" onClick={() => { setActiveBoardId(board.id); setBoardShelfOpen(false); }}>{board.name}</button><button type="button" onClick={() => deleteBoard(board.id)} aria-label={"删除" + board.name}><X size={16} /></button></div>)}<button type="button" onClick={() => { createBoard(); setBoardShelfOpen(false); }}><Plus size={16} />新建画板</button>{activeBoard && <button type="button" onClick={() => { setActiveBoardId(""); setBoardShelfOpen(false); }}>关闭画板</button>}</div>}
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
         </div>
         <div className="classroom-desk desk-room">
           <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
           <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}><ClassroomProp name="folder" /></button>
           <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
+            { id: 'seating', label: '座位与设备字体', icon: <ListTodo size={19} />, content: <><ClassroomSeatingSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} onChange={value => void classroomProfile.save(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
+            { id: 'boards', label: '画板管理', icon: <Plus size={19} />, content: <div className="classroom-board-settings"><p>默认黑板始终是第一层。点击粉笔筒新建画板，点击黑板两侧切换。</p>{orderedBoards.map(board => <div key={board.id}><span>{board.name}</span><button type="button" onClick={() => deleteBoard(board.id)}>删除{board.name}</button></div>)}</div> },
             { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
               <h3>手机与手表消息提醒</h3>
               <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
@@ -2515,7 +2603,9 @@ export default function Home() {
         </div>
       </div>
 
-      <EmergencyExit onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); window.location.assign("/access"); }} />
+      <EmergencyExit onClick={() => { intentionalLeaveRef.current = true; stopShare(); stopCamera(); stopMicrophone(); window.location.assign("/access"); }} />
+      {Object.entries(remoteMicrophones).filter(([peer]) => peerIdentityIds[peer] !== identityId).map(([peer,media]) => <RemoteMicrophone key={peer} stream={media} />)}
+      {microphoneError && <p className="room-microphone-error" role="alert">{microphoneError}</p>}
       <RoomBell triggerHost={bellHost} onShowChat={showBellChat} />
       {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}
 

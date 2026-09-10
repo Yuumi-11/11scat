@@ -4,7 +4,7 @@ export const BOARD_COLOR = '#426e63';
 export const CHALK_FONT = '"Classroom Yan", "Long Cang", cursive';
 export const CHALK_COLORS = [
   { name: '白色粉笔', color: '#f6f1dc' }, { name: '黄色粉笔', color: '#efd28a' },
-  { name: '蓝色粉笔', color: '#a4c5de' }, { name: '粉色粉笔', color: '#e0a7b5' },
+  { name: '粉色粉笔', color: '#e0a7b5' },
 ];
 export function isEraseStroke(stroke) {
   return stroke.tool === 'erase' || (!stroke.tool && !stroke.material && stroke.color.toLowerCase() === '#ffffff');

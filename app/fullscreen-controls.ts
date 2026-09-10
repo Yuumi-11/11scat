@@ -23,3 +23,8 @@ export async function toggleElementFullscreen(element: HTMLElement, owner: Docum
     await element.requestFullscreen();
   }
 }
+
+export function classroomFullscreenScale(width: number, height: number, viewportWidth: number, viewportHeight: number) {
+  // Include the projector overhang and the lower tray in the same scaled scene.
+  return Math.min(viewportWidth / (width + 26), viewportHeight / (height + 70));
+}
