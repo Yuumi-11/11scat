@@ -1,9 +1,3 @@
-export const deviceFontOptions = [
-  { id: 'resource-rounded', label: '资源圆体 · Nunito' },
-  { id: 'rounded', label: '站酷快乐体 · Nunito' },
-  { id: 'sans', label: 'Noto Sans SC' },
-] as const;
-
 export function normalizeDeviceFont(font?: string | null) {
   return font === 'sans' || font === 'rounded' ? font : 'resource-rounded';
 }

@@ -1,9 +1,10 @@
 "use client";
 import { useRef, type ReactNode } from 'react';
 import { Mic, MonitorUp, Video } from 'lucide-react';
-import type { ClassroomAction, ClassroomProfile } from './classroom-members';
+import { classroomSettingsDraft, type ClassroomProfile, type ClassroomSettingsDraft } from './classroom-members';
 import { useDeviceFont } from './use-device-font';
-import { deviceFontOptions } from './device-fonts';
+import { RoomSettings } from './RoomSettings';
+import { SlidersHorizontal } from 'lucide-react';
 
 export function ActivityInput({ value, onChange, readOnly = false }: { value: string; onChange: (value: string) => void; readOnly?: boolean }) {
   const composing = useRef(false);
@@ -63,20 +64,22 @@ export function DeviceCard({ kind, name, online, screen, camera, microphone, sel
   </section>;
 }
 
-export function ClassroomGeneralSettings({ profile, identityId, onAction, saving, error }: { profile: ClassroomProfile; identityId: string; onAction: (action: ClassroomAction) => void; saving?: boolean; error?: string }) {
-  const index = profile.seats.indexOf(identityId);
-  const pending = profile.seatExchange;
-  const incoming = pending?.recipientId === identityId;
-  const outgoing = pending?.requesterId === identityId;
-  const requester = profile.members.find(member => member.id === pending?.requesterId)?.name || '同桌';
+export function ClassroomGeneralSettings({ draft, onChange, disabled }: { draft: ClassroomSettingsDraft; onChange: (draft: ClassroomSettingsDraft) => void; disabled?: boolean }) {
   return <div className="classroom-general-settings">
-    <section className="settings-seat-row" aria-label="座位">
-      <div className="settings-option-heading"><strong>座位</strong><span>{index === 0 ? '第一桌 · 平板电脑' : index === 1 ? '第二桌 · 笔记本电脑' : '等待座位'}</span></div>
-      {incoming && pending ? <div className="settings-seat-request"><span>{requester} 申请交换座位</span><div className="settings-seat-actions"><button type="button" disabled={saving} onClick={() => onAction({ action: 'approve-seat-exchange', requestId: pending.id })}>同意交换</button><button type="button" disabled={saving} onClick={() => onAction({ action: 'decline-seat-exchange', requestId: pending.id })}>拒绝</button></div></div>
-        : outgoing && pending ? <div className="settings-seat-request"><span role="status">等待对方同意</span><button type="button" disabled={saving} onClick={() => onAction({ action: 'cancel-seat-exchange', requestId: pending.id })}>撤回申请</button></div>
-        : <button type="button" disabled={saving || profile.seats.length !== 2 || index < 0 || !!pending} onClick={() => onAction({ action: 'request-seat-exchange' })}>申请交换</button>}
-    </section>
-    <label className="settings-font-row"><strong>设备字体</strong><select aria-label="设备字体" disabled={saving || index < 0} value={profile.font} onChange={event => onAction({ action: 'font', font: event.target.value })}>{deviceFontOptions.map(font => <option key={font.id} value={font.id}>{font.label}</option>)}</select></label>
-    {error && <p role="status">{error}</p>}
+    <fieldset className="settings-seat-row" disabled={disabled}>
+      <legend>座位</legend>
+      <div className="settings-seat-choices">
+        <label><input type="radio" name="classroom-seat" value="tablet" checked={draft.seat === 'tablet'} onChange={() => onChange({ ...draft, seat: 'tablet' })} /><span>平板电脑</span></label>
+        <label><input type="radio" name="classroom-seat" value="laptop" checked={draft.seat === 'laptop'} onChange={() => onChange({ ...draft, seat: 'laptop' })} /><span>笔记本电脑</span></label>
+      </div>
+    </fieldset>
   </div>;
+}
+
+export function ClassroomSettings({ profile, identityId, onSave, error, triggerContent }: { profile: ClassroomProfile; identityId: string; onSave: (draft: ClassroomSettingsDraft) => Promise<void> | void; error?: string; triggerContent: ReactNode }) {
+  const value = classroomSettingsDraft(profile, identityId);
+  const canSave = value.seat !== null && profile.seats.length === 2;
+  return <RoomSettings value={value} onSave={onSave} canSave={canSave} error={error} triggerContent={triggerContent} sections={[
+    { id: 'general', label: '通用', icon: <SlidersHorizontal size={18} />, content: (draft, onChange, saving) => <ClassroomGeneralSettings draft={draft} onChange={onChange} disabled={saving || !canSave} /> },
+  ]} />;
 }

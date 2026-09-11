@@ -1,9 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ClassroomAction, ClassroomProfile } from './classroom-members';
+import { CLASSROOM_DEVICE_FONT, type ClassroomProfile, type ClassroomSettingsDraft } from './classroom-members';
 export function useClassroomProfile(joined: boolean, broadcast: (message: object) => void) {
-  const [profile, setProfile] = useState<ClassroomProfile>({ members: [], seats: [], font: 'resource-rounded' });
-  const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<ClassroomProfile>({ members: [], seats: [], font: CLASSROOM_DEVICE_FONT });
   const [error, setError] = useState('');
   const busy = useRef(false), generation = useRef(0);
   useEffect(() => {
@@ -25,17 +24,20 @@ export function useClassroomProfile(joined: boolean, broadcast: (message: object
     document.addEventListener('visibilitychange', refresh);
     return () => { cancelled = true; controller.abort(); window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh); window.removeEventListener('classroom-settings-changed', refresh); };
   }, [joined]);
-  const act = useCallback(async (action: ClassroomAction) => {
-    if (!joined || busy.current) return;
+  const save = useCallback(async (draft: ClassroomSettingsDraft) => {
+    if (!joined) throw new Error('请先进入房间');
+    if (busy.current) throw new Error('正在保存，请稍候');
+    if (!draft.seat) throw new Error('请选择座位');
     busy.current = true; ++generation.current;
-    setSaving(true); setError('');
     try {
-      const response = await fetch('/api/room/classroom', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action) });
+      const response = await fetch('/api/room/classroom', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-settings', seat: draft.seat }), signal: AbortSignal.timeout(15_000) });
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || '座位保存失败');
-      setProfile(value); broadcast({ type: 'classroom-settings-changed' });
-    } catch (failure) { setError(failure instanceof Error ? failure.message : '座位保存失败'); }
-    finally { busy.current = false; setSaving(false); }
+      setProfile(value); setError(''); broadcast({ type: 'classroom-settings-changed' });
+    } catch (failure) {
+      if (failure instanceof Error && failure.name === 'TimeoutError') throw new Error('保存超时，请重试');
+      throw failure;
+    } finally { busy.current = false; }
   }, [joined, broadcast]);
-  return { profile, saving, error, act };
+  return { profile, error, save };
 }

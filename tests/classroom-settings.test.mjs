@@ -1,67 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir,mkdtemp,readFile } from 'node:fs/promises';
+import { mkdir,mkdtemp,readFile,writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { applyClassroomAction, incomingSeatRequests } from '../app/classroom-members.ts';
+import { applyClassroomAction, classroomSettingsDraft, CLASSROOM_DEVICE_FONT } from '../app/classroom-members.ts';
 import { parseClassroomAction } from '../app/classroom-settings-action.ts';
 
-test('only a named action can change settings; raw seats and impersonated actors are rejected', () => {
-  for (const value of [null, [], { seats: ['b','a'], font: 'sans' }, { action: 'request-seat-exchange', identityId:'b' }, { action:'approve-seat-exchange' }, { action:'approve-seat-exchange', requestId:'x', seats:['b','a'] }, { action:'font',font:'youyuan' }, {action:'unknown'}]) assert.equal(parseClassroomAction(value), null);
-  assert.deepEqual(parseClassroomAction({action:'request-seat-exchange'}),{action:'request-seat-exchange'});
-  assert.deepEqual(parseClassroomAction({action:'approve-seat-exchange',requestId:'x'}),{action:'approve-seat-exchange',requestId:'x'});
+test('only an explicit destination save is accepted; legacy requests, font edits and impersonation are rejected', () => {
+  for (const value of [null, [], {seats:['b','a']}, {action:'save-settings',seat:'laptop',identityId:'b'}, {action:'save-settings',seat:'other'}, {action:'save-settings'}, {action:'request-seat-exchange'}, {action:'approve-seat-exchange',requestId:'old'}, {action:'font',font:'sans'}]) assert.equal(parseClassroomAction(value),null);
+  for (const seat of ['tablet','laptop']) assert.deepEqual(parseClassroomAction({action:'save-settings',seat}),{action:'save-settings',seat});
 });
 
-test('preview and room share recipient-only approval, outgoing/incoming badges, cancel and decline rules', () => {
-  const initial = {members:[{id:'a',name:'甲'},{id:'b',name:'乙'}],seats:['a','b'],font:'rounded'};
-  const pending = applyClassroomAction(initial,'a',{action:'request-seat-exchange'},'first','now');
-  assert.deepEqual(pending.seats,initial.seats);
-  assert.equal(incomingSeatRequests(pending,'a'),0); assert.equal(incomingSeatRequests(pending,'b'),1);
-  const approve={action:'approve-seat-exchange',requestId:'first'};
-  assert.throws(()=>applyClassroomAction(pending,'a',approve,'',''),/收到申请/);
-  assert.throws(()=>applyClassroomAction(pending,'outside',approve,'',''),/座位成员/);
-  assert.throws(()=>applyClassroomAction(pending,'b',{action:'cancel-seat-exchange',requestId:'first'},'',''),/自己的申请/);
-  assert.throws(()=>applyClassroomAction({...pending,seats:['b','a']},'b',approve,'',''),/座位已变化/);
-  const approved=applyClassroomAction(pending,'b',approve,'','');
-  assert.deepEqual(approved.seats,['b','a']); assert.equal(incomingSeatRequests(approved,'b'),0);
-  assert.throws(()=>applyClassroomAction(approved,'b',approve,'',''),/已处理/);
-  for(const [actor,action] of [['a','cancel-seat-exchange'],['b','decline-seat-exchange']]) {
-    const result=applyClassroomAction(pending,actor,{action,requestId:'first'},'','');
-    assert.deepEqual(result.seats,['a','b']); assert.equal(result.seatExchange,null);
-  }
-  assert.throws(()=>applyClassroomAction({...initial,seats:['a']},'a',{action:'request-seat-exchange'},'',''),/另一位成员/);
+test('selecting a destination places both members, repeated saves do not flip seats, and the design font is fixed', () => {
+  const initial={members:[{id:'a',name:'甲'},{id:'b',name:'乙'}],seats:['a','b'],font:'sans',seatExchange:{id:'old'}};
+  assert.deepEqual(classroomSettingsDraft(initial,'a'),{seat:'tablet'});
+  assert.deepEqual(classroomSettingsDraft(initial,'b'),{seat:'laptop'});
+  assert.deepEqual(classroomSettingsDraft(initial,'outside'),{seat:null});
+  const destination={action:'save-settings',seat:'laptop'};
+  const saved=applyClassroomAction(initial,'a',destination);
+  assert.deepEqual(saved.seats,['b','a']);assert.equal(saved.font,CLASSROOM_DEVICE_FONT);
+  assert.ok(!('seatExchange' in saved));assert.deepEqual(initial.seats,['a','b']);
+  assert.deepEqual(applyClassroomAction(saved,'a',destination),saved);
+  assert.deepEqual(applyClassroomAction(saved,'a',{action:'save-settings',seat:'tablet'}).seats,['a','b']);
+  assert.throws(()=>applyClassroomAction(initial,'outside',destination),/座位成员/);
+  assert.throws(()=>applyClassroomAction({...initial,seats:['a']},'a',destination),/另一位成员/);
+  assert.throws(()=>applyClassroomAction(initial,'a',{action:'save-settings',seat:'invalid'}),/选项无效/);
 });
 
-test('requests persist across reload; concurrent approvals swap once and preserve activity, notes, font and secrets',async()=>{
+test('seat saves survive reload and concurrent retries, preserve other user data and retire pending requests',async()=>{
+  const originalData=process.env.DATA_DIR;
   const root=path.join(process.cwd(),'codex-generated','classroom-settings-tests');await mkdir(root,{recursive:true});
-  const directory=await mkdtemp(path.join(root,'case-'));process.env.DATA_DIR=directory;
-  assert.ok(path.resolve(directory).startsWith(path.resolve(root)+path.sep));
+  const directory=await mkdtemp(path.join(root,'direct-'));process.env.DATA_DIR=directory;
+  await writeFile(path.join(directory,'identities.json'),JSON.stringify({version:1,users:{a:{nickname:'甲',ticktickToken:'private-fixture'},b:{nickname:'乙'}},classroom:{seats:['a','b'],font:'sans',seatExchange:{id:'retired-request'}}}));
   const {updateUser,getUser,getClassroomProfile,updateClassroomProfile}=await import('../app/api/identity/store.ts');
   try {
-    await updateUser('a',()=>({nickname:'甲',ticktickToken:'private-fixture',updatedAt:'one'}));
-    await updateUser('b',()=>({nickname:'乙',updatedAt:'one'}));
-    assert.deepEqual((await getClassroomProfile()).seats,['a','b']);
-    const requests = await Promise.allSettled([updateClassroomProfile('a',{action:'request-seat-exchange'}),updateClassroomProfile('b',{action:'request-seat-exchange'})]);
-    assert.equal(requests.filter(item=>item.status==='fulfilled').length,1);
-    const persisted=JSON.parse(await readFile(path.join(directory,'identities.json'),'utf8'));
-    assert.equal(persisted.classroom.seatExchange.requesterId,'a');
-    assert.deepEqual(persisted.classroom.seats,['a','b']);
-    const pending=(await getClassroomProfile()).seatExchange;
-    const reloaded=await import('../app/api/identity/store.ts?classroom-reload');
-    assert.deepEqual((await reloaded.getClassroomProfile()).seatExchange,pending);
-    await assert.rejects(updateClassroomProfile('a',{action:'approve-seat-exchange',requestId:pending.id}));
-    await assert.rejects(updateClassroomProfile('outside',{action:'approve-seat-exchange',requestId:pending.id}));
-    const results = await Promise.allSettled([
-      updateClassroomProfile('b',{action:'approve-seat-exchange',requestId:pending.id}),
-      updateClassroomProfile('b',{action:'approve-seat-exchange',requestId:pending.id}),
-      updateClassroomProfile('a',{action:'font',font:'sans'}),
-      updateUser('a',current=>({...current,activity:'阅读',todoNote:'随手记',updatedAt:'two'})),
-    ]);
-    assert.deepEqual(results.map(item=>item.status),['fulfilled','rejected','fulfilled','fulfilled']);
-    const result=await getClassroomProfile();assert.deepEqual(result.seats,['b','a']);assert.equal(result.font,'sans');
-    assert.equal(result.seatExchange,null);assert.equal(result.members.find(item=>item.id==='a').todoNote,'随手记');
-    assert.equal(result.members.find(item=>item.id==='a').activity,'阅读');assert.ok(!JSON.stringify(result).includes('private-fixture'));
-    await assert.rejects(updateClassroomProfile('outside',{action:'font',font:'rounded'}));
-    await assert.rejects(updateClassroomProfile('a',{action:'font',font:'untrusted-font'}));
-    assert.deepEqual((await getClassroomProfile()).seats,['b','a']);assert.equal((await getUser('a')).ticktickToken,'private-fixture');
-  }finally{delete process.env.DATA_DIR;}
+    const initial=await getClassroomProfile();assert.equal(initial.font,CLASSROOM_DEVICE_FONT);assert.ok(!('seatExchange' in initial));
+    const action={action:'save-settings',seat:'laptop'};
+    await Promise.all([updateClassroomProfile('a',action),updateClassroomProfile('a',action),updateUser('a',current=>({...current,activity:'阅读',todoNote:'随手记',updatedAt:'two'}))]);
+    let result=await getClassroomProfile();assert.deepEqual(result.seats,['b','a']);
+    assert.equal(result.members.find(item=>item.id==='a').activity,'阅读');assert.equal(result.members.find(item=>item.id==='a').todoNote,'随手记');
+    assert.ok(!JSON.stringify(result).includes('private-fixture'));
+    const stored=JSON.parse(await readFile(path.join(directory,'identities.json'),'utf8'));assert.deepEqual(stored.classroom,{seats:['b','a']});
+    const reloaded=await import('../app/api/identity/store.ts?direct-reload');assert.deepEqual((await reloaded.getClassroomProfile()).seats,['b','a']);
+    await assert.rejects(updateClassroomProfile('outside',action));
+    await assert.rejects(updateClassroomProfile('a',{action:'save-settings',seat:'invalid'}));
+    // Two people asking for one destination are serialized: the last explicit save wins.
+    await Promise.all([updateClassroomProfile('a',{action:'save-settings',seat:'tablet'}),updateClassroomProfile('b',{action:'save-settings',seat:'tablet'})]);
+    result=await getClassroomProfile();assert.deepEqual(result.seats,['b','a']);
+    assert.equal((await getUser('a')).ticktickToken,'private-fixture');
+  }finally{if(originalData===undefined)delete process.env.DATA_DIR;else process.env.DATA_DIR=originalData;}
 });

@@ -1,14 +1,13 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { Paperclip, Mic, Send, ChevronLeft, ChevronRight, ListTodo } from 'lucide-react';
+import { Paperclip, Mic, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { BlackboardSurface, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from '../ClassroomScene';
-import { ActivityInput, DeviceCard, ClassroomGeneralSettings } from '../ClassroomDevices';
-import { applyClassroomAction, incomingSeatRequests, fixedClassroomSeats, type ClassroomAction, type ClassroomProfile } from '../classroom-members';
+import { ActivityInput, DeviceCard, ClassroomSettings } from '../ClassroomDevices';
+import { applyClassroomAction, CLASSROOM_DEVICE_FONT, fixedClassroomSeats, type ClassroomSettingsDraft, type ClassroomProfile } from '../classroom-members';
 import { useClassroomBoards } from '../use-classroom-boards';
 import { adjacentBoardId, orderClassroomBoards } from '../classroom-boards';
 import { ClassroomTodoCard, useClassroomTodoClock } from '../ClassroomTodo';
 import { classroomTodoTasks, classroomTodoWindow } from '../classroom-todo';
-import { RoomSettings } from '../RoomSettings';
 import { ProjectionSample } from './ProjectionSample';
 import { Whiteboard, type RoomBoard } from '../Whiteboard';
 import { INITIAL_BOARD_EPOCH, normalizeBoard } from '../board-state';
@@ -21,7 +20,7 @@ import '../classroom.css';
 const previewTasks = [{id:'one',title:'整理今天的课堂笔记'}, {id:'two',title:'完成数据结构练习'}, {id:'three',title:'一起复习本周的内容'}];
 const additionalTasks = ['补充实验报告', '整理错题', '完成阅读记录', '准备下次讨论', '核对本周作业', '复习上节课的例题', '整理学习资料'].map((title, index) => ({id:'extra-'+index, title}));
 const longTitleTasks = [previewTasks[0], {id:'long-title',title:'整理今天的课堂笔记，并补充数据结构练习中没有完成的推导过程'}, previewTasks[1], {id:'last-long',title:'一起复习本周的内容，核对课堂例题并整理下一次讨论需要用到的资料'}, ...additionalTasks];
-export function ClassroomPreview({ deviceFont = 'resource-rounded', initialBoardTone = 'deep' }: { deviceFont?: string; initialBoardTone?: string }) {
+export function ClassroomPreview({ initialBoardTone = 'deep' }: { initialBoardTone?: string }) {
   const [boardToneId, setBoardToneId] = useState(() => getBoardTone(initialBoardTone).id);
   const boardTone = getBoardTone(boardToneId);
   const changeBoardTone = (tone: BoardTone) => {
@@ -43,12 +42,11 @@ export function ClassroomPreview({ deviceFont = 'resource-rounded', initialBoard
   const [selfScreen, setSelfScreen] = useState(false), [selfCamera, setSelfCamera] = useState(false), [microphone, setMicrophone] = useState(false);
   const [peerScreen, setPeerScreen] = useState(false), [peerCamera, setPeerCamera] = useState(false), [peerOnline, setPeerOnline] = useState(true);
   const [multiDevice, setMultiDevice] = useState(false), [badge, setBadge] = useState(6);
-  const [profile, setProfile] = useState<ClassroomProfile>({members:[{id:'self',name:'11',activity:'复习数据结构'},{id:'peer',name:'11scat',activity:'整理课堂笔记'}],seats:['self','peer'],font:deviceFont});
+  const [profile, setProfile] = useState<ClassroomProfile>({members:[{id:'self',name:'11',activity:'复习数据结构'},{id:'peer',name:'11scat',activity:'整理课堂笔记'}],seats:['self','peer'],font:CLASSROOM_DEVICE_FONT});
   const [settingsIdentity, setSettingsIdentity] = useState('self');
-  const [settingsError, setSettingsError] = useState('');
-  const applySettings = (action: ClassroomAction) => {
-    try { setProfile(applyClassroomAction(profile, settingsIdentity, action, crypto.randomUUID(), new Date().toISOString())); setSettingsError(''); }
-    catch (error) { setSettingsError(error instanceof Error ? error.message : '设置保存失败'); }
+  const saveSettings = (draft: ClassroomSettingsDraft) => {
+    if (!draft.seat) throw new Error('请选择座位');
+    setProfile(applyClassroomAction(profile, settingsIdentity, { action: 'save-settings', seat: draft.seat }));
   };
   const [activity,setActivity] = useState('复习数据结构');
   const {boards,setBoards,activeBoardId,setActiveBoardId,createAndSelect} = useClassroomBoards();
@@ -101,8 +99,8 @@ export function ClassroomPreview({ deviceFont = 'resource-rounded', initialBoard
       {member.id==='self'?<form className="activity-box" onSubmit={event=>event.preventDefault()}><ActivityInput value={activity} onChange={setActivity}/></form>:<p>{member.activity}</p>}
     </DeviceCard></div>)}
     <div className="classroom-desk desk-media"><button className="object-button" aria-label="画板" onClick={createBoard}><ClassroomProp name="chalk-cup"/></button><button className="object-button calendar-entry-button" aria-label="双人日历"  onClick={()=>setNotice('双人日历将在后续开放')}><ClassroomProp name="calendar-entry"/></button><button className="room-collaboration-trigger" aria-label="任务板"><ClassroomProp name="taskboard"/>{badge>0&&<i aria-hidden="true">{badge}</i>}</button></div>
-    <div className="classroom-desk desk-room"><button className="object-button cloud-entry-button" aria-label="云盘"><ClassroomProp name="folder"/></button><RoomSettings triggerContent={<ClassroomProp name="settings"/>} sections={[{id:'general',label:'通用',badge:incomingSeatRequests(profile,settingsIdentity),icon:<ListTodo/>,content:<ClassroomGeneralSettings profile={profile} identityId={settingsIdentity} onAction={applySettings} error={settingsError}/>}]} /></div></div>
+    <div className="classroom-desk desk-room"><button className="object-button cloud-entry-button" aria-label="云盘"><ClassroomProp name="folder"/></button><ClassroomSettings key={settingsIdentity} profile={profile} identityId={settingsIdentity} onSave={saveSettings} triggerContent={<ClassroomProp name="settings"/>} /></div></div>
     <EmergencyExit/>
-    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span><BoardTonePicker selected={boardTone} onChange={changeBoardTone}/><button onClick={()=>{setActiveBoardId('');projection.fold();}}>待机</button><button onClick={()=>{setActiveBoardId('');projection.reveal();}}>投影</button><button onClick={createBoard}>画板</button><button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>toggleSelf('screen')} aria-pressed={selfScreen}>我的投屏</button><button onClick={()=>setPeerScreen(value=>!value)} aria-pressed={peerScreen}>同桌投屏</button><button onClick={()=>setPeerCamera(value=>!value)} aria-pressed={peerCamera}>同桌摄像头</button><button onClick={()=>{setSelfOnline(value=>!value);setSelfScreen(false);setSelfCamera(false);setMicrophone(false);}} aria-pressed={!selfOnline}>本人离开</button><button onClick={()=>setPeerOnline(value=>!value)} aria-pressed={!peerOnline}>同桌离开</button><button onClick={()=>setMultiDevice(value=>!value)} aria-pressed={multiDevice}>同账号多端</button>{multiDevice&&<span>同桌 2 台设备</span>}<button onClick={()=>setBadge(value=>value?0:6)}>任务板角标</button><button onClick={()=>{setSettingsIdentity(value=>value==='self'?'peer':'self');setSettingsError('');}}>设置视角 · {settingsIdentity==='self'?'11':'11scat'}</button><a href="/classroom-preview/fonts">设备字体对比</a><a href="/classroom-preview/chalk-art">粉笔图案样例</a>{board&&<><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)updateBoard(()=>next);}}>重新载入笔迹</button><span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span></>}{notice&&<span role="status">{notice}</span>}</div>
+    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span><BoardTonePicker selected={boardTone} onChange={changeBoardTone}/><button onClick={()=>{setActiveBoardId('');projection.fold();}}>待机</button><button onClick={()=>{setActiveBoardId('');projection.reveal();}}>投影</button><button onClick={createBoard}>画板</button><button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>toggleSelf('screen')} aria-pressed={selfScreen}>我的投屏</button><button onClick={()=>setPeerScreen(value=>!value)} aria-pressed={peerScreen}>同桌投屏</button><button onClick={()=>setPeerCamera(value=>!value)} aria-pressed={peerCamera}>同桌摄像头</button><button onClick={()=>{setSelfOnline(value=>!value);setSelfScreen(false);setSelfCamera(false);setMicrophone(false);}} aria-pressed={!selfOnline}>本人离开</button><button onClick={()=>setPeerOnline(value=>!value)} aria-pressed={!peerOnline}>同桌离开</button><button onClick={()=>setMultiDevice(value=>!value)} aria-pressed={multiDevice}>同账号多端</button>{multiDevice&&<span>同桌 2 台设备</span>}<button onClick={()=>setBadge(value=>value?0:6)}>任务板角标</button><button onClick={()=>{setSettingsIdentity(value=>value==='self'?'peer':'self');}}>设置视角 · {settingsIdentity==='self'?'11':'11scat'}</button><a href="/classroom-preview/chalk-art">粉笔图案样例</a>{board&&<><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)updateBoard(()=>next);}}>重新载入笔迹</button><span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span></>}{notice&&<span role="status">{notice}</span>}</div>
   </main>;
 }

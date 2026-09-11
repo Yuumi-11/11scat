@@ -4,7 +4,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { RemoteMicrophone } from "./RemoteMicrophone";
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, Plus, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, Bell, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, PictureInPicture2, Square, MessageCircle, ListTodo } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import { createMediaRecovery, mediaCallReusable } from "./media-recovery";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
@@ -17,15 +17,14 @@ import { ChatImageViewer, type ViewedChatImage } from "./ChatImageViewer";
 import { NewMemberTasks } from "./MemberTasks";
 import { RoomCollaboration } from "./RoomCollaboration";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
-import { RoomSettings } from "./RoomSettings";
 import { RoomBell } from "./RoomBell";
 import { CloudDrive } from "./CloudDrive";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
 import { BlackboardSurface, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
-import { ActivityInput, ClassroomGeneralSettings, DeviceCard } from './ClassroomDevices';
-import { incomingSeatRequests, fixedClassroomSeats, memberDevices } from './classroom-members';
+import { ActivityInput, ClassroomSettings, DeviceCard } from './ClassroomDevices';
+import { fixedClassroomSeats, memberDevices } from './classroom-members';
 import { useClassroomProfile } from './use-classroom-profile';
 import { type PublicTaskPreview } from "./classroom-view";
 import { useClassroomBoards } from "./use-classroom-boards";
@@ -68,12 +67,6 @@ const MOBILE_BACKGROUND_GRACE_MS = 30 * 60 * 1000;
 
 const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-const decodeVapidKey = (value: string) => {
-  const normalized = `${value}${"=".repeat((4 - value.length % 4) % 4)}`.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = window.atob(normalized);
-  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
-};
 
 const normalizeChatAttachment = (value: unknown): ChatAttachment | undefined => {
   if (!value || typeof value !== "object") return undefined;
@@ -232,8 +225,6 @@ export default function Home() {
   const [activeMediaId, setActiveMediaId] = useState("");
   const [roomStatus, setRoomStatus] = useState<"connecting" | "ready" | "error">("connecting");
   const [roomError, setRoomError] = useState("");
-  const [inviteUrl, setInviteUrl] = useState("");
-  const [inviteCopied, setInviteCopied] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(true);
@@ -263,9 +254,6 @@ export default function Home() {
   const activitySavingRef = useRef(false);
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
-  const [pushMessage, setPushMessage] = useState("");
   const [cloudOpen, setCloudOpen] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
   const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, CloudSaveState>>({});
@@ -507,72 +495,12 @@ export default function Home() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    let disposed = false;
-    const initializePush = async () => {
-      try {
-        pushDeviceIdRef.current = window.localStorage.getItem("11scat-push-device-id") || crypto.randomUUID();
-        window.localStorage.setItem("11scat-push-device-id", pushDeviceIdRef.current);
-        const registration = await navigator.serviceWorker.register("/sw.js");
-        const subscription = await registration.pushManager.getSubscription();
-        if (!disposed) setPushEnabled(Boolean(subscription));
-      } catch { /* Message notifications remain opt-in when unsupported. */ }
-    };
-    void initializePush();
-    return () => { disposed = true; };
+    try {
+      pushDeviceIdRef.current = window.localStorage.getItem("11scat-push-device-id") || crypto.randomUUID();
+      window.localStorage.setItem("11scat-push-device-id", pushDeviceIdRef.current);
+      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    } catch { /* Existing notification subscriptions remain optional. */ }
   }, []);
-
-  const enablePushNotifications = async () => {
-    setPushBusy(true);
-    setPushMessage("");
-    try {
-      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-      if (isIos && !isStandalone) throw new Error("iPhone 的 Safari 和 Edge 普通标签页都不能开启网页通知。请点“分享”→“添加到主屏幕”，关闭当前页面，再从手机桌面的 11scat 图标打开并开启提醒。");
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error("当前浏览器或系统版本不支持网页消息提醒");
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") throw new Error("需要允许通知，iPhone 和 Apple Watch 才能收到提醒");
-      const keyResponse = await fetch("/api/push/public-key", { cache: "no-store" });
-      const keyData = await keyResponse.json().catch(() => ({})) as { publicKey?: string; error?: string };
-      if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || "推送服务尚未配置");
-      const registration = await navigator.serviceWorker.ready;
-      const existing = await registration.pushManager.getSubscription();
-      const subscription = existing || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapidKey(keyData.publicKey) });
-      if (!pushDeviceIdRef.current) {
-        pushDeviceIdRef.current = window.localStorage.getItem("11scat-push-device-id") || crypto.randomUUID();
-        window.localStorage.setItem("11scat-push-device-id", pushDeviceIdRef.current);
-      }
-      const response = await fetch("/api/push/subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: subscription.toJSON(), deviceId: pushDeviceIdRef.current }),
-      });
-      if (!response.ok) throw new Error("通知订阅保存失败");
-      setPushEnabled(true);
-      setPushMessage("消息提醒已开启。Apple Watch 开启 iPhone 通知镜像后也会收到提醒。");
-    } catch (error) {
-      setPushMessage(error instanceof Error ? error.message : "开启消息提醒失败");
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const disablePushNotifications = async () => {
-    setPushBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        await fetch("/api/push/subscriptions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: subscription.endpoint }) });
-        await subscription.unsubscribe();
-      }
-      setPushEnabled(false);
-      setPushMessage("此设备的消息提醒已关闭。");
-    } catch {
-      setPushMessage("关闭失败，请在系统通知设置中关闭 11scat。");
-    } finally {
-      setPushBusy(false);
-    }
-  };
 
   useEffect(() => {
     if (!messageMenuId) return;
@@ -958,7 +886,6 @@ export default function Home() {
         await room.connect(url, token);
         if (disposed) return;
         void room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: "activity", activity: activityRef.current })), { reliable: true }).catch(() => undefined);
-        setInviteUrl(`${window.location.origin}${window.location.pathname}`);
         setRoomStatus("ready");
         setRoomError("");
         refreshMembers();
@@ -1555,8 +1482,6 @@ export default function Home() {
             reconnectAttempts = 0;
             selfPeerIdRef.current = id;
             hostPeerIdRef.current = id;
-            const stableInviteUrl = `${window.location.origin}${window.location.pathname}`;
-            setInviteUrl(stableInviteUrl);
             if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
             setRoomStatus("ready");
             setRoomError("");
@@ -1969,15 +1894,6 @@ export default function Home() {
     broadcastRoomMessage({ type: "board-text-delete", boardId, textId, epoch });
   };
 
-  const deleteBoard = (id: string) => {
-    deletedBoardIdsRef.current.add(id);
-    const next = boardsRef.current.filter((item) => item.id !== id);
-    boardsRef.current = next;
-    setBoards(next);
-    setActiveBoardId((current) => current === id ? "" : current);
-    broadcastRoomMessage({ type: "board-delete", id });
-  };
-
   useEffect(() => {
     if (!joined) return;
     let disposed = false;
@@ -2065,17 +1981,6 @@ export default function Home() {
       setCameraError(name === "NotAllowedError"
         ? "摄像头权限未开启，请在浏览器地址栏允许 11scat 使用摄像头。"
         : "摄像头暂时无法开启，请确认没有被其他程序占用。");
-    }
-  };
-
-  const copyInviteLink = async () => {
-    if (!inviteUrl) return;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setInviteCopied(true);
-      window.setTimeout(() => setInviteCopied(false), 2200);
-    } catch {
-      window.prompt("复制这个邀请链接发给成员", inviteUrl);
     }
   };
 
@@ -2554,17 +2459,7 @@ export default function Home() {
         </div>
         <div className="classroom-desk desk-room">
           <button className="object-button cloud-entry-button" type="button" onClick={openCloud} aria-label="云盘" ><ClassroomProp name="folder" /></button>
-          <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
-            { id: 'general', label: '通用', badge: incomingSeatRequests(classroomProfile.profile, identityId), icon: <ListTodo size={19} />, content: <><ClassroomGeneralSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} identityId={identityId} onAction={value => void classroomProfile.act(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
-            { id: 'boards', label: '画板管理', icon: <Plus size={19} />, content: <div className="classroom-board-settings"><p>默认黑板始终是第一层。点击粉笔筒新建画板，点击侧面露出的后方黑板切换。</p>{orderedBoards.map(board => <div key={board.id}><span>{board.name}</span><button type="button" onClick={() => deleteBoard(board.id)}>删除{board.name}</button></div>)}</div> },
-            { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
-              <h3>手机与手表消息提醒</h3>
-              <p>电脑可直接开启。iPhone 请先用 Safari 打开本站，点“分享”→“添加到主屏幕”，再从主屏幕图标进入并点击开启。</p>
-              <div className="push-watch-note"><strong>Apple Watch Series 9</strong><span>在 iPhone 的 Watch App → 通知中允许镜像 iPhone 通知，手表会同步显示 11scat 消息。</span></div>
-              {pushMessage && <p className="push-message" role="status">{pushMessage}</p>}
-              <button className="primary-button wide" type="button" disabled={pushBusy} onClick={() => void (pushEnabled ? disablePushNotifications() : enablePushNotifications())}>{pushBusy ? "处理中…" : pushEnabled ? "关闭此设备提醒" : "开启此设备提醒"}</button>
-            </> },
-          ]} />
+          <ClassroomSettings profile={classroomProfile.profile} identityId={identityId} onSave={classroomProfile.save} error={classroomProfile.error} triggerContent={<ClassroomProp name="settings" />} />
         </div>
       </div>
 

@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from 'node:crypto';
-import { applyClassroomAction, type ClassroomAction, type ClassroomProfile, type SeatExchange } from '../../classroom-members.ts';
+import { applyClassroomAction, CLASSROOM_DEVICE_FONT, type ClassroomAction, type ClassroomProfile } from '../../classroom-members.ts';
 
 export type UserRecord = {
   nickname?: string;
@@ -14,7 +13,7 @@ export type UserRecord = {
 type IdentityStore = {
   version: 1;
   users: Record<string, UserRecord>;
-  classroom?: { seats: string[]; font: string; seatExchange?: SeatExchange | null };
+  classroom?: { seats: string[] };
 };
 
 const dataDirectory = process.env.DATA_DIR
@@ -56,9 +55,7 @@ function classroomProfileFromStore(store: IdentityStore): ClassroomProfile {
   const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '', todoNote: user.todoNote || '' }));
   const available = new Set(members.map(member => member.id));
   const seats = [...new Set([...(store.classroom?.seats || []), ...members.map(member => member.id)])].filter(id => available.has(id)).slice(0, 2);
-  const storedFont = store.classroom?.font;
-  const font = storedFont && ['sans', 'rounded', 'resource-rounded'].includes(storedFont) ? storedFont : 'resource-rounded';
-  return { members, seats, font, seatExchange: store.classroom?.seatExchange || null };
+  return { members, seats, font: CLASSROOM_DEVICE_FONT };
 }
 
 export async function getClassroomProfile() {
@@ -70,8 +67,8 @@ export function updateClassroomProfile(identityId: string, action: ClassroomActi
   let result: ClassroomProfile;
   const operation = writeQueue.then(async () => {
     const store = await readStore();
-    result = applyClassroomAction(classroomProfileFromStore(store), identityId, action, randomUUID(), new Date().toISOString());
-    store.classroom = { seats: result.seats, font: result.font, seatExchange: result.seatExchange };
+    result = applyClassroomAction(classroomProfileFromStore(store), identityId, action);
+    store.classroom = { seats: result.seats };
     await writeStore(store);
   });
   writeQueue = operation.catch(() => undefined);
