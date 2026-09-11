@@ -3,6 +3,7 @@ import { accessToken } from "../store";
 import { currentIdentityId } from "../../identity/session";
 import { store } from "../../room/tasks/service";
 import { CollaborationError } from "../../room/tasks/store";
+import { todoStore } from '../../room/todo/store';
 
 export async function POST(request: Request) {
   const identityId = await currentIdentityId();
@@ -21,5 +22,7 @@ export async function POST(request: Request) {
     method: "POST", headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
   });
   return new NextResponse(null, { status: response.ok ? 204 : response.status });
-  }); return result instanceof Response ? result : NextResponse.json({ workflow: result }); } catch (error) { return NextResponse.json({ error: error instanceof CollaborationError ? error.message : "完成状态没有同步成功" }, { status: error instanceof CollaborationError ? error.status : 503 }); }
+  });
+  if (result instanceof Response ? result.ok : result.status === 'done') await todoStore.complete(identityId, body.taskId);
+  return result instanceof Response ? result : NextResponse.json({ workflow: result }); } catch (error) { return NextResponse.json({ error: error instanceof CollaborationError ? error.message : "完成状态没有同步成功" }, { status: error instanceof CollaborationError ? error.status : 503 }); }
 }

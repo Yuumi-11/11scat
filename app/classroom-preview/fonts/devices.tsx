@@ -6,7 +6,7 @@ import './samples.css';
 const choices = [
   {id:'sans',name:'Noto Sans SC',note:'清楚、简洁的屏幕印刷体。'},
   {id:'rounded',name:'站酷快乐体',note:'轮廓圆润，笔画较厚，已有 OFL 授权素材。'},
-  {id:'youyuan',name:'幼圆 · 当前暂定',note:'使用设备已安装的幼圆；未安装时显示 Noto Sans SC，不附带分发系统字体。'},
+  {id:'youyuan',name:'幼圆 + Nunito · 当前使用',note:'英文与数字使用本地 Nunito 圆体；中文使用系统幼圆，缺失时由 Noto Sans SC 显示。'},
 ];
 export function DeviceFontComparison() {
   const [name,setName]=useState('11scat'),[activity,setActivity]=useState('复习数据结构，整理课堂笔记');

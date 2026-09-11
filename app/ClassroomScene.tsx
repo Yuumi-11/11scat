@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { Expand, Minimize2 } from 'lucide-react';
 import { fittingChalkTaskCount, classroomDay, type PublicTaskPreview } from './classroom-view';
 import { CHALK_COLORS } from './board-painter.mjs';
+import { playBoardSlideSound } from './board-slide-sound';
 
-export type ClassroomPropName = 'calendar' | 'chalk-cup' | 'projector' | 'microphone' | 'camera' | 'taskboard' | 'folder' | 'settings' | 'bell';
+export type ClassroomPropName = 'calendar' | 'calendar-entry' | 'chalk-cup' | 'projector' | 'microphone' | 'camera' | 'taskboard' | 'folder' | 'settings' | 'bell';
 export function ClassroomProp({ name, active = false }: { name: ClassroomPropName; active?: boolean }) {
   if (name === 'bell') return <svg className="classroom-prop prop-bell" viewBox="0 0 90 110" aria-hidden="true">
     <g className="bell-mount"><path fill="#786448" d="M72 10h9v42h-9z" /><path d="M76 21H51q-13 0-13 14v9" fill="none" stroke="#786448" strokeWidth="7" strokeLinecap="round" /></g>
@@ -44,17 +45,29 @@ export function ProjectorControl({ open, hasSource, disabled, onClick }: { open:
 }
 export function BoardLayerNavigation({ index, count, onStep }: { index: number; count: number; onStep: (direction: -1 | 1) => void }) {
   return <div className="board-layer-navigation" aria-label="推拉黑板">
-    <button className="board-layer-side previous" type="button" aria-label="前一块黑板" disabled={index === 0} onClick={() => onStep(-1)}><span className="board-slide-grip" aria-hidden="true"><svg viewBox="0 0 20 48"><path d="M12 19 7 24 12 29" /></svg></span></button>
-    <button className="board-layer-side next" type="button" aria-label="后一块黑板" disabled={index >= count - 1} onClick={() => onStep(1)}><span className="board-slide-grip" aria-hidden="true"><svg viewBox="0 0 20 48"><path d="m8 19 5 5-5 5" /></svg></span></button>
+    {index > 0 && <button className="board-layer-side previous" type="button" aria-label="前一块黑板"  onClick={() => { playBoardSlideSound(); onStep(-1); }} />}
+    {index < count - 1 && <button className="board-layer-side next" type="button" aria-label="后一块黑板"  onClick={() => { playBoardSlideSound(); onStep(1); }} />}
     <span className="board-layer-position" aria-label={`第 ${index + 1} 块，共 ${count} 块黑板`}>{index + 1} / {count}</span>
   </div>;
 }
 export function BlackboardSurface({ index, count, onStep, drawing, children }: {
   index: number; count: number; onStep: (direction: -1 | 1) => void; drawing: boolean; children: ReactNode;
 }) {
+  const front = useRef<HTMLDivElement>(null);
+  const previousIndex = useRef(index);
+  useLayoutEffect(() => {
+    const direction = Math.sign(index - previousIndex.current);
+    previousIndex.current = index;
+    if (!direction || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const animation = front.current?.animate?.([
+      { transform: `translateX(${direction * 36}px)`, opacity: .7 },
+      { transform: 'translateX(0)', opacity: 1 },
+    ], { duration: 300, easing: 'cubic-bezier(.2,.75,.25,1)' });
+    return () => animation?.cancel();
+  }, [index]);
   return <div className="blackboard-cabinet" data-has-previous={index > 0} data-has-next={index < count - 1}>
     <div className="blackboard-back" aria-hidden="true" />
-    <div className="blackboard-front">
+    <div className="blackboard-front" ref={front}>
       {children}
       <div className="board-ledge" aria-hidden="true" />
       {!drawing && <div className="chalk-palette idle-chalk-palette" aria-hidden="true">

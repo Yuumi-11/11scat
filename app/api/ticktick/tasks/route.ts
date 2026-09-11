@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "../store";
 import { classroomDay, todayTasks } from "../../../classroom-view";
+import { classroomTodoTasks, classroomTodoWindow } from '../../../classroom-todo';
+import { currentIdentityId } from '../../identity/session';
+import { todoStore } from '../../room/todo/store';
 
 import { tickFetch, tickInboxData, filterTasksByView, type TickProject, type TickTask, type TaskView } from "../client";
 
@@ -39,12 +42,31 @@ export async function GET(request: Request) {
   }
   const requestedView = new URL(request.url).searchParams.get("view");
   const view: TaskView = requestedView === "today" ? "today" : requestedView === "undated" ? "undated" : "week";
+  const classroom = view === 'today' && new URL(request.url).searchParams.get('classroom') === '1';
   const exactToday = view === "today" && new URL(request.url).searchParams.get("exact") === "1";
+  const now = Date.now();
+  let historyWarning = '';
+  if (classroom) {
+    try {
+      const response = await tickFetch('/task/completed', token, { method: 'POST', body: JSON.stringify({}) });
+      const history = response.ok ? await response.json() : null;
+      if (!Array.isArray(history)) throw new Error('history unavailable');
+      if (history.length >= 200) historyWarning = '滴答完成记录可能达到返回上限，较早的外部完成项可能尚未列出';
+      for (const item of history) {
+        if (!item || typeof item.id !== 'string' || typeof item.title !== 'string' || item.status !== 2) continue;
+        if (!uniqueTasks.has(item.id)) uniqueTasks.set(item.id, item);
+      }
+    } catch { historyWarning = '滴答历史暂时无法读取，已保留本站当天勾选的任务'; }
+  }
   const sourceTasks = [...uniqueTasks.values()];
-  const filtered = exactToday
+  const normalizeTodo = (task: TickTask & { completedTime?: string }) => ({ ...task, dueDate: task.dueDate || task.startDate, done: !!task.status,
+    completedDay: task.completedTime && Number.isFinite(Date.parse(task.completedTime)) ? classroomTodoWindow(Date.parse(task.completedTime)).day : undefined });
+  const filtered = classroom
+    ? classroomTodoTasks(sourceTasks.map(normalizeTodo), now)
+    : exactToday
     ? todayTasks(sourceTasks.map(task => ({ ...task, dueDate: task.dueDate || task.startDate, done: !!task.status })), classroomDay()).sort((a, b) => Date.parse(a.dueDate || "") - Date.parse(b.dueDate || ""))
     : filterTasksByView(sourceTasks, view);
-  const tasks = filtered
+  let tasks = filtered
     .map((task) => ({
       id: task.id,
       projectId: task.projectId,
@@ -52,11 +74,17 @@ export async function GET(request: Request) {
       project: projectNames.get(task.projectId) || "滴答清单",
       dueDate: task.dueDate || task.startDate,
       isAllDay: task.isAllDay,
-      done: false,
+      done: classroom ? !!task.status : false,
+      ...(classroom ? { completedDay: normalizeTodo(task).completedDay } : {}),
     }));
+  if (classroom) {
+    const identity = await currentIdentityId();
+    if (!identity) return new NextResponse('Unauthorized', { status: 401 });
+    tasks = await todoStore.reconcile(identity, tasks, now) as typeof tasks;
+  }
   return NextResponse.json({
     view,
-    ...(inboxError ? { inboxError } : {}),
+    ...(inboxError || historyWarning ? { inboxError: [inboxError, historyWarning].filter(Boolean).join('；') } : {}),
     projects: projectsToRead.map(({ id, name }) => ({ id, name })),
     tasks,
   });

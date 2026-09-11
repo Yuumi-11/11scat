@@ -35,8 +35,8 @@ for (const lit of [true, false]) {
 const camera = await readFile(`${root}camera-flat.svg`, 'utf8');
 const projector = await readFile(`${root}projector-rear.svg`, 'utf8');
 await writeFile(`${root}projector-off.svg`, projector.replace('fill="#6e9274"', 'fill="#7a8475"'));
-const lamp = (x,y,r) => `<circle cx="${x}" cy="${y}" r="${r * 2.8}" fill="url(#record-light)"/><circle cx="${x}" cy="${y}" r="${r}" fill="#ef917b"/><circle cx="${x-r*.18}" cy="${y-r*.2}" r="${r*.42}" fill="#ffe7ce"/>`;
-const glow = '<defs><radialGradient id="record-light"><stop stop-color="#f6a78e" stop-opacity=".55"/><stop offset=".48" stop-color="#f0967d" stop-opacity=".23"/><stop offset="1" stop-color="#f0967d" stop-opacity="0"/></radialGradient></defs>';
+const lamp = (x,y,r) => `<circle cx="${x}" cy="${y}" r="${r * 4.2}" fill="url(#record-light)"/><circle cx="${x}" cy="${y}" r="${r * 1.5}" fill="#f32731" opacity=".7" filter="url(#red-bloom)"/><circle cx="${x}" cy="${y}" r="${r}" fill="#e7353e"/>`;
+const glow = '<defs><radialGradient id="record-light"><stop stop-color="#ff2635" stop-opacity=".75"/><stop offset=".35" stop-color="#f52132" stop-opacity=".4"/><stop offset="1" stop-color="#ea1e30" stop-opacity="0"/></radialGradient><filter id="red-bloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="1.8"/></filter></defs>';
 await writeFile(`${root}projector-on.svg`, projector.replace('<circle cx="116" cy="88" r="2" fill="#6e9274"/>',glow+lamp(116,88,2.6)));
 await writeFile(`${root}camera-on.svg`, camera.replace('</svg>', glow+lamp(120,68,4)+'<circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>'));
 const mic = await readFile(`${root}microphone-flat.svg`, 'utf8');

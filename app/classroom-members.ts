@@ -1,4 +1,4 @@
-export type ClassroomMember = { id: string; name: string; activity: string };
+export type ClassroomMember = { id: string; name: string; activity: string; todoNote?: string };
 export type ClassroomProfile = { members: ClassroomMember[]; seats: string[]; font: string };
 export function memberDevices(identityId: string, peers: string[], identities: Record<string, string>) {
   return [...new Set(peers)].filter(peer => identities[peer] === identityId);

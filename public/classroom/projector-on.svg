@@ -11,6 +11,6 @@
   <path fill="#c4b89a" d="M86 70h14v6H86z"/>
   <rect x="112" y="67" width="11" height="8" rx="1" fill="#8a8573"/>
   <path fill="#7e806c" d="M134 67h13v13h-13z"/>
-  <defs><radialGradient id="record-light"><stop stop-color="#f6a78e" stop-opacity=".55"/><stop offset=".48" stop-color="#f0967d" stop-opacity=".23"/><stop offset="1" stop-color="#f0967d" stop-opacity="0"/></radialGradient></defs><circle cx="116" cy="88" r="7.279999999999999" fill="url(#record-light)"/><circle cx="116" cy="88" r="2.6" fill="#ef917b"/><circle cx="115.532" cy="87.48" r="1.092" fill="#ffe7ce"/>
+  <defs><radialGradient id="record-light"><stop stop-color="#ff2635" stop-opacity=".75"/><stop offset=".35" stop-color="#f52132" stop-opacity=".4"/><stop offset="1" stop-color="#ea1e30" stop-opacity="0"/></radialGradient><filter id="red-bloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="1.8"/></filter></defs><circle cx="116" cy="88" r="10.920000000000002" fill="url(#record-light)"/><circle cx="116" cy="88" r="3.9000000000000004" fill="#f32731" opacity=".7" filter="url(#red-bloom)"/><circle cx="116" cy="88" r="2.6" fill="#e7353e"/>
   <path d="M141 77v12q0 17 19 17" fill="none" stroke="#80795f" stroke-width="3" stroke-linecap="round"/>
 </svg>

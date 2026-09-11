@@ -4,6 +4,7 @@ import path from "node:path";
 export type UserRecord = {
   nickname?: string;
   activity?: string;
+  todoNote?: string;
   ticktickToken?: string;
   updatedAt: string;
 };
@@ -52,7 +53,7 @@ export async function listRoomMembers() {
 export async function getClassroomProfile() {
   await writeQueue;
   const store = await readStore();
-  const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '' }));
+  const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '', todoNote: user.todoNote || '' }));
   const available = new Set(members.map(member => member.id));
   const seats = [...new Set([...(store.classroom?.seats || []), ...members.map(member => member.id)])].filter(id => available.has(id)).slice(0, 2);
   return { members, seats, font: store.classroom?.font || 'youyuan' };

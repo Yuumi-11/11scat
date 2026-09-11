@@ -58,3 +58,9 @@ The inline bell in `app/ClassroomScene.tsx` preserves the paths and colors of `b
 ## Binder clip
 
 `binder-clip-flat.svg` was drawn as editable SVG on 2026-09-11, using the current `taskboard-flat.svg`, `folder-flat.svg`, `camera-flat.svg` and `settings-flat.svg` as style references. No early scene mockups were used. Prepared for the next task-board redesign; the existing pushpin is preserved.
+
+## Device Latin and todo handwriting
+
+`fonts/nunito-latin-{400,600}.woff2` are unchanged Latin webfont subsets of **Nunito**, distributed in `@fontsource/nunito@5.2.6`, font version v31. The package metadata identifies Google Fonts as the source and OFL-1.1 as the license. Copyright and full license are preserved in `fonts/Nunito-OFL.txt`. The package was obtained from the npm registry on 2026-09-11; no proprietary system fonts are bundled. Both weights cover all ASCII letters and digits, verified from the font cmap. Chinese device text continues to reference a locally installed YouYuan and falls back to Noto Sans SC.
+
+Todo paper uses the existing Classroom Yan / Long Cang fonts for Chinese and Caveat for Latin text. The unsegmented checkbox and its irregular check mark are CSS geometry. `calendar-entry.svg` is an original editable vector drawing for this project, using the existing classroom prop palette and a tilted tent-calendar silhouette; it is a future calendar entry, not a date display.
