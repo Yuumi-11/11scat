@@ -33,3 +33,13 @@ test('inline attachment parts preserve cursor position, surrounding whitespace a
   assert.equal(parts.map(part => 'text' in part ? part.text : part.markdown).join(''), content);
   assert.deepEqual(descriptionParts('  只有文字\n'), [{ text: '  只有文字\n' }]);
 });
+
+test('description image placeholders follow their position while keeping original attachment links', () => {
+  const image = (name, path) => attachmentMarkdown('https://study.11scat.xyz', name, path);
+  const content = `${image('hash.png', 'tasks/a/first.png')} ${image('原文件.pdf', 'tasks/a/report.pdf')} ${image('图9.jpeg', 'tasks/a/last.jpeg')}`;
+  const parts = descriptionParts(content).filter(part => 'file' in part);
+  assert.deepEqual(parts.map(part => part.label), ['[图1.png]', '[原文件.pdf]', '[图2.jpeg]']);
+  assert.deepEqual(parts.map(part => part.file.name), ['hash.png', '原文件.pdf', '图9.jpeg']);
+  const before = descriptionParts(image('inserted.webp', 'tasks/a/new.webp') + content).filter(part => 'file' in part);
+  assert.deepEqual(before.map(part => part.label), ['[图1.webp]', '[图2.png]', '[原文件.pdf]', '[图3.jpeg]']);
+});

@@ -15,10 +15,13 @@ export function attachmentPreviewKind(name: string) {
   return 'download';
 }
 
-export function TaskAttachmentPreview({ file, onClose }: { file: DescriptionAttachment; onClose: () => void }) {
+type PreviewFile = DescriptionAttachment | { name: string; url: string; downloadUrl: string };
+
+export function TaskAttachmentPreview({ file, onClose }: { file: PreviewFile; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null), close = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState<string | null>(null), [error, setError] = useState('');
-  const kind = attachmentPreviewKind(file.name), url = taskAttachmentUrl(file.path);
+  const kind = attachmentPreviewKind(file.name), url = 'path' in file ? taskAttachmentUrl(file.path) : file.url;
+  const downloadUrl = 'path' in file ? taskAttachmentUrl(file.path, true) : file.downloadUrl;
   useLayoutEffect(() => {
     const element = dialog.current!, trigger = document.activeElement;
     element.showModal(); close.current?.focus();
@@ -39,8 +42,8 @@ export function TaskAttachmentPreview({ file, onClose }: { file: DescriptionAtta
     return () => controller.abort();
   }, [kind, url]);
   const failed = () => setError('附件暂时无法预览，可下载后查看。');
-  return createPortal(<dialog ref={dialog} className="task-attachment-preview" aria-label={`附件预览：${file.name}`} onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }} onKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
-    <header><strong>{file.name}</strong><a href={taskAttachmentUrl(file.path, true)} download={file.name}><Download size={17} />下载</a><button ref={close} type="button" aria-label="关闭附件预览" onClick={onClose}><X size={20} /></button></header>
+  return createPortal(<dialog ref={dialog} className={`task-attachment-preview${kind === 'image' ? ' image-preview' : ''}`} aria-label={`附件预览：${file.name}`} onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }} onKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+    <header>{kind !== 'image' && <strong>{file.name}</strong>}<a href={downloadUrl} download={file.name} aria-label="下载附件"><Download size={20} aria-hidden="true" /></a><button ref={close} type="button" aria-label="关闭附件预览" onClick={onClose}><X size={20} aria-hidden="true" /></button></header>
     <div className="task-attachment-preview-body">
       {error ? <p role="alert">{error}</p> : kind === 'image' ? <img src={url} alt={file.name} onError={failed} /> : kind === 'text' ? text === null ? <p role="status">正在读取…</p> : <pre>{text}</pre> : kind === 'pdf' ? <iframe src={url} title={file.name} /> : kind === 'audio' ? <audio controls src={url} onError={failed} /> : kind === 'video' ? <video controls src={url} onError={failed} /> : <p>此格式暂不支持在线预览，请下载后查看。</p>}
     </div>

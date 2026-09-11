@@ -23,6 +23,7 @@ import { WorkflowTaskDeletion } from "./WorkflowTaskDeletion";
 import { applyWorkflowUpdate, removeSnapshotTask, withoutDeletedWorkflowTasks } from './collaboration-snapshot';
 import { inboxClaimant } from './inbox-claim-stamp';
 import { InboxClaimStamp } from './InboxClaimStamp';
+import { readTaskResponse, taskErrorMessage } from './task-request';
 
 type RequestCommand = WorkflowCommand | { id: string; action: "legacy-reset" } | CollaborationCommand | { id: string; action: "resume" | "cancel" } | { id: string; action: "recover"; target: { id: string; version: string } };
 type Editor = { workflow?: ClaimWorkflow; task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
@@ -91,7 +92,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   const markRead = useCallback(async (ids: string[]) => {
     const pending = ids.filter(id => !readIds.current.has(id)); if (!pending.length) return;
     const response = await fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "read-notices", ids: pending }), signal: AbortSignal.timeout(15000) });
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || "浏览状态未保存");
+    const data = await readTaskResponse(response, '浏览状态未保存');
     for (const id of pending) readIds.current.add(id);
     acceptNotices(data.notices || [], data.noticeVersion);
   }, [acceptNotices]);
@@ -116,15 +117,15 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const id = ++generation.current;
     try {
       const response = await fetch("/api/room/tasks", { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "协作区读取失败");
+      const data = await readTaskResponse(response, '协作区读取失败');
+      if (!Array.isArray(data.buffer) || !Array.isArray(data.members) || !Array.isArray(data.workflows)) throw new Error('协作区读取失败');
       if (id !== generation.current) return null;
       const next = withoutDeletedWorkflowTasks(data);
       setSnapshot(next);
       acceptNotices(data.notices || [], data.noticeVersion);
       revision.current = data.revision;
       return next;
-    } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "协作区暂时无法读取"); return null; }
+    } catch (cause) { if (id === generation.current) setError(taskErrorMessage(cause, '协作区暂时无法读取')); return null; }
     finally { if (id === generation.current) { fetching.current = false; setLoading(false); } }
   }, [acceptNotices, previewSnapshot]);
 
@@ -161,8 +162,8 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const first = setTimeout(() => {
       locked.current = true; setBusy(true);
       void fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "legacy-reset" }), signal: AbortSignal.timeout(90000) })
-        .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || "旧记录清理暂未完成"); })
-        .catch(cause => setError(cause instanceof Error ? cause.message : "旧记录清理暂未完成"))
+        .then(response => readTaskResponse(response, '旧记录清理暂未完成'))
+        .catch(cause => setError(taskErrorMessage(cause, '旧记录清理暂未完成')))
         .finally(async () => { await load(true); locked.current = false; setBusy(false); });
     }, 0);
     const timer = setInterval(() => { if (!document.hidden && !locked.current && !drag.current) void load(); }, 15000);
@@ -206,8 +207,9 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     let operation: OperationView | undefined, workflow: ClaimWorkflow | undefined;
     try {
       const response = await fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command), signal: AbortSignal.timeout(90000) });
-      const data = await response.json();
-      if (!response.ok) { if (response.status < 500) setUncertain(null); throw new Error(data.error || "操作未完成"); }
+      if (!response.ok && response.status < 500) setUncertain(null);
+      const data = await readTaskResponse(response, '请求结果未确认，请核对并重试');
+      if (command.action !== 'legacy-reset' && !data.operation?.id && !data.workflow?.id) throw new Error('请求结果未确认，请核对并重试');
       operation = data.operation; workflow = data.workflow;
       if (workflow) setSnapshot(current => current ? applyWorkflowUpdate(current, workflow!) : current);
       const deletedSource = command.action === 'delete' ? command.source : undefined;
@@ -217,7 +219,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       if ((workflow?.error || workflow?.syncError) && !workflow?.editPending && !workflow?.ownerDeletePending) setError(workflow.syncError || workflow.error);
       else if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
       else setNotice(operation?.status === "cancelled" ? "已取消未完成的操作" : "已保存");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "请求结果未确认，请核对并重试"); }
+    } catch (cause) { setError(taskErrorMessage(cause, '请求结果未确认，请核对并重试')); }
     finally {
       const deletionConfirmed = workflow?.status === 'deleted' || (operation?.status === 'done' && command.action === 'delete');
       const next = deletionConfirmed ? null : await load(true);
@@ -227,6 +229,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       if (workflow && command.action === "update-workflow") setEditor(current => current?.workflow?.id === workflow!.id ? { ...current, workflow } : current);
       const known = next?.operations.find(item => item.id === command.id);
       if (known) { setUncertain(null); operation ||= known; }
+      if (workflow && !workflow.error && !workflow.syncError) setError('');
       if (operation?.status === "done") { setError(""); setNotice("已保存"); }
       locked.current = false; setBusy(false);
       void onChanged();

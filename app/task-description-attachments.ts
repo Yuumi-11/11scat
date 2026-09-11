@@ -1,14 +1,18 @@
+import { imageAttachmentExtension } from './task-attachment-labels.ts';
+
 export type DescriptionAttachment = { name: string; path: string; url: string };
 export const taskAttachmentUrl = (path: string, download = false) => `/api/room/tasks/attachments?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
-export const attachmentDisplayText = (content: string) => descriptionParts(content).map(part => 'text' in part ? part.text : part.file.name).join('');
-export function descriptionParts(content: string): ({ text: string } | { file: DescriptionAttachment; markdown: string })[] {
-  const parts: ({ text: string } | { file: DescriptionAttachment; markdown: string })[] = [];
+export const attachmentDisplayText = (content: string) => descriptionParts(content).map(part => 'text' in part ? part.text : part.label).join('');
+export function descriptionParts(content: string): ({ text: string } | { file: DescriptionAttachment; markdown: string; label: string })[] {
+  const parts: ({ text: string } | { file: DescriptionAttachment; markdown: string; label: string })[] = [];
   const pattern = /\[附件：([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
-  let cursor = 0;
+  let cursor = 0, image = 0;
   for (const match of content.matchAll(pattern)) {
     const file = descriptionAttachments(match[0]).attachments[0];
     if (!file) continue;
-    parts.push({ text: content.slice(cursor, match.index) }, { file, markdown: match[0] });
+    const extension = imageAttachmentExtension(file.name);
+    const label = `[${extension ? `图${++image}.${extension}` : file.name}]`;
+    parts.push({ text: content.slice(cursor, match.index) }, { file, markdown: match[0], label });
     cursor = match.index! + match[0].length;
   }
   parts.push({ text: content.slice(cursor) });

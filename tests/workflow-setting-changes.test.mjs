@@ -16,6 +16,6 @@ test('setting history shows only changed fields with readable old and new values
 test('new and historical attachment changes show filenames with extensions instead of raw URLs', () => {
   const old = attachmentMarkdown('https://study.11scat.xyz', 'old.png', 'tasks/a/b/old.png');
   const next = attachmentMarkdown('https://study.11scat.xyz', 'input.txt', 'tasks/a/c/input.txt');
-  assert.equal(workflowSettingChanges(taskFields({ content: old }), taskFields({ content: next })), '说明：old.png → input.txt');
-  assert.equal(attachmentDisplayText(`说明：无 → ${old}`), '说明：无 → old.png');
+  assert.equal(workflowSettingChanges(taskFields({ content: old }), taskFields({ content: next })), '说明：[图1.png] → [input.txt]');
+  assert.equal(attachmentDisplayText(`说明：无 → ${old}`), '说明：无 → [图1.png]');
 });

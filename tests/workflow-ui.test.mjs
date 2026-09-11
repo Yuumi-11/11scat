@@ -14,7 +14,7 @@ test('workflow detail offers settings to every member and direct completion only
   await build({ entryPoints: ['app/ClaimWorkflows.tsx'], bundle: true, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic', outfile: output, logLevel: 'silent' });
   const { ClaimWorkflows, WorkflowList } = await import(pathToFileURL(output).href);
   const workflow = { id: 'workflow', title: '测试', reviewerId: 'alice', claimantId: 'bob', fields: taskFields({ title: '测试' }), status: 'working', events: [] };
-  const render = (identityId, status = 'working', editPending = false) => renderToStaticMarkup(createElement(ClaimWorkflows, { initialId: workflow.id, busy: false, error: '', onClose() {}, onEdit() {}, perform() {}, snapshot: { identityId, members: ['alice', 'bob', 'charlie'].map(id => ({ id, name: id })), workflows: [{ ...workflow, status, editPending }] } }));
+  const render = (identityId, status = 'working', editPending = false, error = '') => renderToStaticMarkup(createElement(ClaimWorkflows, { initialId: workflow.id, busy: false, error, onClose() {}, onEdit() {}, perform() {}, snapshot: { identityId, members: ['alice', 'bob', 'charlie'].map(id => ({ id, name: id })), workflows: [{ ...workflow, status, editPending }] } }));
   for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done', 'deleted']) {
     const html = render(member, status); assert.match(html, /<form[^>]+aria-label="详细设置"/); assert.ok(!html.includes(">详细设置</button>"));
     assert.equal(html.includes('直接完成'), member === 'alice' && !['done','deleted'].includes(status));
@@ -45,12 +45,22 @@ test('workflow detail offers settings to every member and direct completion only
   assert.ok(render('alice').includes('>催办</button>')); assert.ok(!render('bob').includes('>催办</button>'));
   workflow.fields.content = '前文 [附件：报告.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Fa%2Fb.pdf) 后文';
   const attachmentHtml = render('alice');
-  assert.match(attachmentHtml, /前文 <a[^>]+>报告.pdf<\/a> 后文/);
+  assert.match(attachmentHtml, /前文 <a[^>]+>\[报告.pdf\]<\/a> 后文/);
   assert.match(attachmentHtml, /aria-label="任务附件"/);
   assert.ok(!attachmentHtml.includes('[附件：报告.pdf]'), 'raw Markdown is not shown in the description');
   assert.ok(!attachmentHtml.includes('target="_blank"'), 'task attachment clicks stay in the current page');
   workflow.events.push({ id: 'old-attachment-change', actorId: 'alice', type: 'updated', at: 1700000000000, comment: `说明：无 → ${workflow.fields.content}`, files: [] });
-  assert.ok(render('alice').includes('说明：无 → 前文 报告.pdf 后文'));
+  assert.ok(render('alice').includes('说明：无 → 前文 [报告.pdf] 后文'));
+  workflow.fields.content = '[附件：hash.png](https://study.11scat.xyz/task-attachment?path=tasks%2Fa%2Fphoto.png)';
+  workflow.events.push({ id: 'image-review', type: 'approve', actorId: 'alice', at: 1700000000000, comment: '[图1.png] [证明.pdf]', files: [{ id: 'image', name: 'hash.png', url: '/api/room/tasks/files/image' }, { id: 'document', name: '证明.pdf', url: '/api/room/tasks/files/document' }] });
+  const images = render('alice', 'submitted', false, 'Unexpected end of JSON input');
+  assert.ok(images.includes('src="/api/room/tasks/files/image?preview=1"'));
+  assert.ok(images.includes('alt="图1.png"'));
+  assert.ok(images.includes('download="证明.pdf"'));
+  assert.ok(!images.includes('Unexpected end of JSON input'));
+  assert.ok(!images.includes('每个 20 MB'));
+  const description = images.match(/<div class="task-description">[\s\S]*?<\/div>/)[0];
+  assert.ok(description.includes('[图1.png]')); assert.ok(!description.includes('<img'));
   workflow.fields.content = '';
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {

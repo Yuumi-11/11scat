@@ -1,18 +1,21 @@
 "use client";
 import { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
-import { clipboardFiles, cloudRequest } from "./cloud-drive-actions";
+import { clipboardFiles } from "./cloud-drive-actions";
 import { attachmentMarkdown, descriptionAttachments, descriptionParts, type DescriptionAttachment } from "./task-description-attachments";
 import { TaskAttachmentPreview } from "./TaskAttachmentPreview";
+import { attachmentDisplayNames, pastedAttachmentName } from './task-attachment-labels';
+import { readTaskResponse, taskErrorMessage } from './task-request';
 
 export function TaskDescription({ content }: { content: string }) {
   const [preview, setPreview] = useState<DescriptionAttachment | null>(null);
-  return <div className="task-description"><p className="coop-workflow-description">{descriptionParts(content).map((part, index) => 'text' in part ? part.text : <a key={index} href={part.file.url} onClick={event => { event.preventDefault(); event.stopPropagation(); setPreview(part.file); }}>{part.file.name}</a>)}</p>{preview && <TaskAttachmentPreview key={preview.path} file={preview} onClose={() => setPreview(null)} />}<TaskAttachments content={content} /></div>;
+  return <div className="task-description"><p className="coop-workflow-description">{descriptionParts(content).map((part, index) => 'text' in part ? part.text : <a key={index} href={part.file.url} onClick={event => { event.preventDefault(); event.stopPropagation(); setPreview(part.file); }}>{part.label}</a>)}</p>{preview && <TaskAttachmentPreview key={preview.path} file={preview} onClose={() => setPreview(null)} />}<TaskAttachments content={content} /></div>;
 }
 
 export function TaskAttachments({ content }: { content: string }) {
   const { attachments } = descriptionAttachments(content);
+  const labels = attachmentDisplayNames(attachments);
   const [preview, setPreview] = useState<DescriptionAttachment | null>(null);
-  return <>{attachments.length > 0 && <div className="task-description-files" aria-label="任务附件">{attachments.map((file, index) => <a key={file.path + ':' + index} href={file.url} onClick={event => { event.preventDefault(); event.stopPropagation(); setPreview(file); }}>{file.name}</a>)}</div>}{preview && <TaskAttachmentPreview key={preview.path} file={preview} onClose={() => setPreview(null)} />}</>;
+  return <>{attachments.length > 0 && <div className="task-description-files" aria-label="任务附件">{attachments.map((file, index) => <a key={file.path + ':' + index} href={file.url} onClick={event => { event.preventDefault(); event.stopPropagation(); setPreview(file); }}>[{labels[index]}]</a>)}</div>}{preview && <TaskAttachmentPreview key={preview.path} file={preview} onClose={() => setPreview(null)} />}</>;
 }
 
 export function TaskDescriptionEditor({ value, disabled, taskKey, onChange, onUploading }: { value: string; disabled: boolean; taskKey: string; onChange: (value: string) => void; onUploading: (busy: boolean) => void }) {
@@ -27,10 +30,13 @@ export function TaskDescriptionEditor({ value, disabled, taskKey, onChange, onUp
   useLayoutEffect(() => {
     if (!editor.current || rendered.current === value) return;
     editor.current.replaceChildren();
-    for (const part of descriptionParts(value)) editor.current.append('text' in part ? document.createTextNode(part.text) : attachmentNode(part.markdown));
+    for (const part of descriptionParts(value)) editor.current.append('text' in part ? document.createTextNode(part.text) : attachmentNode(part.markdown, part.label));
     rendered.current = value;
   }, [value]);
   const publish = () => {
+    const nodes = Array.from(editor.current?.querySelectorAll<HTMLAnchorElement>('a[data-attachment]') || []);
+    const labels = attachmentDisplayNames(nodes.map(node => descriptionAttachments(node.dataset.attachment || '').attachments[0]));
+    nodes.forEach((node, index) => { node.textContent = `[${labels[index]}]`; });
     const content = serialize();
     rendered.current = content; latest.current.value = content; latest.current.onChange(content);
   };
@@ -62,14 +68,17 @@ export function TaskDescriptionEditor({ value, disabled, taskKey, onChange, onUp
           if (file.size > 20 * 1024 * 1024) throw new Error("单个附件不能超过20 MB");
           if (serialize().length > 7000) throw new Error("说明过长，请缩短后再粘贴附件");
           const scope = taskKey.replace(/[^A-Za-z0-9_-]/g, "_");
-          const result = await cloudRequest(`/api/room/tasks/attachments?task=${encodeURIComponent(scope)}`, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name || "粘贴文件") }, body: file, signal: AbortSignal.timeout(120000) });
+          const name = pastedAttachmentName(file, descriptionAttachments(serialize()).attachments);
+          const response = await fetch(`/api/room/tasks/attachments?task=${encodeURIComponent(scope)}`, { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(name) }, body: file, signal: AbortSignal.timeout(120000) });
+          const result = await readTaskResponse(response, '上传失败');
+          if (!result.item?.name || !result.item?.path) throw new Error('上传失败');
           if (!active.current) break;
           const node = attachmentNode(attachmentMarkdown(window.location.origin, result.item.name, result.item.path));
           if (!inserted) range.deleteContents();
           range.insertNode(node); range.setStartAfter(node); range.collapse(true);
           const space = document.createTextNode(" "); range.insertNode(space); range.setStartAfter(space); range.collapse(true);
           inserted = true; publish();
-        } catch (error) { errors.push(`${file.name}：${error instanceof Error ? error.message : "上传失败"}`); }
+        } catch (error) { errors.push(`${file.name}：${taskErrorMessage(error, '上传失败')}`); }
       }
       if (active.current) {
         setNotice(errors.length ? errors.join("；") : ""); setUploading(false); latest.current.onUploading(false);
@@ -80,10 +89,10 @@ export function TaskDescriptionEditor({ value, disabled, taskKey, onChange, onUp
   }} /><TaskAttachments content={value} />{notice && <small role="status" className="task-attachment-status">{notice}</small>}{preview && <TaskAttachmentPreview key={preview.path} file={preview} onClose={() => setPreview(null)} />}</div>;
 }
 
-function attachmentNode(markdown: string) {
+function attachmentNode(markdown: string, label?: string) {
   const file = descriptionAttachments(markdown).attachments[0];
   const link = document.createElement('a');
-  link.textContent = file.name; link.href = file.url;
+  link.textContent = label || `[${file.name}]`; link.href = file.url;
   link.contentEditable = 'false'; link.dataset.attachment = markdown;
   return link;
 }
