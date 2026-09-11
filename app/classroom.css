@@ -143,7 +143,6 @@
 .board-shelf > div > button:first-child { flex: 1; text-align: left; }
 .board-shelf button { min-height: 34px; border: 0; border-radius: 3px; background: transparent; display: inline-flex; align-items: center; padding: 4px 8px; gap: 5px; }
 .board-shelf button:hover { background: #e9dfc5; }
-.desk-stop-share { position: absolute; top: -9px; left: 0; display: flex; gap: 4px; align-items: center; border: 1px solid #c8b99c; border-radius: 4px; padding: 4px 6px; background: #fff8e7; font-size: 11px; z-index: 5; }
 .classroom-scene .whiteboard-shell { grid-template-columns: minmax(0,1fr) 42px; gap: 0; padding: 0 5px 30px 0; background: transparent; z-index: 4; overflow: visible; }
 .classroom-scene .whiteboard-paper { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .whiteboard-paper .chalk-stroke-canvas, .whiteboard-paper .chalk-text-canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
