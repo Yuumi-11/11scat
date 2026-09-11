@@ -226,3 +226,7 @@
 .coop-task-title .coop-priority { margin-left: 5px; }
 .priority-5 .coop-priority { color: #ed3f3f; }.priority-3 .coop-priority { color: #ffa600; }.priority-1 .coop-priority { color: #4c6fff; }
 @media (max-width: 640px) { .coop-notebook { padding: 2px 2px 7px; }.coop-members { gap: 26px; }.coop-layout { gap: 12px; } }
+
+.coop-task[data-surface-draggable] { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.coop-task[data-surface-draggable]:active { cursor: grabbing; }
+.coop-task[data-surface-draggable] :is(input, textarea, [contenteditable]:not([contenteditable="false"])) { cursor: text; user-select: text; -webkit-user-select: text; }

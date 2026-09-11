@@ -51,7 +51,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), membersPane = useRef<HTMLDivElement>(null);
   const locked = useRef(false), fetching = useRef(false), revision = useRef<number | null>(null), generation = useRef(0);
   const loadController = useRef<AbortController | null>(null);
-  const drag = useRef<{ task: RoomTask; x: number; y: number; moved: boolean; offsetX: number; offsetY: number; width: number } | null>(null);
+  const drag = useRef<{ handle: HTMLElement; pointerId: number; task: RoomTask; x: number; y: number; moved: boolean; offsetX: number; offsetY: number; width: number } | null>(null);
 
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(""), 2400); return () => clearTimeout(timer); }, [notice]);
 
@@ -186,9 +186,22 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     setDeleteArmed(false); setError(""); setKeyboardDrag(null); setHoverOwner(null);
     setEditor({ workflow, task, title: task.title, content: task.content, priority: task.priority, start: dateInput(task.startDate, task.isAllDay), due: dateInput(task.dueDate, task.isAllDay), allDay: task.isAllDay, tags: task.tags.join(", "), repeat: task.repeatFlag, reminders: task.reminders });
   };
-  function pointerMove(event: PointerEvent<HTMLButtonElement>) {
+  function startDrag(event: PointerEvent<HTMLElement>, task: RoomTask) {
+    if (event.button !== 0 || !event.isPrimary || drag.current) return;
+    setKeyboardDrag(null);
+    const handle = event.currentTarget;
+    const rect = handle.closest("article")!.getBoundingClientRect();
+    handle.setPointerCapture(event.pointerId);
+    drag.current = { handle, pointerId: event.pointerId, task, x: event.clientX, y: event.clientY, moved: false, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width };
+    event.preventDefault();
+  }
+  function lostDrag(event: PointerEvent<HTMLElement>) {
+    if (drag.current?.handle !== event.currentTarget || drag.current.pointerId !== event.pointerId) return;
+    drag.current = null; setGhost(null); setHoverOwner(null);
+  }
+  function pointerMove(event: PointerEvent<HTMLElement>) {
     const current = drag.current;
-    if (!current) return;
+    if (!current || current.handle !== event.currentTarget || current.pointerId !== event.pointerId) return;
     if (!current.moved && Math.hypot(event.clientX - current.x, event.clientY - current.y) < 7) return;
     current.moved = true;
     setGhost({ x: event.clientX - current.offsetX, y: event.clientY - current.offsetY, task: current.task, width: current.width });
@@ -206,8 +219,10 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const rect = list?.getBoundingClientRect();
     if (rect) { if (event.clientY > rect.bottom - 45) list?.scrollBy({ top: 18 }); else if (event.clientY < rect.top + 45) list?.scrollBy({ top: -18 }); }
   }
-  function finishDrag(event: PointerEvent<HTMLButtonElement>, cancel = false) {
-    const current = drag.current; drag.current = null; setGhost(null); setHoverOwner(null);
+  function finishDrag(event: PointerEvent<HTMLElement>, cancel = false) {
+    const current = drag.current;
+    if (!current || current.handle !== event.currentTarget || current.pointerId !== event.pointerId) return;
+    drag.current = null; setGhost(null); setHoverOwner(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (!cancel && current?.moved) {
       const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-coop-owner]");
@@ -225,7 +240,11 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const priorityFlag = <svg className="coop-priority" viewBox="0 0 24 24" role="img" aria-label={`${priorities[task.priority]}优先级`}><path d="M4 21V3m1 1h15l-4 6 4 6H5" fill="currentColor" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" /></svg>;
     const compactClaim = task.ownerId !== null && !collaborationDate(task);
     const claimButton = !workflow && task.ownerId !== identityId && task.publisherId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
-    return <article className={`coop-task priority-${task.priority}${pending ? " pending" : ""}${!preview && ghost && taskKey(ghost.task) === taskKey(task) ? " dragging" : ""}`} key={taskKey(task)}>
+    const surfaceDraggable = task.ownerId !== null && !preview && !cardLocked && !task.transferBlocked;
+    return <article data-surface-draggable={surfaceDraggable || undefined} onPointerDown={event => {
+      if (!surfaceDraggable || !(event.target instanceof Element) || event.target.closest('button, input, textarea, select, option, a, label, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])')) return;
+      startDrag(event, task);
+    }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={lostDrag} className={`coop-task priority-${task.priority}${pending ? " pending" : ""}${!preview && ghost && taskKey(ghost.task) === taskKey(task) ? " dragging" : ""}`} key={taskKey(task)}>
       {task.ownerId === null && <TaskNoticeDot ids={taskNotices.filter(item => item.taskId === task.id).map(item => item.id)} onRead={open && !workflowOpen && !editor && !recoveryOpen && !nudge ? markViewed : undefined} />}
       <div className="coop-task-top"><button className="coop-drag" type="button"  aria-label={`拖动任务 ${task.title}`} aria-pressed={keyboardDrag?.task.id === task.id && keyboardDrag.task.ownerId === task.ownerId} disabled={cardLocked || !!task.transferBlocked}
         onBlur={() => { setKeyboardDrag(null); setHoverOwner(null); }}
@@ -242,7 +261,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
           const target = Array.from(dialog.current?.querySelectorAll<HTMLElement>("[data-coop-owner]") || []).find(element => element.dataset.coopOwner === next);
           target?.scrollIntoView({ block: "nearest", inline: "nearest" });
         }}
-        onPointerDown={event => { if (event.button !== 0) return; setKeyboardDrag(null); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.closest("article")!.getBoundingClientRect(); drag.current = { task, x: event.clientX, y: event.clientY, moved: false, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width }; }} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={() => { drag.current = null; setGhost(null); setHoverOwner(null); }} />
+        onPointerDown={event => startDrag(event, task)} onPointerMove={pointerMove} onPointerUp={event => finishDrag(event)} onPointerCancel={event => finishDrag(event, true)} onLostPointerCapture={lostDrag} />
         {isEditing ? <InlineTaskTitle key={taskKey(inlineTask)} initialValue={inlineTask.title} label="修改任务标题" disabled={unavailable} onCancel={() => setInlineTask(null)} onSave={async title => {
           const done = title === inlineTask.title || await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(inlineTask), fields: { title } });
           if (done) setInlineTask(null); return done;
