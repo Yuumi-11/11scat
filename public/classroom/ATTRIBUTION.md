@@ -57,7 +57,7 @@ The inline bell in `app/ClassroomScene.tsx` preserves the paths and colors of `b
 
 ## Binder clip
 
-`binder-clip-flat.svg` was drawn as editable SVG on 2026-09-11, using the current `taskboard-flat.svg`, `folder-flat.svg`, `camera-flat.svg` and `settings-flat.svg` as style references. No early scene mockups were used. Prepared for the next task-board redesign; the existing pushpin is preserved.
+`binder-clip-flat.svg` was drawn as editable SVG on 2026-09-11, using the current `taskboard-flat.svg`, `folder-flat.svg`, `camera-flat.svg` and `settings-flat.svg` as style references. No early scene mockups were used. Revised on 2026-09-11 against the user-provided front-view binder-clip photograph: both wire levers fold upward, the front lever pivots at the rolled mouth ends and crosses the closed shell. The paper edge should lie behind the shell between y=62 and y=101 in the 96 x 112 viewBox. The design is an original simplified vector drawing; no photo pixels are embedded. Prepared for the next task-board redesign; the existing pushpin is preserved.
 
 ## Device Latin and todo handwriting
 
