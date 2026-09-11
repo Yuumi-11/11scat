@@ -24,8 +24,8 @@ import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
 import { BlackboardSurface, ClassroomFullscreenIcon, ClassroomProp, EmergencyExit, IdleChalkboard, ProjectorControl, useClassroomDate, useProjectionCurtain } from "./ClassroomScene";
-import { ActivityInput, ClassroomSeatingSettings, DeviceCard } from './ClassroomDevices';
-import { fixedClassroomSeats, memberDevices } from './classroom-members';
+import { ActivityInput, ClassroomGeneralSettings, DeviceCard } from './ClassroomDevices';
+import { incomingSeatRequests, fixedClassroomSeats, memberDevices } from './classroom-members';
 import { useClassroomProfile } from './use-classroom-profile';
 import { type PublicTaskPreview } from "./classroom-view";
 import { useClassroomBoards } from "./use-classroom-boards";
@@ -2539,7 +2539,7 @@ export default function Home() {
           const screenOn = !!((self && stream) || screenPeer);
           const cameraOn = !!((self && cameraStream) || cameraPeer);
           const view = (id: string) => { setActiveMediaId(id); setActiveBoardId(''); projection.reveal(); };
-          return <div className="classroom-desk" key={index}><DeviceCard kind={index === 0 ? 'tablet' : 'laptop'} name={self ? displayName : member.name} online={!!member.id && ((self && joined) || peers.length > 0)} screen={screenOn} camera={cameraOn} microphone={self ? !!microphoneStream : peers.some(id=>!!remoteMicrophones[id])} self={self} onMicrophone={self ? ()=>void toggleMicrophone() : undefined}
+          return <div className="classroom-desk" key={index}><DeviceCard font={classroomProfile.profile.font} kind={index === 0 ? 'tablet' : 'laptop'} name={self ? displayName : member.name} online={!!member.id && ((self && joined) || peers.length > 0)} screen={screenOn} camera={cameraOn} microphone={self ? !!microphoneStream : peers.some(id=>!!remoteMicrophones[id])} self={self} onMicrophone={self ? ()=>void toggleMicrophone() : undefined}
             onScreen={self ? () => stream ? stopShare() : screenPeer ? view(screenPeer + '-screen') : openShareDialog('start') : screenPeer ? () => view(screenPeer + '-screen') : undefined}
             onCamera={self ? () => cameraStream ? stopCamera() : cameraPeer ? view(cameraPeer + '-camera') : void toggleCamera() : cameraPeer ? () => view(cameraPeer + '-camera') : undefined}>
             {self ? <form className="activity-box" onSubmit={submitActivity}><ActivityInput value={activity} readOnly={activitySaveStatus === '正在保存…'} onChange={value => { setActivity(value); setActivitySaveStatus(''); }} />{activitySaveStatus && <small role="status">{activitySaveStatus}</small>}</form> : <p>{peers.map(id => memberActivities[id]).find(value => value !== undefined) ?? member.activity}</p>}
@@ -2553,9 +2553,9 @@ export default function Home() {
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
         </div>
         <div className="classroom-desk desk-room">
-          <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" ><ClassroomProp name="folder" /></button>
+          <button className="object-button cloud-entry-button" type="button" onClick={openCloud} aria-label="云盘" ><ClassroomProp name="folder" /></button>
           <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
-            { id: 'seating', label: '座位与设备字体', icon: <ListTodo size={19} />, content: <><ClassroomSeatingSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} onChange={value => void classroomProfile.save(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
+            { id: 'general', label: '通用', badge: incomingSeatRequests(classroomProfile.profile, identityId), icon: <ListTodo size={19} />, content: <><ClassroomGeneralSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} identityId={identityId} onAction={value => void classroomProfile.act(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
             { id: 'boards', label: '画板管理', icon: <Plus size={19} />, content: <div className="classroom-board-settings"><p>默认黑板始终是第一层。点击粉笔筒新建画板，点击侧面露出的后方黑板切换。</p>{orderedBoards.map(board => <div key={board.id}><span>{board.name}</span><button type="button" onClick={() => deleteBoard(board.id)}>删除{board.name}</button></div>)}</div> },
             { id: "notifications", label: "消息铃声提醒", icon: <Bell size={19} />, content: <>
               <h3>手机与手表消息提醒</h3>

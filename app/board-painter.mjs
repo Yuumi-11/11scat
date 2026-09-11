@@ -1,6 +1,6 @@
 import { createChalkRenderer } from './chalk-renderer.mjs';
 
-export const BOARD_COLOR = '#426e63';
+export const BOARD_COLOR = '#3c645a';
 export const CHALK_FONT = '"Classroom Yan", "Long Cang", cursive';
 export const CHALK_COLORS = [
   { name: '白色粉笔', color: '#f6f1dc' }, { name: '黄色粉笔', color: '#efd28a' },

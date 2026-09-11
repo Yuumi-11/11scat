@@ -247,7 +247,8 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onClose, onA
       const painter = createBoardPainter(() => document.createElement("canvas"));
       painter.drawStrokes(layerContext, board.strokes, board.epoch);
       painter.drawTexts(layerContext, board.texts);
-      context.fillStyle = BOARD_COLOR; context.fillRect(0, 0, outputWidth, outputHeight);
+      const outputBoardColor = paperRef.current && getComputedStyle(paperRef.current).getPropertyValue('--board-color').trim();
+      context.fillStyle = outputBoardColor || BOARD_COLOR; context.fillRect(0, 0, outputWidth, outputHeight);
       const texture = new Image(); texture.src = "/classroom/board-grain.png";
       await texture.decode().catch(() => undefined);
       if (texture.complete && texture.naturalWidth) {

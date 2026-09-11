@@ -15,6 +15,27 @@
 .room-settings-content .push-watch-note { margin-top: 12px; }
 .room-settings-content .push-message { margin: 12px 0 0; color: var(--theme-accent-dark); }
 .room-settings-content .error-message { color: var(--danger); }
+.room-settings-dialog {
+  --panel: #fff; --soft: #f7f8fa; --ink: #26313a; --muted: #69727c;
+  --line: #e2e6eb; --line-strong: #cbd2da; --theme-soft: #edf2f5;
+  --theme-accent: #8798a6; --theme-accent-dark: #415969;
+  --danger: #b44848; background: #fff; color-scheme: light;
+}
+.settings-button { position: relative; }
+.settings-notification-badge, .settings-section-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: #bc5756; color: #fff; font: 600 12px/1 sans-serif; }
+.settings-notification-badge { position: absolute; z-index: 2; top: 10%; right: 3%; border: 2px solid #fff3db; box-sizing: content-box; }
+.classroom-general-settings { display: grid; gap: 0; }
+.settings-seat-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0 20px; border-bottom: 1px solid var(--line); }
+.settings-option-heading { display: grid; gap: 7px; font-size: 14px; }
+.settings-option-heading span, .settings-seat-request > span { color: var(--muted); font-size: 13px; }
+.settings-seat-request { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; width: 100%; }
+.settings-seat-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.classroom-general-settings button, .classroom-general-settings select { min-height: 36px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; color: var(--ink); font: inherit; font-size: 13px; }
+.classroom-general-settings button:hover:not(:disabled) { background: var(--soft); border-color: var(--theme-accent); }
+.classroom-general-settings button:disabled { opacity: .5; cursor: default; }
+.settings-font-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 0; font-size: 14px; }
+.settings-font-row select { max-width: 100%; }
+.classroom-general-settings > p { margin-top: 8px; color: var(--danger); }
 @media (max-width: 480px) {
   .topbar-actions .settings-button { padding: 7px 9px; font-size: 12px; }
   .room-settings-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); padding: 18px 16px; }

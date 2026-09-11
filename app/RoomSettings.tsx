@@ -5,9 +5,10 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, ChevronRight, Settings, X } from "lucide-react";
 import "./room-settings.css";
 
-export type SettingsSection = { id: string; label: string; icon: ReactNode; content: ReactNode };
+export type SettingsSection = { id: string; label: string; icon: ReactNode; content: ReactNode; badge?: number };
 
 export function RoomSettings({ sections, triggerContent }: { sections: SettingsSection[]; triggerContent?: ReactNode }) {
+  const badge = sections.reduce((count, item) => count + (item.badge || 0), 0);
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const section = sections.find(item => item.id === selected);
@@ -33,7 +34,7 @@ export function RoomSettings({ sections, triggerContent }: { sections: SettingsS
 
   const back = () => setSelected(null);
   return <>
-    <button ref={triggerRef} className="settings-button" type="button"  aria-label="设置" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}>{triggerContent || <><Settings size={18} aria-hidden="true" />设置</>}</button>
+    <button ref={triggerRef} className="settings-button" type="button" aria-label={badge ? `设置，${badge} 条待处理申请` : '设置'} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}>{triggerContent || <><Settings size={18} aria-hidden="true" />设置</>}{badge > 0 && <span className="settings-notification-badge" aria-hidden="true">{badge}</span>}</button>
     {open && createPortal(<dialog ref={dialogRef} className="room-settings-dialog" aria-labelledby="room-settings-title" onCancel={event => { event.preventDefault(); if (selected) back(); else setOpen(false); }} onKeyDown={event => event.stopPropagation()} onClick={event => {
       if (event.target !== event.currentTarget) return;
       const bounds = event.currentTarget.getBoundingClientRect();
@@ -45,7 +46,7 @@ export function RoomSettings({ sections, triggerContent }: { sections: SettingsS
         <button className="settings-close" type="button" onClick={() => setOpen(false)}  aria-label="关闭设置"><X size={20} aria-hidden="true" /></button>
       </header>
       {section ? <div className="room-settings-content">{section.content}</div> : <nav ref={navRef} className="room-settings-sections" aria-label="设置分类">
-        {sections.map(item => <button key={item.id} data-section={item.id} type="button" onClick={() => { lastSection.current = item.id; setSelected(item.id); }}><span className="settings-section-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span><ChevronRight size={18} aria-hidden="true" /></button>)}
+        {sections.map(item => <button key={item.id} data-section={item.id} type="button" onClick={() => { lastSection.current = item.id; setSelected(item.id); }}><span className="settings-section-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span>{!!item.badge && <span className="settings-section-badge" aria-label={`${item.badge} 条待处理申请`}>{item.badge}</span>}<ChevronRight size={18} aria-hidden="true" /></button>)}
       </nav>}
     </dialog>, document.body)}
   </>;

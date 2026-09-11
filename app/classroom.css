@@ -16,6 +16,7 @@
   --line: #d4c19d; --line-strong: #9f8965; --theme-accent: #527769; --theme-accent-dark: #35594c;
   --theme-accent-hover: #406555; --theme-soft: #dce4c8; --on-accent: #fff9e7;
   --wood: url('/classroom/wood.webp'); --paper: url('/classroom/paper-fiber.jpg');
+  --board-color: #3c645a; --board-overlay: #3c645a8f;
   --classroom-ui-font: 'Classroom Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --desk-overlap: 34px; --chat-bottom-inset: 27px; --scene-top: 10px; --board-frame: 13px;
   --chat-paper-inset: 12px; --chat-paper-bottom-inset: 8px;
@@ -27,7 +28,7 @@
   display: flex; flex-direction: column; gap: 12px;
 }
 .classroom-scene .workspace { flex: 1 1 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, calc(31.825% - var(--panel-shift))); gap: calc(9px + var(--panel-shift) - var(--board-growth)); width: 100%; max-width: none; margin: 0; height: auto; min-height: 0; }
-.classroom-scene .focus-stage { position: relative; padding: 0; gap: 0; border: 13px solid #cf9f60; border-radius: 8px; border-image: none; background: #426e63; box-shadow: 0 2px 1px #93744133, inset 0 3px 7px #203b33; overflow: visible; }
+.classroom-scene .focus-stage { position: relative; padding: 0; gap: 0; border: 13px solid #cf9f60; border-radius: 8px; border-image: none; background: var(--board-color); box-shadow: 0 2px 1px #93744133, inset 0 3px 7px #203b33; overflow: visible; }
 .classroom-scene .focus-stage::before { content: ''; position: absolute; inset: -13px; background: var(--wood) center / 620px; border-radius: 9px; z-index: 0; pointer-events: none; }
 .classroom-scene .share-canvas { position: relative; isolation: isolate; flex: 1; height: 100%; min-height: 0; border: 0; border-radius: 1px; overflow: visible; background: linear-gradient(#344b421a,#344b421a), url('/classroom/board.webp') center / 650px; box-shadow: inset 0 6px 9px #18382e55; }
 .classroom-scene .share-canvas::before { display: none; }
@@ -85,7 +86,7 @@
 .classroom-scene .projection-sheet.is-open .media-caption { bottom: 15px; background: #292e2bc9; font-size: 12px; }
 .classroom-scene .projection-sheet .media-window-actions { bottom: 48px; max-width: calc(100% - 24px); flex-wrap: wrap; }
 /* Black Paper by Atle Mo, CC BY-SA 3.0; attribution in public/classroom/ATTRIBUTION.md. */
-.classroom-scene .share-canvas { background: linear-gradient(#426e638f,#426e638f), url('/classroom/board-grain.png') 0 0 / 400px 400px, #426e63; }
+.classroom-scene .share-canvas { background: var(--board-surface); }
 .classroom-scene { background-image: linear-gradient(#f5eddac0,#f5eddac0), url('/classroom/paper.webp'); }
 .classroom-scene .side-panel { height: calc(100% - var(--chat-bottom-inset)); background-image: linear-gradient(#f6efdeba,#f6efdeba), var(--paper); background-size: auto, 640px auto; }
 .classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .desk-calendar { mix-blend-mode: multiply; }
@@ -101,7 +102,7 @@
 .classroom-scene .projector-control { max-width: 150px; mix-blend-mode: normal; }
 .classroom-scene .share-canvas > .main-fullscreen-button { position: absolute; top: auto; bottom: 21px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 3px; padding: 0; border: 0; color: #fbf6df; background: #2b4d4040; }
 .classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: -4px; }
-.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 14px, #b74c5080 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
+.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 14px, #b74c50a6 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
 .classroom-scene .message { margin: 0; max-width: 94%; flex-shrink: 0; }
 .classroom-scene .message > span { font-size: 11px; color: #897c65; margin: 0 6px 3px; }
 .classroom-scene .message:not(.own) > span { margin-left: 0; }
@@ -216,6 +217,7 @@
 .classroom-scene :is(button, input, textarea, select) { font-family: var(--classroom-ui-font); }
 .classroom-scene .board-text-box textarea { font-family: 'Classroom Yan', 'Long Cang', cursive; }
 .classroom-scene .desk-room { padding-right: clamp(48px,5.9vw,84px); gap: clamp(18px,2.4vw,34px); }
+.classroom-scene .desk-room .cloud-entry-button { left: clamp(4px,.56vw,8px); }
 .classroom-scene :is(.desk-media,.desk-room) :is(.object-button,.room-collaboration-trigger,.settings-button) { min-width: 0; height: 112px; }
 .classroom-scene .prop-calendar, .classroom-scene .prop-taskboard, .classroom-scene .prop-folder, .classroom-scene .prop-settings, .classroom-scene .prop-bell { background-size: contain; background-position: center bottom; mask-image: none; }
 .classroom-scene .prop-calendar { background-image: url('/classroom/calendar-flat.svg'); }
@@ -298,10 +300,10 @@
 }
 
 /* Fifth review: one material, stable fullscreen geometry, sliding board rails. */
-.classroom-scene { --board-surface: linear-gradient(#426e638f,#426e638f), url('/classroom/board-grain.png') 0 0 / 400px 400px, #426e63; }
+.classroom-scene { --board-surface: linear-gradient(var(--board-overlay),var(--board-overlay)), url('/classroom/board-grain.png') 0 0 / 400px 400px, var(--board-color); }
 .classroom-scene .stage-content { position: relative; width: 100%; height: 100%; isolation: isolate; background: var(--board-surface); }
-.classroom-scene .share-canvas:fullscreen { border: 0; background: #426e63; }
-.classroom-scene .share-canvas:fullscreen::backdrop { background: #426e63; }
+.classroom-scene .share-canvas:fullscreen { border: 0; background: var(--board-color); }
+.classroom-scene .share-canvas:fullscreen::backdrop { background: var(--board-color,#3c645a); }
 .classroom-scene .share-canvas:fullscreen .stage-content { position: absolute; left: 50%; top: 50%; width: var(--stage-base-width); height: var(--stage-base-height); transform: translate(-50%,-50%) scale(var(--stage-scale,1)); transform-origin: center; }
 .classroom-scene .share-canvas:fullscreen .chalk-lettering { font-size: var(--stage-chalk-font,51px); }
 .classroom-scene .share-canvas:fullscreen .chalk-date { font-size: var(--stage-date-font,32px); }
@@ -354,15 +356,15 @@
 .classroom-scene .board-text-delete { right: -1px; top: -27px; width: 24px; height: 24px; background: transparent; }
 .classroom-scene .board-text-delete .chalk-tool-icon { width: 20px; height: 20px; }
 .text-resize-handle { position: absolute; z-index: 4; width: 12px; height: 12px; padding: 0; border: 0; background: transparent; touch-action: none; }
-.text-resize-handle::after { content: ''; position: absolute; inset: 3px; border: 1px solid #f6f1dcaa; background: #426e63; }
+.text-resize-handle::after { content: ''; position: absolute; inset: 3px; border: 1px solid #f6f1dcaa; background: var(--board-color,#3c645a); }
 .handle-n,.handle-s { left: calc(50% - 6px); cursor: ns-resize; }.handle-n { top: -6px; }.handle-s { bottom: -6px; }
 .handle-e,.handle-w { top: calc(50% - 6px); cursor: ew-resize; }.handle-e { right: -6px; }.handle-w { left: -6px; }
 .handle-ne,.handle-se { right: -6px; }.handle-nw,.handle-sw { left: -6px; }.handle-ne,.handle-nw { top: -6px; }.handle-se,.handle-sw { bottom: -6px; }
 .handle-ne,.handle-sw { cursor: nesw-resize; }.handle-nw,.handle-se { cursor: nwse-resize; }
-.classroom-scene { --device-font: 'Device Nunito',YouYuan,'幼圆','Classroom Sans',sans-serif; }
-.classroom-scene[data-device-font=sans] { --device-font: 'Classroom Sans','Microsoft YaHei',sans-serif; }
-.classroom-scene[data-device-font=rounded] { --device-font: 'Device Nunito','School Rounded','Classroom Sans',sans-serif; }
-.classroom-scene[data-device-font=youyuan] { --device-font: 'Device Nunito',YouYuan,'幼圆','Classroom Sans',sans-serif; }
+.classroom-scene { --device-font: 'Device Latin','Device Han Rounded',sans-serif; }
+.classroom-scene[data-device-font=sans] { --device-font: 'Device Sans',sans-serif; }
+.classroom-scene[data-device-font=rounded] { --device-font: 'Device Latin','Device Rounded','Device Sans',sans-serif; }
+.classroom-scene[data-device-font=youyuan],.classroom-scene[data-device-font=resource-rounded] { --device-font: 'Device Latin','Device Han Rounded',sans-serif; }
 .device-card { position: relative; width: min(100%,240px); aspect-ratio: 3 / 2; flex-shrink: 0; pointer-events: none; container-type: inline-size; }
 .device-tablet { width: min(93.3333%,224px); }
 .device-shell { display: block; position: absolute; inset: 0; background: center bottom / contain no-repeat; }
@@ -373,6 +375,9 @@
 .device-tablet .device-screen { left: 13.5%; right: 15%; top: 13%; bottom: 15%; }
 .device-tablet .device-activity { padding-inline: 3px; background: #fff9fa9c; border-color: #d5bec64d; }
 .device-screen::after { content: ''; position: absolute; bottom: 2px; left: calc(50% - 17px); width: 34px; height: 2px; border-radius: 2px; background: #a6b9b044; pointer-events: none; }
+.device-screen:not([data-font-status=ready]) > :is(.device-identity,.device-media-status,.device-activity) { visibility: hidden; }
+.device-font-loading { position: absolute; width: 18px; height: 18px; top: calc(50% - 9px); left: calc(50% - 9px); border: 2px solid #b7c7bf; border-top-color: #5d7e6c; border-radius: 50%; }
+.classroom-scene .device-font-retry { position: absolute; inset: 30% 5%; padding: 5px; border: 1px solid #bdcdc3; border-radius: 6px; background: #f8fbf9; color: #52695c; font: 11px/1.5 sans-serif; }
 /* Both screens share the same name inset and flow reservation above the writing area. */
 .device-identity { height: 35px; flex: 0 0 35px; max-width: calc(100% - 97px); padding: 0 0 0 3px; margin-top: -4px; display: flex; align-items: flex-start; pointer-events: none; }
 .device-name { display: block; width: 100%; height: 38.3px; margin-top: 11px; font: 600 17px/1.3 var(--device-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -387,7 +392,7 @@
 .device-activity .activity-box { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; margin: 0; }
 .classroom-scene .device-activity :is(p,textarea) { flex: 1; width: 100%; height: 100%; max-width: 146px; max-height: 41px; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; color: #42534b; font: 13px/1.45 var(--device-font); overflow-wrap: anywhere; white-space: pre-wrap; }
 .device-activity p { overflow-y: auto; scrollbar-width: thin; }.device-activity textarea { overflow: hidden; }.device-activity small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.classroom-seating-settings label { display: grid; gap: 8px; margin: 16px 0; }.classroom-seating-settings select { padding: 8px; border: 1px solid #b8bda9; background: #f8f4e8; border-radius: 6px; color: #495c4f; }
+
 .classroom-board-settings > div { display: flex; justify-content: space-between; margin: 12px 0; }
 .classroom-scene .room-collaboration-trigger i { position: absolute; top: 13%; right: 7%; min-width: 24px; height: 25px; padding: 0 5px; display: grid; place-items: center; background: #b77660; color: #fff3d8; border: 2px solid #e5c997; border-radius: 8px 6px 9px 5px; box-shadow: 1px 2px #735b3826; font: normal 13px/1 'Classroom Sans',sans-serif; transform: rotate(4deg); }
 @container (max-width:210px) {
