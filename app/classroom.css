@@ -370,7 +370,7 @@
 .device-shell { display: block; position: absolute; inset: 0; background: center bottom / contain no-repeat; }
 .device-tablet .device-shell { background-image: url('/classroom/tablet-on.svg'); }.device-tablet.is-offline .device-shell { background-image: url('/classroom/tablet-off.svg'); }
 .device-laptop .device-shell { background-image: url('/classroom/laptop-on.svg'); }.device-laptop.is-offline .device-shell { background-image: url('/classroom/laptop-off.svg'); }
-.device-laptop .device-shell::after { content: ''; position: absolute; left: 94%; bottom: 3.75%; width: 18.5%; height: 37%; background: center / contain no-repeat url('/classroom/mouse-white.svg'); }
+.device-laptop .device-shell::after { content: ''; position: absolute; left: 94%; bottom: 3.333333%; width: 18.5%; height: 17.5%; background: center bottom / contain no-repeat url('/classroom/mouse-white.svg'); }
 .device-screen { position: absolute; left: 12.5%; right: 12.5%; top: 13%; bottom: 15%; display: flex; flex-direction: column; padding: 3px 0 6px; pointer-events: auto; overflow: hidden; color: #42534b; font-family: var(--device-font); }
 .device-laptop .device-screen { left: 13%; right: 18%; top: 11%; bottom: 27%; }
 .device-tablet .device-screen { left: 13.5%; right: 15%; top: 13%; bottom: 15%; }
