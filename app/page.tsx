@@ -2350,7 +2350,7 @@ export default function Home() {
               projection.toggle();
             }} />
             {!projection.open && <BlackboardSurface index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} drawing={!!activeBoard}>
-            {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "主窗口全屏（F）"}><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
+            {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" ><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
             {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} onClose={() => { setActiveBoardId(''); projection.fold(); }} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
@@ -2376,11 +2376,11 @@ export default function Home() {
               {activeMedia.kind === "screen" && <div className="media-window-actions">
                 {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
                 {activeMedia.id === "self-screen" && <button type="button" onClick={stopShare}><Square size={14} aria-hidden="true" />结束共享</button>}
-                {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} title="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
+                {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} aria-label="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
                 {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
-                {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} title={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
+                {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} aria-label={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
-                <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} title={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
+                <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} aria-label={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
               {activeMedia.kind === "camera" && <div className="media-window-actions">
                 {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
@@ -2465,7 +2465,7 @@ export default function Home() {
                   {message.body && <p>{message.body}</p>}
                   {message.delivery && <div className="message-delivery" role="status">
                     <span>{message.delivery === "sending" ? "发送中…" : "发送未确认"}{!message.body && outgoingChatRef.current.get(message.id)?.file ? " · " + outgoingChatRef.current.get(message.id)?.file?.name : ""}</span>
-                    {message.delivery === "failed" && <button type="button" title={message.error} onClick={() => { const item = outgoingChatRef.current.get(message.id); if (item) void deliverChat(item); }}>重试</button>}
+                    {message.delivery === "failed" && <button type="button" aria-label={message.error} onClick={() => { const item = outgoingChatRef.current.get(message.id); if (item) void deliverChat(item); }}>重试</button>}
                   </div>}
                 </div>
               ))}
@@ -2473,14 +2473,14 @@ export default function Home() {
             <form className="chat-form" onSubmit={sendMessage}>
               {chatQuote && <div className="chat-quote-preview">
                 <span><strong>回复 {chatQuote.sender}</strong>{chatQuote.body}</span>
-                <button type="button" onClick={() => setChatQuote(null)} aria-label="取消引用" title="取消引用"><X size={18} aria-hidden="true" /></button>
+                <button type="button" onClick={() => setChatQuote(null)} aria-label="取消引用" ><X size={18} aria-hidden="true" /></button>
               </div>}
               {chatImagePreview && <div className="chat-image-preview">
                 <img src={chatImagePreview} alt="待发送图片预览" />
                 <span>{chatImage?.name}</span>
-                <button type="button" onClick={clearChatImage} aria-label="移除待发送附件" title="移除待发送附件"><X size={18} aria-hidden="true" /></button>
+                <button type="button" onClick={clearChatImage} aria-label="移除待发送附件" ><X size={18} aria-hidden="true" /></button>
               </div>}
-              {chatImage && !chatImagePreview && <div className="chat-file-preview"><File size={24} aria-hidden="true" /><div><strong>{chatImage.name}</strong><small>{formatFileSize(chatImage.size)}</small></div><button type="button" onClick={clearChatImage} aria-label="移除待发送附件" title="移除待发送附件"><X size={18} aria-hidden="true" /></button></div>}
+              {chatImage && !chatImagePreview && <div className="chat-file-preview"><File size={24} aria-hidden="true" /><div><strong>{chatImage.name}</strong><small>{formatFileSize(chatImage.size)}</small></div><button type="button" onClick={clearChatImage} aria-label="移除待发送附件" ><X size={18} aria-hidden="true" /></button></div>}
               <div className="chat-input-row">
                 <input
                   ref={chatImageInputRef}
@@ -2492,7 +2492,7 @@ export default function Home() {
                   }}
                   tabIndex={-1}
                 />
-                <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" title="发送图片或文件">
+                <button className="chat-attach-button" type="button" onClick={() => chatImageInputRef.current?.click()} aria-label="发送图片或文件" >
                   <Paperclip size={20} aria-hidden="true" />
                 </button>
                 <VoiceRecorder onRecorded={sendVoice} onError={setChatImageError} />
@@ -2581,15 +2581,15 @@ export default function Home() {
           </DeviceCard></div>;
         })}
         <div className="classroom-desk desk-media">
-          <button className="object-button" type="button" onClick={createBoard} aria-label="画板" title="画板" aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
-          <button className="object-button" type="button" onClick={() => void toggleMicrophone()} aria-label={microphoneStream ? "关闭麦克风" : "打开麦克风"} title={microphoneStream ? "关闭麦克风" : "打开麦克风"} aria-pressed={!!microphoneStream}><ClassroomProp name="microphone" active={!!microphoneStream} /></button>
-          <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"} title={cameraStream ? "关闭摄像头" : "开启摄像头"} aria-pressed={!!cameraStream}><ClassroomProp name="camera" active={!!cameraStream} /></button>
+          <button className="object-button" type="button" onClick={createBoard} aria-label="画板"  aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
+          <button className="object-button" type="button" onClick={() => void toggleMicrophone()} aria-label={microphoneStream ? "关闭麦克风" : "打开麦克风"}  aria-pressed={!!microphoneStream}><ClassroomProp name="microphone" active={!!microphoneStream} /></button>
+          <button className="object-button" type="button" onClick={() => void toggleCamera()} aria-label={cameraStream ? "关闭摄像头" : "开启摄像头"}  aria-pressed={!!cameraStream}><ClassroomProp name="camera" active={!!cameraStream} /></button>
 
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
         </div>
         <div className="classroom-desk desk-room">
           <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
-          <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" title={cloudStatus?.warning ? "云盘容量接近上限" : "打开云盘"}><ClassroomProp name="folder" /></button>
+          <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" ><ClassroomProp name="folder" /></button>
           <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
             { id: 'seating', label: '座位与设备字体', icon: <ListTodo size={19} />, content: <><ClassroomSeatingSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} onChange={value => void classroomProfile.save(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
             { id: 'boards', label: '画板管理', icon: <Plus size={19} />, content: <div className="classroom-board-settings"><p>默认黑板始终是第一层。点击粉笔筒新建画板，点击黑板两侧切换。</p>{orderedBoards.map(board => <div key={board.id}><span>{board.name}</span><button type="button" onClick={() => deleteBoard(board.id)}>删除{board.name}</button></div>)}</div> },
@@ -2613,7 +2613,7 @@ export default function Home() {
       {shareModeOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setShareModeOpen(false)}>
           <section className="share-mode-modal" role="dialog" aria-modal="true" aria-labelledby="share-mode-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
+            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭" ><X size={18} aria-hidden="true" /></button>
             <h2 id="share-mode-title">{shareDialogAction === "start" ? "选择共享模式" : "切换画面模式"}</h2>
             {shareDialogAction === "start" && <p className="share-picker-note">选择模式后，浏览器会让你指定要共享的屏幕、窗口或标签页。</p>}
             {shareDialogAction === "start" && <label className="share-audio-option">
@@ -2641,7 +2641,7 @@ export default function Home() {
       {syncOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setSyncOpen(false)}>
           <section className="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭" title="关闭"><X size={18} aria-hidden="true" /></button>
+            <button className="modal-close" onClick={() => setSyncOpen(false)} aria-label="关闭" ><X size={18} aria-hidden="true" /></button>
             <span className="ticktick-mark"><Check size={24} aria-hidden="true" /></span><span className="eyebrow">REAL TICKTICK CONNECTION</span>
             <h2 id="sync-title">连接你的滴答清单</h2>
             <p>Token 会按身份加密保存在服务器中，用于读取任务和同步完成状态。以后使用同一身份识别码时会自动恢复。</p>

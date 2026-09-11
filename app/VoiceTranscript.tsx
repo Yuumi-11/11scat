@@ -20,7 +20,7 @@ export function VoiceTranscript({ src }: { src: string }) {
     finally { locked.current = false; setBusy(false); }
   }
   return <div className="voice-transcript">
-    <button type="button" onClick={() => void toggle()} disabled={busy} aria-expanded={open} title="使用 Cloudflare 转写语音，结果保存供本室成员查看">
+    <button type="button" onClick={() => void toggle()} disabled={busy} aria-expanded={open} aria-label="使用 Cloudflare 转写语音，结果保存供本室成员查看">
       {busy ? <Loader2 size={14} aria-hidden="true" className="voice-transcript-spinner" /> : <FileText size={14} aria-hidden="true" />}
       {busy ? "转写中…" : text !== null ? open ? "收起文字" : "查看文字" : "转文字"}
     </button>

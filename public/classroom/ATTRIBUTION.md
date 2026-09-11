@@ -54,3 +54,7 @@ The inline bell in `app/ClassroomScene.tsx` preserves the paths and colors of `b
 ## Generated chalk illustrations
 
 `chalk/handdrawn/{heart,stars,balloons,cat}.png` were generated individually for this project with the built-in imagegen tool on 2026-09-10. Each image retains its original RGBA pixels and metadata. The corresponding 512 × 512 WebP files are proportionally downscaled delivery copies, encoded losslessly with transparency preserved. Prompts and usage notes are included in `chalk/handdrawn/PROMPTS.md` and `chalk/handdrawn/README.md`. These images contain no external texture overlays; the older SVG assets remain available separately.
+
+## Binder clip
+
+`binder-clip-flat.svg` was drawn as editable SVG on 2026-09-11, using the current `taskboard-flat.svg`, `folder-flat.svg`, `camera-flat.svg` and `settings-flat.svg` as style references. No early scene mockups were used. Prepared for the next task-board redesign; the existing pushpin is preserved.

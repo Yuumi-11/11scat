@@ -38,7 +38,7 @@ export function useProjectionCurtain(source: object | undefined, boardOpen = fal
 }
 export function ProjectorControl({ open, hasSource, disabled, onClick }: { open: boolean; hasSource: boolean; disabled?: boolean; onClick: () => void }) {
   const label = open ? '收起投影' : '展开投影';
-  return <button className={`object-button projector-control${hasSource ? ' is-working' : ''}`} type="button" disabled={disabled} onClick={onClick} aria-label={label} title={label} aria-expanded={open} data-working={hasSource}>
+  return <button className={`object-button projector-control${hasSource ? ' is-working' : ''}`} type="button" disabled={disabled} onClick={onClick} aria-label={label}  aria-expanded={open} data-working={hasSource}>
     <ClassroomProp name="projector" active={hasSource} />
   </button>;
 }
@@ -67,7 +67,7 @@ export function BlackboardSurface({ index, count, onStep, drawing, children }: {
   </div>;
 }
 export function EmergencyExit({ onClick }: { onClick?: () => void }) {
-  return <button className="wall-exit" type="button" aria-label="退出自习室" title="退出自习室" onClick={onClick}>
+  return <button className="wall-exit" type="button" aria-label="退出自习室"  onClick={onClick}>
     <span className="emergency-exit-sign" aria-hidden="true" />
   </button>;
 }
@@ -112,7 +112,7 @@ export function IdleChalkboard({ date, tasks }: { date: Date | null; tasks: Publ
   const dateText = date ? new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', weekday: 'short', month: 'short', day: '2-digit' }).format(date).toUpperCase() : '';
   return <div className="idle-chalkboard">
     <time className="chalk-date" dateTime={date ? classroomDay(date) : undefined}>{dateText}</time>
-    <ul className={`chalk-public-tasks${visibleCount === 0 && candidates.length ? ' chalk-task-overflow' : ''}`} tabIndex={visibleCount === 0 && candidates.length ? 0 : undefined} title={visibleCount === 0 && candidates.length ? '滚动查看完整任务' : undefined}>{rows(candidates.slice(0, Math.max(1, visibleCount)))}</ul>
+    <ul className={`chalk-public-tasks${visibleCount === 0 && candidates.length ? ' chalk-task-overflow' : ''}`} tabIndex={visibleCount === 0 && candidates.length ? 0 : undefined} >{rows(candidates.slice(0, Math.max(1, visibleCount)))}</ul>
     <ul className="chalk-public-tasks chalk-task-measure" ref={measurement} aria-hidden="true">{rows(candidates)}</ul>
   </div>;
 }
@@ -120,6 +120,6 @@ export function CalendarCard({ name, projecting, onView, children }: { name: str
   const nameClass = `calendar-name ${/\p{Script=Han}/u.test(name) ? 'calendar-name-chinese' : 'calendar-name-latin'}`;
   return <section className={`desk-calendar${projecting ? ' projecting' : ''}`} aria-label={`${name}的个人卡片${projecting ? '，正在投影' : ''}`}>
     <ClassroomProp name="calendar" />
-    <div className="calendar-content">{onView ? <button className={nameClass} type="button" onClick={onView} title={`查看${name}的共享画面`}>{name}</button> : <strong className={nameClass}>{name}</strong>}{children}</div>
+    <div className="calendar-content">{onView ? <button className={nameClass} type="button" onClick={onView} aria-label={`查看${name}的共享画面`}>{name}</button> : <strong className={nameClass}>{name}</strong>}{children}</div>
   </section>;
 }

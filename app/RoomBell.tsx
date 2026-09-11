@@ -125,7 +125,7 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
     return `${r.repeat ? "每3秒提醒" : "等待确认"} · ${Math.ceil((r.expiresAt - now) / 1000)}秒`;
   };
   return <>
-    {triggerHost && createPortal(<div className="room-bell" ref={root}><button className={`room-bell-trigger${incoming.length ? " has-incoming" : outgoing.length ? " is-ringing" : ""}`} type="button" title={triggerLabel} aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? "room-bell-panel" : undefined} onClick={() => open ? close() : setOpenFor(triggerHost)}>
+    {triggerHost && createPortal(<div className="room-bell" ref={root}><button className={`room-bell-trigger${incoming.length ? " has-incoming" : outgoing.length ? " is-ringing" : ""}`} type="button"  aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? "room-bell-panel" : undefined} onClick={() => open ? close() : setOpenFor(triggerHost)}>
       <ClassroomProp name="bell" />{incoming.length > 0 ? <i aria-hidden="true">{incoming.length > 99 ? "99+" : incoming.length}</i> : outgoing.length > 0 && <span className="room-bell-active-dot" aria-hidden="true" />}
     </button>
     </div>, triggerHost)}
@@ -139,7 +139,7 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
         return <div className="room-bell-member" key={member.id}>
           <span className="room-bell-avatar" aria-hidden="true">{member.name.slice(0, 1)}</span>
           <div><strong>{member.name}</strong><small>{latest ? status(latest) : "发一个轻提醒"}</small></div>
-          <button className="room-bell-send" type="button" disabled={!!busy} title={active ? "停止提醒" : "摇铃"} aria-label={`${active ? "停止提醒" : "摇铃给"}${member.name}`} onClick={() => void act(member.id, active ? latest : undefined, active ? "cancel" : undefined)}>
+          <button className="room-bell-send" type="button" disabled={!!busy}  aria-label={`${active ? "停止提醒" : "摇铃给"}${member.name}`} onClick={() => void act(member.id, active ? latest : undefined, active ? "cancel" : undefined)}>
             {busy === member.id || busy === latest?.id ? <Loader2 className="room-bell-spinner" size={18} /> : active ? <CircleStop size={18} /> : <BellRing size={18} />}<span>{active ? "停止" : "发送"}</span>
           </button>
         </div>;

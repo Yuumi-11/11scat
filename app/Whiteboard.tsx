@@ -273,7 +273,7 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onClose, onA
 
   return (
     <div className="whiteboard-shell">
-      <button className="board-close-button" type="button" onClick={onClose} aria-label="关闭画板" title="关闭画板，返回默认黑板"><ChalkToolIcon name="close" /></button>
+      <button className="board-close-button" type="button" onClick={onClose} aria-label="关闭画板" ><ChalkToolIcon name="close" /></button>
       <div className={`whiteboard-paper tool-${tool}`} ref={paperRef}>
         <canvas className="chalk-stroke-canvas" ref={canvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke} onLostPointerCapture={finishStroke} />
         <canvas className="chalk-text-canvas" ref={textCanvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-hidden="true" />
@@ -282,8 +282,8 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onClose, onA
             const editing = editingTextId === text.id || !text.confirmed;
             return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: visibleBoardColor(text), fontFamily: text.material === "chalk-v1" ? CHALK_FONT : "system-ui, sans-serif", fontSize: `${text.fontSize / 12}cqw` }}>
               {editing ? <>
-                <button className="board-text-drag" type="button" aria-label="拖动文本框" title="拖动文本框" onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}><span aria-hidden="true" /></button>
-                <button className="board-text-delete" type="button" aria-label="删除文本框" title="删除文本框" onClick={() => onDeleteText(text.id, board.epoch)}><ChalkToolIcon name="clear" /></button>
+                <button className="board-text-drag" type="button" aria-label="拖动文本框"  onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}><span aria-hidden="true" /></button>
+                <button className="board-text-delete" type="button" aria-label="删除文本框"  onClick={() => onDeleteText(text.id, board.epoch)}><ChalkToolIcon name="clear" /></button>
                 {(['n','s','e','w','ne','nw','se','sw'] as ResizeHandle[]).map(handle => <button key={handle} className={`text-resize-handle handle-${handle}`} type="button" aria-label={`${handle.length === 2 ? '缩放文字' : '调整文本边界'} ${handle}`} onPointerDown={event => beginResize(event, text, handle)} onPointerMove={moveResize} onPointerUp={finishResize} onPointerCancel={finishResize} />)}
                 <textarea value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
               </> : <button className="board-text-content" type="button" onClick={() => { if (tool === "text") { setEditingTextId(text.id); updateText(text, { confirmed: false }); } }}>{text.text}</button>}
@@ -295,15 +295,15 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onClose, onA
         <button className={tool.startsWith("erase") ? "ledge-eraser selected" : "ledge-eraser"} type="button" onClick={() => {
           const next = tool.startsWith('erase') ? (eraseMode === 'erase-stroke' ? 'erase-area' : 'erase-stroke') : eraseMode;
           setEraseMode(next); setTool(next);
-        }} aria-label={eraseMode === "erase-area" ? "板擦：局部擦除" : "板擦：整笔擦除"} aria-pressed={tool.startsWith('erase')} title={eraseMode === "erase-area" ? "局部擦除，点击切换整笔" : "整笔擦除，点击切换局部"}><span className="chalk-eraser" />{tool.startsWith('erase') && <span className={`eraser-mode-art ${eraseMode}`} aria-hidden="true" />}</button>
-        {CHALK_COLORS.map(item => <button key={item.color} className="chalk-choice" type="button" aria-label={item.name} aria-pressed={color === item.color && tool === "pen"} title={item.name} onClick={() => { setColor(item.color); setTool("pen"); }}><span className="chalk-stick" style={{background:item.color}} /></button>)}
-        <label className="rainbow-chalk" title="自定义粉笔颜色"><input aria-label="自定义粉笔颜色" type="color" value={color} onChange={event => { setColor(event.target.value); setTool('pen'); }} /><span className="chalk-stick" /></label>
+        }} aria-label={eraseMode === "erase-area" ? "板擦：局部擦除" : "板擦：整笔擦除"} aria-pressed={tool.startsWith('erase')} ><span className="chalk-eraser" />{tool.startsWith('erase') && <span className={`eraser-mode-art ${eraseMode}`} aria-hidden="true" />}</button>
+        {CHALK_COLORS.map(item => <button key={item.color} className="chalk-choice" type="button" aria-label={item.name} aria-pressed={color === item.color && tool === "pen"}  onClick={() => { setColor(item.color); setTool("pen"); }}><span className="chalk-stick" style={{background:item.color}} /></button>)}
+        <label className="rainbow-chalk" ><input aria-label="自定义粉笔颜色" type="color" value={color} onChange={event => { setColor(event.target.value); setTool('pen'); }} /><span className="chalk-stick" /></label>
       </div>
       <aside className="whiteboard-tools" aria-label="画板工具栏">
-        <button className={tool === "text" ? "active" : ""} type="button" onClick={() => setTool("text")} title="文本" aria-label="文本"><ChalkToolIcon name="text" /></button>
-        <button type="button" onClick={onClear} title="清屏" aria-label="清屏"><ChalkToolIcon name="clear" /></button>
-        <button type="button" onClick={() => void saveBoard()} disabled={saving} title="保存到云盘 /board" aria-label="保存到云盘">{saving ? "…" : <ChalkToolIcon name="save" />}</button>
-        <button type="button" onClick={() => void onToggleFullscreen()} aria-keyshortcuts="f" title={fullscreen ? "退出全屏（F / Esc）" : "全屏（F）"} aria-label={fullscreen ? "退出全屏" : "全屏"}><ClassroomFullscreenIcon fullscreen={fullscreen} /></button>
+        <button className={tool === "text" ? "active" : ""} type="button" onClick={() => setTool("text")}  aria-label="文本"><ChalkToolIcon name="text" /></button>
+        <button type="button" onClick={onClear}  aria-label="清屏"><ChalkToolIcon name="clear" /></button>
+        <button type="button" onClick={() => void saveBoard()} disabled={saving}  aria-label="保存到云盘">{saving ? "…" : <ChalkToolIcon name="save" />}</button>
+        <button type="button" onClick={() => void onToggleFullscreen()} aria-keyshortcuts="f"  aria-label={fullscreen ? "退出全屏" : "全屏"}><ClassroomFullscreenIcon fullscreen={fullscreen} /></button>
       </aside>
     </div>
   );

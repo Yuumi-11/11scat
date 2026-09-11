@@ -135,7 +135,7 @@ export function CloudDrive({ onClose, onStatusChange, onImage }: {
 
   function renderItem(item: CloudItem) {
     const isImage = /\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i.test(item.name);
-    const contents = <>{item.kind === "folder" ? <FolderArtwork /> : isImage ? <img className="drive-image" src={cloudFileUrl(item.path)} alt="" loading="lazy" /> : <File className="drive-file-art" size={64} aria-hidden="true" />}<strong title={item.name}>{item.name}</strong>{item.kind === "file" && <small>{cloudFileSize(item.size)}</small>}</>;
+    const contents = <>{item.kind === "folder" ? <FolderArtwork /> : isImage ? <img className="drive-image" src={cloudFileUrl(item.path)} alt="" loading="lazy" /> : <File className="drive-file-art" size={64} aria-hidden="true" />}<strong >{item.name}</strong>{item.kind === "file" && <small>{cloudFileSize(item.size)}</small>}</>;
     return <article className={`drive-entry ${item.kind}${selected.has(item.path) ? " selected" : ""}${dropTarget === item.path ? " drop-target" : ""}`} key={item.path} data-cloud-folder={item.kind === "folder" ? item.path : undefined}>
       {deleteMode ? <button className="drive-entry-main" type="button" aria-pressed={selected.has(item.path)} aria-label={`选择${item.kind === "folder" ? "文件夹" : "文件"} ${item.name}`} disabled={disabled} onClick={() => toggleSelection(item.path)}><span className="drive-check" aria-hidden="true">{selected.has(item.path) && <Check size={14} />}</span>{contents}</button>
         : item.kind === "folder" ? <button className="drive-entry-main" type="button" disabled={disabled || draftName !== null} onClick={() => navigate(item.path)} aria-label={`打开文件夹 ${item.name}`}>{contents}</button>
@@ -165,14 +165,14 @@ export function CloudDrive({ onClose, onStatusChange, onImage }: {
       onPaste={event => { const pasted = clipboardFiles(event.clipboardData); if (pasted.length) { event.preventDefault(); void upload(pasted, path); } }}
       onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = noUpload ? "none" : "copy"; } }}
       onDrop={event => { if (event.dataTransfer.types.includes("Files")) drop(event, path); }}>
-      <button className="modal-close" type="button" disabled={busy} onClick={close} aria-label="关闭云盘" title="关闭"><X size={18} aria-hidden="true" /></button>
+      <button className="modal-close" type="button" disabled={busy} onClick={close} aria-label="关闭云盘" ><X size={18} aria-hidden="true" /></button>
       <div className="cloud-heading"><div><span className="eyebrow">ROOM DRIVE</span><h2 id="cloud-title">云盘</h2></div><div className={status?.warning ? "cloud-meter warning" : "cloud-meter"}><span><i style={{ width: `${status?.percent || 0}%` }} /></span><small>{status ? `${cloudFileSize(status.usedBytes)} / ${cloudFileSize(status.limitBytes)}` : "正在读取容量…"}</small></div></div>
       {status?.warning && <p className="cloud-capacity-warning">容量已达到上限的 90%，请清理空间后继续上传。</p>}
       <div className="cloud-toolbar">
-        <button className="drive-icon-button" type="button" title="返回上一级文件夹" aria-label="返回上一级文件夹" disabled={!path || disabled || deleteMode || draftName !== null} onClick={() => navigate(path.split("/").slice(0, -1).join("/"))}><FolderUp size={20} aria-hidden="true" /></button>
-        <strong title={`/${path}`}>/{path}</strong>
-        {deleteMode && <button className="drive-icon-button" type="button" title="取消删除模式" aria-label="取消删除模式" disabled={busy} onClick={cancelDeletion}><X size={18} aria-hidden="true" /></button>}
-        <button className={`drive-icon-button drive-delete-mode${deleteMode ? " active" : ""}`} type="button" title={deleteLabel} aria-label={deleteLabel} aria-pressed={deleteMode} disabled={disabled || draftName !== null} onClick={() => void deleteSelection()}>{busy && deleteMode ? <Loader2 className="drive-spinner" size={20} /> : <Trash2 size={20} aria-hidden="true" />}{deleteMode && selected.size > 0 && <span className="drive-selection-count">{selected.size}</span>}</button>
+        <button className="drive-icon-button" type="button"  aria-label="返回上一级文件夹" disabled={!path || disabled || deleteMode || draftName !== null} onClick={() => navigate(path.split("/").slice(0, -1).join("/"))}><FolderUp size={20} aria-hidden="true" /></button>
+        <strong >/{path}</strong>
+        {deleteMode && <button className="drive-icon-button" type="button"  aria-label="取消删除模式" disabled={busy} onClick={cancelDeletion}><X size={18} aria-hidden="true" /></button>}
+        <button className={`drive-icon-button drive-delete-mode${deleteMode ? " active" : ""}`} type="button"  aria-label={deleteLabel} aria-pressed={deleteMode} disabled={disabled || draftName !== null} onClick={() => void deleteSelection()}>{busy && deleteMode ? <Loader2 className="drive-spinner" size={20} /> : <Trash2 size={20} aria-hidden="true" />}{deleteMode && selected.size > 0 && <span className="drive-selection-count">{selected.size}</span>}</button>
         <button type="button" onClick={() => fileInput.current?.click()} disabled={noUpload}><Upload size={18} aria-hidden="true" /><span>上传文件</span></button>
         <input ref={fileInput} type="file" multiple hidden onChange={event => { const chosen = Array.from(event.currentTarget.files || []); event.currentTarget.value = ""; void upload(chosen, path); }} />
       </div>
@@ -183,12 +183,12 @@ export function CloudDrive({ onClose, onStatusChange, onImage }: {
         onDrop={event => drop(event, destinationAt(event))}>
         {loading ? <div className="cloud-empty">正在加载…</div> : <>
           {folders.map(renderItem)}
-          {!deleteMode && <div className="drive-entry folder drive-new-folder">{draftName !== null ? <div className="drive-entry-main"><FolderArtwork /><input ref={nameInput} aria-label="新文件夹名称" value={draftName} disabled={busy} maxLength={180} onChange={event => { draft.current = event.target.value; setDraftName(event.target.value); }} onBlur={() => void saveFolder()} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void saveFolder(); } }} /><small>Enter 保存 · Esc 取消</small></div> : <button className="drive-entry-main" type="button" disabled={disabled} onClick={startFolder} title="新建文件夹" aria-label="新建文件夹"><FolderArtwork draft /><strong>新建文件夹</strong></button>}</div>}
+          {!deleteMode && <div className="drive-entry folder drive-new-folder">{draftName !== null ? <div className="drive-entry-main"><FolderArtwork /><input ref={nameInput} aria-label="新文件夹名称" value={draftName} disabled={busy} maxLength={180} onChange={event => { draft.current = event.target.value; setDraftName(event.target.value); }} onBlur={() => void saveFolder()} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void saveFolder(); } }} /><small>Enter 保存 · Esc 取消</small></div> : <button className="drive-entry-main" type="button" disabled={disabled} onClick={startFolder}  aria-label="新建文件夹"><FolderArtwork draft /><strong>新建文件夹</strong></button>}</div>}
           {files.map(renderItem)}
           {deleteMode && !items.length && <div className="cloud-empty">当前文件夹没有可删除的项目</div>}
         </>}
       </div>
-      <footer className="drive-footer"><div role="status"><span>{notice || (deleteMode ? `已选 ${selected.size} / ${items.length} 项，再次点按垃圾桶删除` : dropTarget !== null ? `松开上传到 /${dropTarget}` : "可粘贴或拖入文件，拖到文件夹上可直接存入")}</span>{deleteMode && <small>选中文件夹会一并删除其中的内容</small>}{error && <p className="drive-error">{error}</p>}</div>{deleteMode && <button className="drive-select-all" type="button" title={allSelected ? "取消全选" : "全选"} aria-label={allSelected ? "取消全选" : "全选"} aria-pressed={allSelected} disabled={disabled || !items.length} onClick={() => setSelected(allSelected ? new Set() : new Set(items.map(item => item.path)))}><SquareCheckBig size={21} aria-hidden="true" /></button>}</footer>
+      <footer className="drive-footer"><div role="status"><span>{notice || (deleteMode ? `已选 ${selected.size} / ${items.length} 项，再次点按垃圾桶删除` : dropTarget !== null ? `松开上传到 /${dropTarget}` : "可粘贴或拖入文件，拖到文件夹上可直接存入")}</span>{deleteMode && <small>选中文件夹会一并删除其中的内容</small>}{error && <p className="drive-error">{error}</p>}</div>{deleteMode && <button className="drive-select-all" type="button"  aria-label={allSelected ? "取消全选" : "全选"} aria-pressed={allSelected} disabled={disabled || !items.length} onClick={() => setSelected(allSelected ? new Set() : new Set(items.map(item => item.path)))}><SquareCheckBig size={21} aria-hidden="true" /></button>}</footer>
     </section>
   </div>;
 }

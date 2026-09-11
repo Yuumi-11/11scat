@@ -33,16 +33,16 @@ export function RoomSettings({ sections, triggerContent }: { sections: SettingsS
 
   const back = () => setSelected(null);
   return <>
-    <button ref={triggerRef} className="settings-button" type="button" title="设置" aria-label="设置" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}>{triggerContent || <><Settings size={18} aria-hidden="true" />设置</>}</button>
+    <button ref={triggerRef} className="settings-button" type="button"  aria-label="设置" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setSelected(null); setOpen(true); }}>{triggerContent || <><Settings size={18} aria-hidden="true" />设置</>}</button>
     {open && createPortal(<dialog ref={dialogRef} className="room-settings-dialog" aria-labelledby="room-settings-title" onCancel={event => { event.preventDefault(); if (selected) back(); else setOpen(false); }} onKeyDown={event => event.stopPropagation()} onClick={event => {
       if (event.target !== event.currentTarget) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) setOpen(false);
     }}>
       <header className="room-settings-heading">
-        {section && <button className="settings-back" type="button" onClick={back} title="返回设置" aria-label="返回设置"><ArrowLeft size={20} aria-hidden="true" /></button>}
+        {section && <button className="settings-back" type="button" onClick={back}  aria-label="返回设置"><ArrowLeft size={20} aria-hidden="true" /></button>}
         <h2 ref={headingRef} id="room-settings-title" tabIndex={-1}>{section?.label || "设置"}</h2>
-        <button className="settings-close" type="button" onClick={() => setOpen(false)} title="关闭设置" aria-label="关闭设置"><X size={20} aria-hidden="true" /></button>
+        <button className="settings-close" type="button" onClick={() => setOpen(false)}  aria-label="关闭设置"><X size={20} aria-hidden="true" /></button>
       </header>
       {section ? <div className="room-settings-content">{section.content}</div> : <nav ref={navRef} className="room-settings-sections" aria-label="设置分类">
         {sections.map(item => <button key={item.id} data-section={item.id} type="button" onClick={() => { lastSection.current = item.id; setSelected(item.id); }}><span className="settings-section-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span><ChevronRight size={18} aria-hidden="true" /></button>)}

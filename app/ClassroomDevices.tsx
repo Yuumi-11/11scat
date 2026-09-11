@@ -28,15 +28,15 @@ export function ActivityInput({ value, onChange, readOnly = false }: { value: st
 }
 
 export function DeviceIdentity({ name }: { name: string }) {
-  return <div className="device-identity"><strong className="device-name" title={name}>{name}</strong></div>;
+  return <div className="device-identity"><strong className="device-name" >{name}</strong></div>;
 }
 
 export function DeviceMediaControls({ screen, camera, self, onScreen, onCamera }: {
   screen: boolean; camera: boolean; self: boolean; onScreen?: () => void; onCamera?: () => void;
 }) {
   return <div className="device-media-status" role="group" aria-label="投屏与视频">
-    <button type="button" className={screen ? 'is-live' : ''} onClick={onScreen} disabled={!onScreen} title={screen ? self ? '关闭投屏或查看另一设备的投屏' : '查看投屏' : self ? '开启投屏' : '对方尚未投屏'} aria-label={screen ? '投屏中' : '开启投屏'}>{screen ? <><i aria-hidden="true" />投屏中</> : <MonitorUp aria-hidden="true" />}</button>
-    <button type="button" className={camera ? 'is-live' : ''} onClick={onCamera} disabled={!onCamera} title={camera ? self ? '关闭视频或查看另一设备的视频' : '查看视频' : self ? '开启视频' : '对方尚未开启视频'} aria-label={camera ? '视频中' : '开启视频'}>{camera ? <><i aria-hidden="true" />视频中</> : <Video aria-hidden="true" />}</button>
+    <button type="button" className={screen ? 'is-live' : ''} onClick={onScreen} disabled={!onScreen}  aria-label={screen ? '投屏中' : '开启投屏'}>{screen ? <><i aria-hidden="true" />投屏中</> : <MonitorUp aria-hidden="true" />}</button>
+    <button type="button" className={camera ? 'is-live' : ''} onClick={onCamera} disabled={!onCamera}  aria-label={camera ? '视频中' : '开启视频'}>{camera ? <><i aria-hidden="true" />视频中</> : <Video aria-hidden="true" />}</button>
   </div>;
 }
 
