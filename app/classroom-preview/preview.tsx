@@ -91,7 +91,7 @@ export function ClassroomPreview({ initialBoardTone = 'deep' }: { initialBoardTo
       <ProjectorControl open={projection.open} hasSource={!!activeMedia} onClick={()=>{if(board){setActiveBoardId('');projection.reveal();}else projection.toggle();}} />
       {!projection.open && <BlackboardSurface index={boardIndex} count={boards.length+1} onStep={stepBoard} drawing={!!board}>
       {!board && !projection.open && <IdleChalkboard date={date} tasks={longTitles?longTitleTasks:moreTasks?[...previewTasks,...additionalTasks]:previewTasks}/>}
-      {board && <Whiteboard key={board.id} board={board} onClose={()=>{setActiveBoardId('');projection.fold();}} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen}
+      {board && <Whiteboard key={board.id} board={board} onDelete={()=>{setBoards(items=>items.filter(item=>item.id!==board.id));projection.fold();}} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen}
         onAddStroke={(stroke,epoch)=>updateBoard(current=>current.epoch===epoch?{...current,strokes:[...current.strokes.filter(item=>item.id!==stroke.id),stroke]}:current)}
         onDeleteStroke={id=>updateBoard(current=>({...current,strokes:current.strokes.filter(item=>item.id!==id),deletedStrokeIds:[...current.deletedStrokeIds,id]}))}
         onClear={()=>updateBoard(current=>({...current,strokes:[],texts:[],epoch:Date.now()+':clear'}))}

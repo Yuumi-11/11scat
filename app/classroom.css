@@ -87,7 +87,7 @@
 .classroom-scene .projection-sheet .media-window-actions { bottom: 48px; max-width: calc(100% - 24px); flex-wrap: wrap; }
 /* Black Paper by Atle Mo, CC BY-SA 3.0; attribution in public/classroom/ATTRIBUTION.md. */
 .classroom-scene .share-canvas { background: var(--board-surface); }
-.classroom-scene { background-image: linear-gradient(#f5eddac0,#f5eddac0), url('/classroom/paper.webp'); }
+.classroom-scene { --classroom-wall: linear-gradient(#f5eddac0,#f5eddac0), url('/classroom/paper.webp'); background-image: var(--classroom-wall); }
 .classroom-scene .side-panel { height: calc(100% - var(--chat-bottom-inset)); background-image: linear-gradient(#f6efdeba,#f6efdeba), var(--paper); background-size: auto, 640px auto; }
 .classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .desk-calendar { mix-blend-mode: multiply; }
 .classroom-scene .desk-calendar { width: min(100%, 256.75px); height: auto; aspect-ratio: 13 / 8; isolation: auto; }
@@ -301,8 +301,8 @@
 /* Fifth review: one material, stable fullscreen geometry, sliding board rails. */
 .classroom-scene { --board-surface: linear-gradient(var(--board-overlay),var(--board-overlay)), url('/classroom/board-grain.png') 0 0 / 400px 400px, var(--board-color); }
 .classroom-scene .stage-content { position: relative; width: 100%; height: 100%; isolation: isolate; background: var(--board-surface); }
-.classroom-scene .share-canvas:fullscreen { border: 0; background: var(--board-color); }
-.classroom-scene .share-canvas:fullscreen::backdrop { background: var(--board-color,#3c645a); }
+.classroom-scene .share-canvas:fullscreen { border: 0; background: var(--classroom-wall), var(--page); }
+.classroom-scene .share-canvas:fullscreen::backdrop { background: #f5edda; }
 .classroom-scene .share-canvas:fullscreen .stage-content { position: absolute; left: 50%; top: 50%; width: var(--stage-base-width); height: var(--stage-base-height); transform: translate(-50%,-50%) scale(var(--stage-scale,1)); transform-origin: center; }
 .classroom-scene .share-canvas:fullscreen .chalk-lettering { font-size: var(--stage-chalk-font,51px); }
 .classroom-scene .share-canvas:fullscreen .chalk-date { font-size: var(--stage-date-font,32px); }
@@ -349,6 +349,7 @@
 .classroom-scene .board-text-box { min-width: 0; min-height: 0; }
 .classroom-scene .stage-content .main-fullscreen-error { position: absolute; z-index: 9; top: 12px; left: 12px; max-width: calc(100% - 72px); padding: 8px 12px; border-radius: 6px; background: #fff3d9; color: #514738; }
 .classroom-scene .share-canvas:fullscreen .stage-content::before { content: ''; position: absolute; inset: -13px; z-index: 10; border: 13px solid #cf9f60; border-image: var(--wood) 20 / 13px stretch; background: none; pointer-events: none; }
+.classroom-scene .share-canvas:fullscreen .projector-control { z-index: 11; }
 .classroom-scene .board-text-box textarea { background: transparent; overflow-y: auto; scrollbar-width: thin; }
 .classroom-scene .board-text-drag { left: 50%; top: -17px; width: 40px; height: 18px; margin-left: -20px; background: transparent; border-radius: 8px; }
 .board-text-drag span { width: 28px; height: 3px; border-radius: 3px; background: #f6f1dcaa; mask: url('/classroom/chalk-grain.png') center / 60px; }
@@ -369,6 +370,7 @@
 .device-shell { display: block; position: absolute; inset: 0; background: center bottom / contain no-repeat; }
 .device-tablet .device-shell { background-image: url('/classroom/tablet-on.svg'); }.device-tablet.is-offline .device-shell { background-image: url('/classroom/tablet-off.svg'); }
 .device-laptop .device-shell { background-image: url('/classroom/laptop-on.svg'); }.device-laptop.is-offline .device-shell { background-image: url('/classroom/laptop-off.svg'); }
+.device-laptop .device-shell::after { content: ''; position: absolute; left: 94%; bottom: 3.75%; width: 18.5%; height: 37%; background: center / contain no-repeat url('/classroom/mouse-white.svg'); }
 .device-screen { position: absolute; left: 12.5%; right: 12.5%; top: 13%; bottom: 15%; display: flex; flex-direction: column; padding: 3px 0 6px; pointer-events: auto; overflow: hidden; color: #42534b; font-family: var(--device-font); }
 .device-laptop .device-screen { left: 13%; right: 18%; top: 11%; bottom: 27%; }
 .device-tablet .device-screen { left: 13.5%; right: 15%; top: 13%; bottom: 15%; }

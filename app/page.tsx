@@ -2,6 +2,8 @@
 
 import { AudioPlayer } from "./AudioPlayer";
 import { RemoteMicrophone } from "./RemoteMicrophone";
+import { prepareClassroomAssets } from './classroom-loading';
+import { RoomLoadingScreen } from './RoomLoadingScreen';
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, PictureInPicture2, MessageCircle, ListTodo } from "lucide-react";
@@ -311,10 +313,26 @@ export default function Home() {
   const classroomProfile = useClassroomProfile(joined, broadcastRoomMessage);
 
   const updateBoards = useCallback((update: (current: RoomBoard[]) => RoomBoard[]) => {
-    const next = update(boardsRef.current);
+    const next = update(boardsRef.current).filter(board => !deletedBoardIdsRef.current.has(board.id));
     boardsRef.current = next;
     setBoards(next);
   }, [setBoards]);
+
+  const refreshDeletedBoards = useCallback(async () => {
+    const response = await fetch('/api/room/boards', { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error('画板暂时无法读取，请重试。');
+    const data = await response.json() as { deletedBoardIds: string[] };
+    data.deletedBoardIds.forEach(id => deletedBoardIdsRef.current.add(id));
+    updateBoards(current => current);
+  }, [updateBoards]);
+
+  useEffect(() => {
+    if (!joined) return;
+    const refresh = () => { if (!document.hidden) void refreshDeletedBoards().catch(() => undefined); };
+    const timer = window.setInterval(refresh, 10_000);
+    window.addEventListener('online', refresh); window.addEventListener('focus', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', refresh); window.removeEventListener('focus', refresh); };
+  }, [joined, refreshDeletedBoards]);
 
   const receiveBoardMessage = useCallback(function receiveBoardMessage(message: { type?: string; boards?: unknown; deletedBoardIds?: unknown; board?: unknown; id?: unknown; boardId?: unknown; stroke?: unknown; strokeId?: unknown; text?: unknown; textId?: unknown; epoch?: unknown }) {
     if (message.type === "board-chunk") {
@@ -725,7 +743,11 @@ export default function Home() {
     let disposed = false;
     const loadProfile = async () => {
       try {
-        const response = await fetch("/api/identity/me", { cache: "no-store" });
+        const [response] = await Promise.all([
+          fetch("/api/identity/me", { cache: "no-store", signal: AbortSignal.timeout(20_000) }),
+          prepareClassroomAssets(),
+          refreshDeletedBoards(),
+        ]);
         if (!response.ok) throw new Error("profile unavailable");
         const data = await response.json() as { identityId?: unknown; nickname?: unknown; activity?: unknown };
         const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
@@ -739,15 +761,15 @@ export default function Home() {
           setDisplayName(nickname || identityName || "成员");
           setJoined(true);
         }
-      } catch {
-        if (!disposed) setJoinError("暂时无法读取身份资料，请刷新页面重试。");
+      } catch (error) {
+        if (!disposed) setJoinError(error instanceof Error && error.message !== 'profile unavailable' ? error.message : "暂时无法读取身份资料，请重试。");
       } finally {
         if (!disposed) setProfileReady(true);
       }
     };
     void loadProfile();
     return () => { disposed = true; };
-  }, []);
+  }, [refreshDeletedBoards]);
 
   useEffect(() => {
     const entered = () => setPictureInPicture(true);
@@ -1795,7 +1817,7 @@ export default function Home() {
   };
 
   const createBoard = () => {
-    if (boardsRef.current.length >= 12) { setBoardNotice("最多保留 12 张画板，可在设置中删除不用的画板"); return; }
+    if (boardsRef.current.length >= 12) { setBoardNotice("最多保留 12 张画板，可点击画板右上角删除不用的画板"); return; }
     projection.fold();
     const board: RoomBoard = { id: crypto.randomUUID(), name: `画板 ${boardsRef.current.length + 1}`, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [], epoch: INITIAL_BOARD_EPOCH, createdAt: Date.now() };
     const next = [...boardsRef.current, board].slice(0, 12);
@@ -1803,6 +1825,18 @@ export default function Home() {
     createAndSelect(board);
     setActiveMediaId("");
     broadcastRoomMessage({ type: "board-create", board });
+  };
+
+  const deleteBoard = async (id: string) => {
+    if (!id || !boardsRef.current.some(board => board.id === id)) return;
+    try {
+      const response = await fetch('/api/room/boards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }), signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) throw new Error('画板删除失败，请重试。');
+      deletedBoardIdsRef.current.add(id);
+      updateBoards(current => current.filter(board => board.id !== id));
+      projection.fold();
+      broadcastRoomMessage({ type: 'board-delete', id });
+    } catch { setBoardNotice('画板删除暂未完成，请检查网络后重试。'); }
   };
 
   const addBoardStroke = (boardId: string, stroke: BoardStroke, epoch: string) => {
@@ -2194,6 +2228,10 @@ export default function Home() {
     setActiveMediaId(mediaItems[nextIndex].id);
   };
 
+  if (!profileReady || !joined || !classroomProfile.ready) {
+    return <RoomLoadingScreen error={joinError || classroomProfile.error} onRetry={() => window.location.reload()} />;
+  }
+
   return (
     <main className="app-shell classroom-scene" id="top" data-device-font={classroomProfile.profile.font}>
       <section className="workspace">
@@ -2207,7 +2245,7 @@ export default function Home() {
             {!projection.open && <BlackboardSurface index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} drawing={!!activeBoard}>
             {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" ><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
-            {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} onClose={() => { setActiveBoardId(''); projection.fold(); }} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
+            {activeBoard ? <Whiteboard key={activeBoard.id} board={activeBoard} onDelete={() => deleteBoard(activeBoard.id)} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen} onAddStroke={(stroke, epoch) => addBoardStroke(activeBoard.id, stroke, epoch)} onDeleteStroke={(strokeId, epoch) => deleteBoardStroke(activeBoard.id, strokeId, epoch)} onClear={() => clearBoard(activeBoard.id)} onUpsertText={(text, epoch) => upsertBoardText(activeBoard.id, text, epoch)} onDeleteText={(textId, epoch) => deleteBoardText(activeBoard.id, textId, epoch)} onSaved={(message, error) => {
               setBoardNotice(error ? "" : message);
               setShareError(error ? message : "");
               if (!error) window.setTimeout(() => setBoardNotice((current) => current === message ? "" : current), 3500);

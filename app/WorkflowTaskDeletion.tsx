@@ -7,10 +7,9 @@ import type { ClaimWorkflow, WorkflowCommand } from "./collaboration-types";
 export function WorkflowTaskDeletion({ workflow, identityId, disabled, perform, onDeleted }: { workflow: ClaimWorkflow; identityId: string; disabled: boolean; perform: (command: WorkflowCommand) => Promise<boolean>; onDeleted?: () => void }) {
   const [armed, setArmed] = useState(false);
   const owner = workflow.reviewerId === identityId;
-  if (!owner && workflow.claimantId !== identityId) return null;
-  const label = owner ? "删除发起任务" : "删除我的任务";
+  if (workflow.status === 'deleted' || (!owner && workflow.claimantId !== identityId)) return null;
+  const label = "删除任务";
   return <div className="workflow-task-deletion">
-    {armed && <p className="coop-feedback" role="status">{owner ? "删除你一侧的原任务及公共便签，认领者任务与流程记录保留。" : "删除自己收集箱中的认领任务，流程进度与提交材料保留。"}</p>}
     <div className="coop-workflow-actions">
       <button type="button" className="coop-delete workflow-delete-icon"  aria-label={armed ? `确认${label}` : label} disabled={disabled} onClick={() => {
         if (!armed) { setArmed(true); return; }

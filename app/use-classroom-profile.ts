@@ -4,19 +4,22 @@ import { CLASSROOM_DEVICE_FONT, type ClassroomProfile, type ClassroomSettingsDra
 export function useClassroomProfile(joined: boolean, broadcast: (message: object) => void) {
   const [profile, setProfile] = useState<ClassroomProfile>({ members: [], seats: [], font: CLASSROOM_DEVICE_FONT });
   const [error, setError] = useState('');
+  const [ready, setReady] = useState(false);
   const busy = useRef(false), generation = useRef(0);
   useEffect(() => {
     if (!joined) return;
     let cancelled = false;
+    let fetching = false;
     const controller = new AbortController();
     const refresh = () => {
-      if (busy.current || document.hidden) return;
+      if (busy.current || fetching || document.hidden) return;
+      fetching = true;
       const current = ++generation.current;
-      void fetch('/api/room/classroom', { cache: 'no-store', signal: controller.signal }).then(async response => {
+      void fetch('/api/room/classroom', { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) }).then(async response => {
         if (!response.ok) throw new Error('座位暂时无法读取');
         const value = await response.json() as ClassroomProfile;
-        if (!cancelled && current === generation.current) { setProfile(value); setError(''); }
-      }).catch(() => { if (!cancelled && current === generation.current) setError('设置暂时无法读取'); });
+        if (!cancelled && current === generation.current) { setProfile(value); setError(''); setReady(true); }
+      }).catch(() => { if (!cancelled && current === generation.current) setError('设置暂时无法读取'); }).finally(() => { fetching = false; });
     };
     refresh(); window.addEventListener('focus', refresh); window.addEventListener('classroom-settings-changed', refresh);
     // Realtime messages refresh immediately; polling also reaches other devices without media connections.
@@ -39,5 +42,5 @@ export function useClassroomProfile(joined: boolean, broadcast: (message: object
       throw failure;
     } finally { busy.current = false; }
   }, [joined, broadcast]);
-  return { profile, error, save };
+  return { profile, error, save, ready };
 }

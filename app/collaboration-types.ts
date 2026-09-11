@@ -11,7 +11,7 @@ export type WorkflowEvent = { id: string; actorId: string; type: string; at: num
 export type ClaimWorkflow = {
   id: string; title: string; source: TaskSource; reviewerId: string; claimantId: string;
   targetId: string; reviewerTaskId?: string; fields: TaskFields;
-  status: "creating" | "working" | "submitted" | "rejected" | "approving" | "done";
+  status: "creating" | "working" | "submitted" | "rejected" | "approving" | "done" | "deleted";
   version: number; createdAt: number; updatedAt: number; error: string; events: WorkflowEvent[];
   editPending?: boolean;
   ownerDeletePending?: boolean;

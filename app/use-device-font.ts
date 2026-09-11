@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { loadDeviceFont, normalizeDeviceFont } from './device-fonts';
+import { isDeviceFontReady, loadDeviceFont, normalizeDeviceFont } from './device-fonts';
 
 export function useDeviceFont(font: string, enabled: boolean) {
   const id = normalizeDeviceFont(font);
@@ -13,6 +13,6 @@ export function useDeviceFont(font: string, enabled: boolean) {
       .catch(() => { if (!cancelled) setResult({ id, attempt, status: 'error' }); });
     return () => { cancelled = true; };
   }, [id, attempt, enabled]);
-  const status = result?.id === id && result.attempt === attempt ? result.status : 'loading';
+  const status = isDeviceFontReady(id) ? 'ready' : result?.id === id && result.attempt === attempt ? result.status : 'loading';
   return { status, retry: () => setAttempt(value => value + 1) };
 }

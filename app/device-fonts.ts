@@ -1,8 +1,10 @@
+import { withLoadingTimeout } from './loading-timeout.ts';
+
 export function normalizeDeviceFont(font?: string | null) {
   return font === 'sans' || font === 'rounded' ? font : 'resource-rounded';
 }
 
-type FontResource = { family: string; url: string; weight: string };
+export type FontResource = { family: string; url: string; weight: string; sizeAdjust?: string };
 export const deviceFontResources: Record<string, FontResource[]> = {
   'resource-rounded': [
     { family: 'Device Han Rounded', url: '/classroom/fonts/resource-han-rounded-regular.woff2', weight: '400' },
@@ -21,15 +23,23 @@ export const deviceFontResources: Record<string, FontResource[]> = {
 
 // Each loaded face is shared by both desks. Failed requests can be retried with a fresh FontFace.
 const loaded = new Map<string, Promise<void>>();
-export async function loadDeviceFont(font: string) {
-  await Promise.all(deviceFontResources[normalizeDeviceFont(font)].map(resource => {
-    const key = resource.url;
+const ready = new Set<string>();
+export function isDeviceFontReady(font: string) {
+  return deviceFontResources[normalizeDeviceFont(font)].every(resource => ready.has(resource.url));
+}
+export async function loadFontResources(resources: FontResource[], timeout = 90_000) {
+  await Promise.all(resources.map(resource => {
+    const key = `${resource.family}:${resource.url}`;
     let request = loaded.get(key);
     if (!request) {
-      const face = new FontFace(resource.family, `url("${resource.url}")`, { weight: resource.weight, style: 'normal' });
-      request = face.load().then(ready => { document.fonts.add(ready); }).catch(error => { loaded.delete(key); throw error; });
+      const face = new FontFace(resource.family, `url("${resource.url}")`, { weight: resource.weight, style: 'normal', ...(resource.sizeAdjust ? { sizeAdjust: resource.sizeAdjust } : {}) });
+      request = withLoadingTimeout(face.load(), timeout).then(face => { document.fonts.add(face); ready.add(resource.url); }).catch(error => { if (loaded.get(key) === request) loaded.delete(key); throw error; });
       loaded.set(key, request);
     }
     return request;
   }));
+}
+
+export function loadDeviceFont(font: string) {
+  return loadFontResources(deviceFontResources[normalizeDeviceFont(font)]);
 }

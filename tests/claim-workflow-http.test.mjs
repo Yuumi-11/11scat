@@ -26,6 +26,19 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
   const call = (id, route = '/api/room/tasks', body, headers = {}) => fetch(origin + route, { method: body === undefined ? 'GET' : 'POST', redirect: 'manual', headers: { Cookie: cookie(id), Origin: origin, 'Content-Type': 'application/json', ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   try {
     let ready = false; for (let i = 0; i < 60; i++) { try { if ((await fetch(origin + '/access')).ok) { ready = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 200)); } assert.ok(ready);
+    const login = (code, next, json = true) => fetch(origin + '/api/access', { method:'POST',redirect:'manual',headers:json?{Accept:'application/json'}:{},body:new URLSearchParams({identityCode:code,next}) });
+    let loginResponse=await login('wrong','/');assert.equal(loginResponse.status,401);assert.ok(!loginResponse.headers.has('set-cookie'));
+    loginResponse=await login('fixture','/?view=tasks');assert.equal(loginResponse.status,200);assert.deepEqual(await loginResponse.json(),{next:'/?view=tasks'});assert.match(loginResponse.headers.get('set-cookie'),/HttpOnly/);assert.match(loginResponse.headers.get('set-cookie'),/Secure/);
+    assert.equal((await call('legacy','/api/room/classroom')).status,200,'first login creates a usable room profile before entry');
+    assert.equal((await call('legacy','/api/room/boards')).status,200);
+    loginResponse=await login('fixture','https://outside.example');assert.deepEqual(await loginResponse.json(),{next:'/'});
+    loginResponse=await login('fixture','/api/ticktick/diagnostics',false);assert.equal(loginResponse.status,303);assert.equal(loginResponse.headers.get('location'),'/api/ticktick/diagnostics');
+    loginResponse=await login('wrong','/',false);assert.equal(loginResponse.status,303);assert.match(loginResponse.headers.get('location'),/error=1/);
+    const boardId=randomUUID();assert.equal((await call('alice','/api/room/boards',{id:''})).status,400);
+    assert.equal((await call('alice','/api/room/boards',{id:boardId},{Origin:'https://elsewhere.example'})).status,403);
+    assert.equal((await call('alice','/api/room/boards',{id:boardId})).status,200);
+    assert.deepEqual((await (await call('bob','/api/room/boards')).json()).deletedBoardIds,[boardId]);
+    assert.equal((await call('alice','/api/room/boards',{id:boardId})).status,200);
     const before = await (await call('alice')).json(), sourceTask = before.members.find(member => member.id === 'alice').tasks[0];
     const claim = { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: sourceTask.id, version: sourceTask.version }, destination: 'bob' };
     let response = await call('bob', '/api/room/tasks', claim); assert.equal(response.status, 200); let w = (await response.json()).workflow; assert.equal(w.status, 'working');
@@ -106,18 +119,18 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const deletion = { id: randomUUID(), workflowId: laterClaim.id, version: laterClaim.version, action: 'delete-claimed-task' };
     assert.equal((await call('alice', '/api/room/tasks', deletion)).status, 403);
     response = await call('bob', '/api/room/tasks', deletion); assert.equal(response.status, 200);
-    assert.equal((await response.json()).workflow.taskAnomaly, true);
+    assert.equal((await response.json()).workflow.status, 'deleted');
     assert.equal((await call('bob', '/api/room/tasks', deletion)).status, 200);
     const deletedSnapshot = await (await call('bob')).json();
     assert.ok(!deletedSnapshot.members.find(member => member.id === 'bob').tasks.some(task => task.id === laterClaim.targetId));
-    assert.ok(deletedSnapshot.members.find(member => member.id === 'alice').tasks.some(task => task.id === ordinary.id));
+    assert.ok(!deletedSnapshot.members.find(member => member.id === 'alice').tasks.some(task => task.id === ordinary.id));
     const ownerDeletion = { id: randomUUID(), workflowId: w.id, version: w.version, action: 'delete-owner-task' };
     assert.equal((await call('bob', '/api/room/tasks', ownerDeletion)).status, 403);
     response = await call('alice', '/api/room/tasks', ownerDeletion); assert.equal(response.status, 200);
-    assert.equal((await response.json()).workflow.status, 'done');
+    assert.equal((await response.json()).workflow.status, 'deleted');
     assert.equal((await call('alice', '/api/room/tasks', ownerDeletion)).status, 200);
     const afterOwnerDeletion = JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'));
-    assert.ok(!afterOwnerDeletion.alice.original); assert.equal(afterOwnerDeletion.bob[w.targetId].status, 2);
+    assert.ok(!afterOwnerDeletion.alice.original); assert.ok(!afterOwnerDeletion.bob[w.targetId]);
     assert.equal((await call('alice', file.url)).status, 200, 'submitted files remain accessible after deletion');
 
     await call('alice', '/api/room/tasks', { id: randomUUID(), action: 'create', fields: { title: '删除公共发起任务后继续审批' } });
@@ -126,10 +139,10 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     w = (await response.json()).workflow;
     response = await act('bob', 'submit', { comment: '删除后保留的结果' }); w = (await response.json()).workflow;
     response = await act('alice', 'delete-owner-task'); assert.equal(response.status, 200); w = (await response.json()).workflow;
-    assert.equal(w.status, 'submitted');
+    assert.equal(w.status, 'deleted');
     assert.ok(!(await (await call('alice')).json()).buffer.some(task => task.id === removable.id));
-    response = await act('alice', 'approve'); assert.equal(response.status, 200); w = (await response.json()).workflow;
-    assert.equal(w.status, 'done'); assert.equal(w.events.find(event => event.type === 'submit').comment, '删除后保留的结果');
+    response = await act('alice', 'approve'); assert.equal(response.status, 409);
+    assert.equal(w.events.find(event => event.type === 'submit').comment, '删除后保留的结果');
     assert.equal((await call('bob', '/api/room/tasks', { action: 'legacy-reset' })).status, 200);
   } finally { child.kill(); }
 });

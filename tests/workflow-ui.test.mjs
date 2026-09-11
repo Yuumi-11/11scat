@@ -15,22 +15,19 @@ test('workflow detail offers settings to every member and direct completion only
   const { ClaimWorkflows, WorkflowList } = await import(pathToFileURL(output).href);
   const workflow = { id: 'workflow', title: '测试', reviewerId: 'alice', claimantId: 'bob', fields: taskFields({ title: '测试' }), status: 'working', events: [] };
   const render = (identityId, status = 'working', editPending = false) => renderToStaticMarkup(createElement(ClaimWorkflows, { initialId: workflow.id, busy: false, error: '', onClose() {}, onEdit() {}, perform() {}, snapshot: { identityId, members: ['alice', 'bob', 'charlie'].map(id => ({ id, name: id })), workflows: [{ ...workflow, status, editPending }] } }));
-  for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done']) {
+  for (const member of ['alice', 'bob', 'charlie']) for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving', 'done', 'deleted']) {
     const html = render(member, status); assert.match(html, /<form[^>]+aria-label="详细设置"/); assert.ok(!html.includes(">详细设置</button>"));
-    assert.equal(html.includes('直接完成'), member === 'alice' && status !== 'done');
+    assert.equal(html.includes('直接完成'), member === 'alice' && !['done','deleted'].includes(status));
     const settings = html.match(/<form[^>]+aria-label="详细设置"[\s\S]*?<\/form>/)[0];
-    assert.equal(settings.includes('删除发起任务'), member === 'alice');
-    assert.equal(settings.includes('删除我的任务'), member === 'bob');
-    const deletion = [...settings.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(match => match[0].includes('删除发起任务'))?.[0];
-    if (member === 'alice') assert.ok(!deletion.includes('disabled'), 'initiator deletion stays enabled without unsaved edits');
-    if (member === 'alice') assert.ok(!deletion.includes('>删除发起任务'), 'delete action is an accessible icon without visible text');
+    assert.equal(settings.includes('aria-label="删除任务"'), member !== 'charlie' && status !== 'deleted');
+    if(status==='deleted') assert.match(settings, /disabled/);
   }
   assert.ok(render('bob').includes('提交完成')); assert.ok(!render('bob', 'working', true).includes('提交完成'));
-  assert.ok(render('charlie', 'working', true).includes('核对并继续'));
-  const workflows = [{ ...workflow, id: 'mine', title: '我认领的事项' }, { ...workflow, id: 'theirs', title: '他人认领的事项', claimantId: 'alice', reviewerId: 'bob' }, { ...workflow, id: 'done', title: '归档事项示例', status: 'done' }];
+  assert.ok(!render('charlie', 'working', true).includes('核对并继续')); assert.ok(render('charlie', 'working', true).includes('正在同步任务'));
+  const workflows = [{ ...workflow, id: 'mine', title: '我认领的事项' }, { ...workflow, id: 'theirs', title: '他人认领的事项', claimantId: 'alice', reviewerId: 'bob' }, { ...workflow, id: 'done', title: '归档事项示例', status: 'done' }, { ...workflow, id:'deleted',title:'已删除归档示例',status:'deleted' }];
   const overview = archived => renderToStaticMarkup(createElement(WorkflowList, { workflows, archived, setArchived() {}, select() {}, name: id => id }));
-  const active = overview(false); assert.ok(active.includes('我认领的事项')); assert.ok(active.includes('他人认领的事项')); assert.ok(!active.includes('归档事项示例')); assert.ok(active.includes('已完成归档'));
-  const archive = overview(true); assert.ok(archive.includes('归档事项示例')); assert.ok(!archive.includes('我认领的事项')); assert.ok(!archive.includes('他人认领的事项')); assert.ok(archive.includes('未完成流程'));
+  const active = overview(false); assert.ok(active.includes('我认领的事项')); assert.ok(active.includes('他人认领的事项')); assert.ok(!active.includes('归档事项示例')); assert.ok(active.includes('已归档'));
+  assert.ok(!active.includes('已删除归档示例')); const archive = overview(true); assert.ok(archive.includes('已删除归档示例')); assert.ok(archive.includes('归档事项示例')); assert.ok(!archive.includes('我认领的事项')); assert.ok(!archive.includes('他人认领的事项')); assert.ok(archive.includes('未完成流程'));
   const notices = [{ id: 'nudge-notice', workflowId: 'theirs', eventType: 'nudge' }, { id: 'done-notice', workflowId: 'done', eventType: 'completed' }];
   const withNotices = renderToStaticMarkup(createElement(WorkflowList, { workflows, notices, archived: false, setArchived() {}, select() {}, name: id => id }));
   assert.ok(withNotices.indexOf('他人认领的事项') < withNotices.indexOf('我认领的事项'), 'unread workflow is temporarily first');
@@ -42,7 +39,7 @@ test('workflow detail offers settings to every member and direct completion only
   const history = render('alice', 'done');
   assert.ok(!history.includes('安排认领')); assert.ok(!history.includes('完成同步')); assert.ok(!history.includes('不可显示的后台完成说明'));
   assert.ok(history.includes('bob · 认领')); assert.ok(history.includes('提交完成')); assert.ok(history.includes('审批通过'));
-  assert.ok(render('bob').includes('删除我的任务')); assert.ok(!render('alice').includes('删除我的任务'));
+  assert.ok(render('bob').includes('aria-label="删除任务"')); assert.ok(render('alice').includes('aria-label="删除任务"'));
   assert.ok(render('alice').includes('>催办</button>')); assert.ok(!render('bob').includes('>催办</button>'));
   workflow.fields.content = '前文 [附件：报告.pdf](https://study.11scat.xyz/task-attachment?path=tasks%2Fa%2Fb.pdf) 后文';
   const attachmentHtml = render('alice');

@@ -5,7 +5,8 @@
 | 文件 | 用途与来源 |
 | --- | --- |
 | `tablet-on.svg`、`tablet-off.svg` | 第一桌的浅粉色折叠保护套平板；亮屏与暗屏尺寸、边框及支撑壳完全相同。按用户的 iPad Pro 2025 与粉色保护套描述制作候选，尚未核对官方图片。 |
-| `laptop-on.svg`、`laptop-off.svg` | 第二桌的白色笔记本与鼠标；根据用户提供的 ROG 幻 14 Air 和 ROG Ace 白色款描述制作简化候选，尚未核对外部官方参考图，不声明为精确型号复刻。 |
+| `laptop-on.svg`、`laptop-off.svg` | 第二桌的白色笔记本；保留原屏幕和键盘几何位置，2026-09-12 移除图内过小的旧鼠标。 |
+| `mouse-white.svg` | 2026-09-12 参照 [ROG Keris II Ace 官方图库](https://rog.asus.com/mice-mouse-pads/mice/wireless/rog-keris-ii-ace/gallery/) 的白色外形重新绘制，使用圆润后部、分体按键与蓝灰滚轮，保留教室简化色块风格。独立摆在电脑右侧，鼠标可见宽度约为笔记本宽度的六分之一；未使用官方图片作为发布素材。 |
 | `microphone-on.svg`、`microphone-off.svg` | 从既有 `microphone-flat.svg` 派生，保留原轮廓；打开时增加红灯及声音线，关闭时增加浅色斜线。 |
 | `camera-on.svg` | 从既有 `camera-flat.svg` 派生，加入红灯与镜头环；红灯使用红色径向扩散和模糊光晕，取消白色亮点。相机物件已从第三桌移除，保留素材供后续使用。 |
 | `projector-on.svg`、`projector-off.svg` | 从既有 `projector-rear.svg` 派生，只改变原指示灯及其附近光晕；两者均背对镜头。 |
@@ -14,6 +15,6 @@
 
 设备差分可以由 `scripts/generate-classroom-devices.mjs` 重新输出。任务板、文件袋及设置物件继续使用既有素材；任务板数字角标由页面绘制，以支持动态计数，不额外重画任务夹板。
 
-设备英文和数字增加本地 Nunito 圆体，使用 400、600 两种字重的 Latin 子集，已验证 ASCII 字母和数字完整覆盖。中文幼圆仅引用用户设备已安装字体，不随项目分发，缺失时回退 Noto Sans SC。字体原始署名与许可证见 [ATTRIBUTION.md](ATTRIBUTION.md)。
+设备英文和数字使用本地 Nunito 圆体，中文使用已随项目分发的资源圆体，均加载 400、600 两种字重。2026-09-12 起进入主界面前等待设备字体与教室必要资源就绪，加载失败可以重试。字体原始署名与许可证见 [ATTRIBUTION.md](ATTRIBUTION.md)。
 
 独立素材对照 `docs/assets/classroom-device-states-2026-09-10.png` 是第五轮历史候选，不含本轮粉色支撑套和灯光；它仅展示素材文件，不是网页截图。当前页面入口为 `/classroom-preview`，尚未完成本轮页面和真实设备验收。粉笔关闭图案 `chalk/close.svg` 沿用已有工具 SVG 的生成方法，可单独运行 `node scripts/generate-classroom-chalk.mjs close` 更新，不影响装饰图案。

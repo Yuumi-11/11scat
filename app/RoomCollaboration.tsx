@@ -204,15 +204,16 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       const data = await response.json();
       if (!response.ok) { if (response.status < 500) setUncertain(null); throw new Error(data.error || "操作未完成"); }
       operation = data.operation; workflow = data.workflow;
+      if (workflow) setSnapshot(current => current ? { ...current, workflows: current.workflows.map(item => item.id === workflow!.id ? workflow! : item) } : current);
       if (workflow && command.action !== "update-workflow") { setWorkflowId(workflow.id); setWorkflowOpen(true); }
       setUncertain(null);
-      if (workflow?.error || workflow?.syncError) setError(workflow.syncError || workflow.error);
+      if ((workflow?.error || workflow?.syncError) && !workflow?.editPending && !workflow?.ownerDeletePending) setError(workflow.syncError || workflow.error);
       else if (operation?.status === "pending") setError(operation.error || "操作尚未完成，请在下方继续处理");
       else setNotice(operation?.status === "cancelled" ? "已取消未完成的操作" : "已保存");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "请求结果未确认，请核对并重试"); }
     finally {
       const next = await load(true);
-      workflow ||= next?.workflows.find(item => item.id === command.id || item.events.some(event => event.id === command.id) || (command.action === "retry-workflow" && item.id === command.workflowId && item.version !== command.version));
+      workflow = next?.workflows.find(item => item.id === workflow?.id || item.id === command.id || item.events.some(event => event.id === command.id) || (command.action === "retry-workflow" && item.id === command.workflowId && item.version !== command.version)) || workflow;
       if (workflow) { setUncertain(null); if (command.action !== "update-workflow") { setWorkflowId(workflow.id); setWorkflowOpen(true); } }
       if (workflow && command.action === "update-workflow") setEditor(current => current?.workflow?.id === workflow!.id ? { ...current, workflow } : current);
       const known = next?.operations.find(item => item.id === command.id);
@@ -222,7 +223,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       void onChanged();
     }
     if (operation?.status === "done" || operation?.status === "cancelled") setDraftId(current => current === command.id ? null : current);
-    return workflow ? !workflow.error && !workflow.syncError : operation?.status === "done";
+    return workflow ? (command.action === 'update-workflow' && workflow.events.some(event => event.id === command.id)) || (!workflow.error && !workflow.syncError) : operation?.status === "done";
   }
   const unavailable = busy || !!uncertain;
   const ownerName = (owner: string | null) => owner === null ? "任务板" : snapshot?.members.find(member => member.id === owner)?.name || "成员";

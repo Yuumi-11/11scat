@@ -8,8 +8,5 @@
     <path fill="#bec5bc" d="M44 196h251l6 14H37Z"/>
     <path d="M54 201h230M53 206h231" stroke="#e4e7db" stroke-width="2"/>
     <path fill="#ccd3c7" d="M137 212h64l4 9h-71Z"/>
-    <path fill="#ced2c6" d="M333 194c-9 0-12 10-12 20s7 18 15 17c11-1 15-10 13-20-1-11-6-17-16-17Z"/>
-    <path fill="#eef0e4" d="M334 192c-9 0-11 10-11 20s5 15 13 14c9-1 12-8 11-18-1-10-5-16-13-16Z"/>
-    <path d="m334 197 1 8" stroke="#99a89e" stroke-width="3" stroke-linecap="round"/>
     <path d="M56 38h147L56 144Z" fill="#7d9690" opacity=".1"/>
   </svg>

@@ -575,6 +575,11 @@ body { overflow: hidden; }
 .message-file strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .message-file small { color: var(--muted); font-size: 10px; }
 .chat-history-status { align-self: center; padding: 5px 8px; color: var(--muted); font-size: 10px; }
+.room-loading-card { text-align: center; }
+.room-loading-card .access-brand { justify-content: center; }
+.room-entry-spinner { display: block; width: 36px; height: 36px; margin: 28px auto 18px; border: 3px solid #d9decd; border-top-color: #527769; border-radius: 50%; animation: room-entry-spin 1s linear infinite; }
+.workflow-sync-spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #d9decd; border-top-color: #527769; border-radius: 50%; animation: room-entry-spin 1s linear infinite; }
+@keyframes room-entry-spin { to { transform: rotate(360deg); } }
 .chat-form {
   flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr);

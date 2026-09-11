@@ -105,7 +105,7 @@ export const gateway: Gateway = {
     // Keep provider-specific task fields while updating only the editor's supported values.
     await request(owner, `/task/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify({ ...existing, ...payload(fields), id, projectId: projectId || account.projectId }) });
     const saved = await gateway.get(owner, id, projectId);
-    if (!saved || !sameFields(saved, fields)) throw new CollaborationError("滴答尚未确认全部修改，请继续核对或取消重试");
+    if (!saved || !sameFields(saved, fields)) throw new CollaborationError("关联任务的修改正在自动同步");
   },
   async remove(owner, id, projectId) {
     if (!validId(id) || (projectId !== undefined && !validId(projectId))) throw new CollaborationError("任务编号无效", 400);

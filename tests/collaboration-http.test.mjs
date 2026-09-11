@@ -105,7 +105,7 @@ test('room collaboration HTTP authenticates members, shares the buffer and rejec
     assert.equal((await call('alice', create)).status, 200);
     const result = await call('bob'), snapshot = await result.json();
     assert.equal(result.headers.get('cache-control'), 'private, no-store');
-    assert.equal(snapshot.members.length, 3);
+    assert.deepEqual(snapshot.members.map(member => member.id).sort(), ['alice', 'bob', 'legacy', 'offline']);
     assert.ok(snapshot.members.every(member => !member.connected));
     assert.equal(snapshot.buffer.length, 1);
     assert.equal(snapshot.buffer[0].content, attachmentContent);

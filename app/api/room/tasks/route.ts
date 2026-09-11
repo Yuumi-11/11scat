@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     // Migrate when the active server receives member traffic. Deployment candidates
     // share the data mount, so startup/health checks must never mutate this store.
     await store.resetLegacy(id);
-    after(() => store.deliverNotices().catch(() => undefined));
+    after(async () => { await store.recoverPendingWorkflows().catch(() => undefined); await store.deliverNotices().catch(() => undefined); });
     const diagnostic = request.nextUrl.searchParams.get("diagnose");
     return json(diagnostic !== null ? await store.inspectTransfer(id, diagnostic) : request.nextUrl.searchParams.has("revision") ? await store.revision(id) : await store.snapshot(id));
   }
