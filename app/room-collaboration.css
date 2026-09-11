@@ -61,7 +61,7 @@
 .coop-task-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-height: 3em; }
 .room-collaboration-dialog .coop-task-title:disabled { opacity: 1; }
 .coop-task-top { display: flex; align-items: start; gap: 5px; }
-.coop-task-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; color: var(--ink); padding: 3px 0; font-weight: 550; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.coop-task-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; color: var(--ink); padding: 3px 0; font-weight: 400; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .coop-inline-title { flex: 1; min-width: 0; margin: 0; }
 .coop-inline-title input { display: block; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--theme-accent); border-radius: 5px; padding: 3px 5px; color: var(--ink); background: var(--panel); font-size: 13px; line-height: 1.5; }
 .coop-drag, .coop-complete, .coop-more { flex-shrink: 0; display: grid; place-items: center; border: 0; background: transparent; padding: 4px 0; color: var(--muted); min-width: 24px; min-height: 28px; }
@@ -202,7 +202,7 @@
 .coop-members > .coop-column { position: relative; z-index: 1; border: 1px solid #e0d7c6; border-radius: 2px 2px 4px 3px; background: linear-gradient(90deg,#fffdf6 88%,#eae4d5); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8, 2px 3px 4px #50463520; }
 .coop-members > .coop-column:last-child { background: linear-gradient(90deg,#eae4d5,#fffdf6 12%); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8,-2px 3px 4px #50463520; }
 .coop-members > .coop-column > header { margin: 0 14px; padding: 11px 0 7px; gap: 8px; border: 0; }
-.coop-notebook-title { align-self: end; padding-bottom: 4px; color: #7a705e; font: 400 14px/1 Arial, sans-serif; }
+.coop-notebook-title { align-self: end; padding-bottom: 4px; color: #7a705e; font: 400 14px/1 Georgia, 'Times New Roman', serif; }
 .coop-members h3 { flex: 1; min-width: 0; padding: 0 5px 2px; border-bottom: 1px solid #a99b81; font: 25px/1.1 'School Caveat', 'Long Cang', cursive; color: #534738; }
 .coop-members h3 small { font: 11px/1.4 'Classroom Sans', sans-serif; }
 .coop-members .coop-count { font-size: 11px; color: #80755f; }
