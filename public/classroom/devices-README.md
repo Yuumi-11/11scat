@@ -6,7 +6,7 @@
 | --- | --- |
 | `tablet-on.svg`、`tablet-off.svg` | 第一桌的浅粉色折叠保护套平板；亮屏与暗屏尺寸、边框及支撑壳完全相同。按用户的 iPad Pro 2025 与粉色保护套描述制作候选，尚未核对官方图片。 |
 | `laptop-on.svg`、`laptop-off.svg` | 第二桌的白色笔记本；保留原屏幕和键盘几何位置，2026-09-12 移除图内过小的旧鼠标。 |
-| `mouse-white.svg` | 2026-09-12 按用户【0】补充要求重绘为平放桌面、后部朝向镜头的低视角。外形参考 [ROG Keris II Ace 官方图库](https://rog.asus.com/mice-mouse-pads/mice/wireless/rog-keris-ii-ace/gallery/)，画法沿用相邻白色笔记本的米白、灰绿平面色块；后部宽而低，远端只露出简化按键和蓝灰滚轮，不添加壳面高光或投影。画布改为 76×40，网页仍等比显示，鼠标底缘与笔记本所在桌面对齐；未使用官方图片作为发布素材。 |
+| `mouse-white.svg` | 2026-09-12 按用户【0】补充要求绘制为平放桌面、后部朝向镜头的低视角。外形参考 [ROG Keris II Ace 官方图库](https://rog.asus.com/mice-mouse-pads/mice/wireless/rog-keris-ii-ace/gallery/)，沿用白色笔记本的米白、灰绿平面色块；远端露出简化按键和蓝灰滚轮，不添加壳面高光或投影。最新补充将接触桌面的底边改为水平直线，相对笔记本放大约 46%，可见宽度约为笔记本的五分之一。画布为 76×40，网页等比显示，并为电脑与鼠标预留共同摆放空间；未使用官方图片作为发布素材。 |
 | `microphone-on.svg`、`microphone-off.svg` | 从既有 `microphone-flat.svg` 派生，保留原轮廓；打开时增加红灯及声音线，关闭时增加浅色斜线。 |
 | `camera-on.svg` | 从既有 `camera-flat.svg` 派生，加入红灯与镜头环；红灯使用红色径向扩散和模糊光晕，取消白色亮点。相机物件已从第三桌移除，保留素材供后续使用。 |
 | `projector-on.svg`、`projector-off.svg` | 从既有 `projector-rear.svg` 派生，只改变原指示灯及其附近光晕；两者均背对镜头。 |
