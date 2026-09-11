@@ -18,7 +18,7 @@ export function InlineTaskTitle({ initialValue, label, disabled, onSave, onCance
     finally { saving.current = false; }
   }
   return <form className="coop-inline-title" onSubmit={event => { event.preventDefault(); void save(); }}>
-    <input ref={input} autoFocus aria-label={label} title="Enter 保存，Esc 取消" placeholder="任务名称" value={value} maxLength={500} disabled={disabled} enterKeyHint="done"
+    <input ref={input} autoFocus aria-label={label}  placeholder="任务名称" value={value} maxLength={500} disabled={disabled} enterKeyHint="done"
       onFocus={event => { event.target.select(); event.target.scrollIntoView({ block: "nearest", inline: "nearest" }); }} onChange={event => setValue(event.target.value)}
       onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
       onBlur={() => void save()} onKeyDown={event => {

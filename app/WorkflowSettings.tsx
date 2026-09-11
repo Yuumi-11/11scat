@@ -12,7 +12,7 @@ const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}$
 function CalendarField({ label, value, allDay, disabled, change }: { label: string; value: string; allDay: boolean; disabled: boolean; change: (value: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return <div className="workflow-calendar"><span>{label}</span><div>
-    <button type="button" disabled={disabled} aria-label={`选择${label}`} title={value || `选择${label}`} onClick={() => { const element = input.current; if (element?.showPicker) element.showPicker(); else element?.click(); }}><CalendarDays size={15} /><span>{value ? value.replace("T", " ") : "选择日期"}</span></button>
+    <button type="button" disabled={disabled} aria-label={`选择${label}`}  onClick={() => { const element = input.current; if (element?.showPicker) element.showPicker(); else element?.click(); }}><CalendarDays size={15} /><span>{value ? value.replace("T", " ") : "选择日期"}</span></button>
     <input ref={input} tabIndex={-1} aria-label={label} type={allDay ? "date" : "datetime-local"} value={value} disabled={disabled} onKeyDown={event => { if (event.key !== "Tab" && event.key !== "Escape") event.preventDefault(); }} onChange={event => change(event.target.value)} />
     {value && <button className="workflow-date-clear" type="button" aria-label={`清除${label}`} disabled={disabled} onClick={() => change("")}><X size={12} /></button>}
   </div></div>;

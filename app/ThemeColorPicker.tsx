@@ -16,7 +16,7 @@ export function ThemeColorPicker({ theme, color, choosePreset, chooseCustom }: {
       {Object.entries(THEME_PRESETS).map(([name, preset]) => <button
         className={`theme-preset${theme === name ? " active" : ""}`} type="button" key={name}
         onClick={() => { choosePreset(name as keyof typeof THEME_PRESETS); setDraft(null); setError(""); }}
-        aria-label={`${preset.name}主题`} aria-pressed={theme === name} title={`${preset.name}主题`}
+        aria-label={`${preset.name}主题`} aria-pressed={theme === name}
       ><span className="theme-color-dot" style={{ background: preset.color }} />{preset.name}{theme === name && <Check size={14} aria-hidden="true" />}</button>)}
     </div>
     <form className={`custom-theme-form${theme === "custom" ? " active" : ""}`} onSubmit={event => {
