@@ -743,24 +743,22 @@ export default function Home() {
     let disposed = false;
     const loadProfile = async () => {
       try {
-        const [response] = await Promise.all([
-          fetch("/api/identity/me", { cache: "no-store", signal: AbortSignal.timeout(20_000) }),
-          prepareClassroomAssets(),
-          refreshDeletedBoards(),
-        ]);
-        if (!response.ok) throw new Error("profile unavailable");
-        const data = await response.json() as { identityId?: unknown; nickname?: unknown; activity?: unknown };
-        const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
-        const fullIdentityId = typeof data.identityId === "string" ? data.identityId.trim().slice(0, 64) : "";
-        const identityName = fullIdentityId.slice(0, 24);
-        if (!disposed) {
-          identityIdRef.current = fullIdentityId;
-          setIdentityId(fullIdentityId);
-          activityRef.current = typeof data.activity === "string" ? data.activity.trim().slice(0, 80) : "";
-          setActivity(activityRef.current);
-          setDisplayName(nickname || identityName || "成员");
-          setJoined(true);
-        }
+        const profile = fetch("/api/identity/me", { cache: "no-store", signal: AbortSignal.timeout(20_000) }).then(async response => {
+          if (!response.ok) throw new Error("profile unavailable");
+          const data = await response.json() as { identityId?: unknown; nickname?: unknown; activity?: unknown };
+          const nickname = typeof data.nickname === "string" ? data.nickname.trim().slice(0, 24) : "";
+          const fullIdentityId = typeof data.identityId === "string" ? data.identityId.trim().slice(0, 64) : "";
+          const identityName = fullIdentityId.slice(0, 24);
+          if (!disposed) {
+            identityIdRef.current = fullIdentityId;
+            setIdentityId(fullIdentityId);
+            activityRef.current = typeof data.activity === "string" ? data.activity.trim().slice(0, 80) : "";
+            setActivity(activityRef.current);
+            setDisplayName(nickname || identityName || "成员");
+          }
+        });
+        await Promise.all([profile, prepareClassroomAssets(), refreshDeletedBoards()]);
+        if (!disposed) setJoined(true);
       } catch (error) {
         if (!disposed) setJoinError(error instanceof Error && error.message !== 'profile unavailable' ? error.message : "暂时无法读取身份资料，请重试。");
       } finally {
@@ -2229,7 +2227,7 @@ export default function Home() {
   };
 
   if (!profileReady || !joined || !classroomProfile.ready) {
-    return <RoomLoadingScreen error={joinError || classroomProfile.error} onRetry={() => window.location.reload()} />;
+    return <RoomLoadingScreen displayName={displayName} error={joinError || classroomProfile.error} onRetry={() => window.location.reload()} />;
   }
 
   return (

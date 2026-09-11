@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140">
-  <path fill="#4e7370" d="M25 66q32-12 69 0v10H25z"/>
+  <path fill="#986b7c" d="M25 66q32-12 69 0v10H25z"/>
   <g transform="rotate(-17 39 72)"><rect x="30" y="32" width="15" height="59" rx="3" fill="#f4efd9"/><path d="M33 35h9" stroke="#fff9e8" stroke-width="3" stroke-linecap="round"/></g>
   <g transform="rotate(-8 52 75)"><rect x="43" y="22" width="15" height="72" rx="3" fill="#e8c875"/><path d="M46 25h9" stroke="#f4dda0" stroke-width="3" stroke-linecap="round"/></g>
   <g transform="rotate(9 68 73)"><rect x="61" y="12" width="15" height="80" rx="3" fill="#96b7ce"/><path d="M64 15h9" stroke="#bdd0d7" stroke-width="3" stroke-linecap="round"/></g>
   <g transform="rotate(22 81 75)"><rect x="73" y="32" width="15" height="61" rx="3" fill="#dba8ac"/><path d="M76 35h9" stroke="#e9c2c0" stroke-width="3" stroke-linecap="round"/></g>
-  <path fill="#668b85" d="M25 67q34 13 69 0l-5 59q-30 11-58 0z"/>
-  <path d="M27 69q33 11 65 0" fill="none" stroke="#82a297" stroke-width="4"/>
+  <path fill="#c792a1" d="M25 67q34 13 69 0l-5 59q-30 11-58 0z"/>
+  <path d="M27 69q33 11 65 0" fill="none" stroke="#dfb4bf" stroke-width="4"/>
 </svg>

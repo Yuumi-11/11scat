@@ -28,10 +28,14 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     let ready = false; for (let i = 0; i < 60; i++) { try { if ((await fetch(origin + '/access')).ok) { ready = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 200)); } assert.ok(ready);
     const login = (code, next, json = true) => fetch(origin + '/api/access', { method:'POST',redirect:'manual',headers:json?{Accept:'application/json'}:{},body:new URLSearchParams({identityCode:code,next}) });
     let loginResponse=await login('wrong','/');assert.equal(loginResponse.status,401);assert.ok(!loginResponse.headers.has('set-cookie'));
-    loginResponse=await login('fixture','/?view=tasks');assert.equal(loginResponse.status,200);assert.deepEqual(await loginResponse.json(),{next:'/?view=tasks'});assert.match(loginResponse.headers.get('set-cookie'),/HttpOnly/);assert.match(loginResponse.headers.get('set-cookie'),/Secure/);
+    loginResponse=await login('fixture','/?view=tasks');assert.equal(loginResponse.status,200);assert.deepEqual(await loginResponse.json(),{next:'/?view=tasks',displayName:'legacy'});assert.match(loginResponse.headers.get('set-cookie'),/HttpOnly/);assert.match(loginResponse.headers.get('set-cookie'),/Secure/);
     assert.equal((await call('legacy','/api/room/classroom')).status,200,'first login creates a usable room profile before entry');
     assert.equal((await call('legacy','/api/room/boards')).status,200);
-    loginResponse=await login('fixture','https://outside.example');assert.deepEqual(await loginResponse.json(),{next:'/'});
+    const profiles = JSON.parse(await readFile(path.join(dir, 'identities.json'), 'utf8'));
+    profiles.users.legacy.nickname = '测试昵称';
+    await writeFile(path.join(dir, 'identities.json'), JSON.stringify(profiles));
+    loginResponse=await login('fixture','https://outside.example');assert.deepEqual(await loginResponse.json(),{next:'/',displayName:'测试昵称'});
+    assert.equal((await (await call('legacy','/api/identity/me')).json()).nickname, '测试昵称');
     loginResponse=await login('fixture','/api/ticktick/diagnostics',false);assert.equal(loginResponse.status,303);assert.equal(loginResponse.headers.get('location'),'/api/ticktick/diagnostics');
     loginResponse=await login('wrong','/',false);assert.equal(loginResponse.status,303);assert.match(loginResponse.headers.get('location'),/error=1/);
     const boardId=randomUUID();assert.equal((await call('alice','/api/room/boards',{id:''})).status,400);

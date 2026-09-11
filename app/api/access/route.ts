@@ -17,8 +17,9 @@ export async function POST(request: Request) {
     });
   }
 
-  if (!await getUser(identityId)) await updateUser(identityId, current => current || { nickname: identityId.slice(0, 24), updatedAt: new Date().toISOString() });
-  const response = wantsJson ? NextResponse.json({ next: returnTo }, { headers: { 'Cache-Control': 'no-store' } }) : new NextResponse(null, {
+  const user = await getUser(identityId) || await updateUser(identityId, current => current || { nickname: identityId.slice(0, 24), updatedAt: new Date().toISOString() });
+  const displayName = user.nickname?.trim().slice(0, 24) || identityId.slice(0, 24);
+  const response = wantsJson ? NextResponse.json({ next: returnTo, displayName }, { headers: { 'Cache-Control': 'no-store' } }) : new NextResponse(null, {
     status: 303,
     headers: { Location: returnTo },
   });

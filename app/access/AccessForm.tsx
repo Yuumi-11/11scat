@@ -10,6 +10,7 @@ export function AccessForm({ next, invalid }: { next: string; invalid: boolean }
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState(invalid ? '识别码无效，请重新输入。' : '');
   const destination = useRef('');
 
@@ -35,6 +36,7 @@ export function AccessForm({ next, invalid }: { next: string; invalid: boolean }
       if (response.status === 401) { setError('识别码无效，请重新输入。'); return; }
       if (!response.ok) throw new Error('暂时无法登录，请重试。');
       const result = await response.json();
+      setDisplayName(typeof result.displayName === 'string' ? result.displayName : '');
       destination.current = safeAccessReturn(result.next);
       form.reset();
       await enter();
@@ -43,7 +45,7 @@ export function AccessForm({ next, invalid }: { next: string; invalid: boolean }
     } finally { setBusy(false); }
   };
 
-  if (preparing) return <RoomLoadingScreen error={error} onRetry={() => { void enter(); }} />;
+  if (preparing) return <RoomLoadingScreen displayName={displayName} error={error} onRetry={() => { void enter(); }} />;
   return <main className="access-shell"><section className="access-card">
     <div className="access-brand"><span className="brand-mark">11</span><strong>11scat</strong></div>
     <span className="eyebrow access-eyebrow">PRIVATE STUDY SPACE</span>
