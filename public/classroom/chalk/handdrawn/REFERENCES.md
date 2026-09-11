@@ -11,9 +11,14 @@
 | [Misty Daydream：Tri Colors Chrome Layer Bouquet](https://mistydaydream.com/product/helium-inflated-balloons-tri-colors-chrome-layer-bouquet/) | 照片是多层气球组合，用于辅助观察绳线汇合后的下垂方向，不采用其数量与排列。 |
 | [NOW ITS A PARTY：3 Balloon Helium Bouquet](https://www.shopnowitsaparty.com/products/3-balloon-helium-bouquet) | 查看的是含 Tassel + Balloon Weight 字样的局部图，绳线朝配重方向汇合。仅辅助观察连接方向。 |
 
-最终气球采用三根独立的暖白粉笔线，中间接近竖直，两侧向组中心下方轻微倾斜；线条保留徒手偏差，宽度接近气球边缘。气球的不同倾角与前后关系继续通过形状和遮挡表达。
+第六版气球采用三根独立的暖白粉笔线，中间接近竖直，两侧向组中心下方轻微倾斜；线条保留徒手偏差，宽度接近气球边缘。气球的不同倾角与前后关系通过形状和遮挡表达。当前第八版的构图以用户新提供的参考图为准，见下文。
 
 猫咪的涂色参考项目现有 [爱心](heart.png) 与 [星星](stars.png)：以几笔斜向往返擦涂构成色块，留下不均匀的笔画接缝与透明颗粒；额头和身体一侧使用淡黄，耳内少量柔粉，脸部中央与大部分身体保持透明。猫咪继续沿用用户参考画中的不等高耳朵与小身体造型，轮廓保留徒手转折。
 
 检索导出的八张图片中实际目视比较了以上六张。导出清单与图片保存在项目 `codex-generated/chalk-handdrawn-2026-09-10/references-v6/`，原图的来源地址可在导出清单中核对。此处商品链接来自图片预览显示的来源地址，未把商品描述作为画法依据。
 
+## 第八版：用户指定气球参考
+
+用户在新参考图中指定三只气球：标注 1 为左下紫色气球，标注 2 为中间较高的黄色气球，标注 3 为右侧蓝色气球。当前版本只绘制这三只，并按参考保留其高低位置和前后遮挡；使用低饱和淡紫、淡黄与浅蓝粉笔色，不绘制参考中的其他气球，也不采用摄影光泽。
+
+三根绳线从各自结口向下方汇合，保留轻微弧度与粉笔颗粒。用户参考原图存放于项目 `codex-generated/chalk-handdrawn-2026-09-10/revision-8/balloons-user-reference.png`，仅用于制作参考，不包含在网页素材包中。

@@ -4,7 +4,7 @@
 
 固定配色参考：[原始材质参照](../../../../docs/assets/classroom-approved-material-reference-2026-09-09.png)；配色值来自上一级粉笔素材说明。以下提示词使用文字描述这些要求，生成时没有把旧 SVG 作为编辑目标。
 
-生成图保留真实透明通道；PNG 为未修改的生成原图，WebP 为保持透明度的 512 × 512 网页缩放版本。网页版本仅等比缩小与无损编码，不重新描线或补画。每款对应文件和推荐用法见 [README](README.md)。
+生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，第八版猫咪为保留原图主体的局部合成文件，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
 
 ## 第一版完整提示词
 
@@ -38,7 +38,7 @@ Subject: ONE very cute simple sitting kitten, front-facing, with a slightly tilt
 
 ## 第二版：气球绳线与猫咪手绘感
 
-2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；两款当前采用第七版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
+2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；两款当前采用第八版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
 
 ### balloons：第二版记录
 
@@ -148,7 +148,7 @@ Add restrained pastel coloring: ONE soft yellow #efd28a patch at upper-left fore
 
 使用内置 imagegen。猫咪的图像编辑尝试未保留真实透明通道，未采用；文字生成的第一张增加了多余的胡须和爪子笔画，采用第二张简化后的透明结果。气球采用第一张文字生成结果。PNG 保留生成原图，WebP 仅等比缩小并无损编码，均通过透明通道检查。旧版存放于 `codex-generated/chalk-handdrawn-2026-09-10/before-revision-7/`。
 
-### balloons：当前版本完整提示词
+### balloons：第七版完整提示词
 
 ```text
 Create ONE isolated transparent PNG web asset of a simple freehand CHALK BUNCH OF THREE BALLOONS. Actual RGBA alpha, no background, no checkerboard, no blackboard or paper. Square composition, clear 10% margin. Three muted pastel balloons: dusty pink #e6b1ba lower-left and in front, pale yellow #efd28a higher middle behind, light blue #a4c5de at right and partly behind pink. Left balloon tilts left about 18 degrees, yellow slightly left about 6 degrees, blue right about 18 degrees. Lopsided hand-drawn elongated ovals with modest overlap, distinct heights, individual small triangular knots. Bodies occupy upper 60% of total drawing height and strings lower 40%.
@@ -156,11 +156,42 @@ MOST IMPORTANT: THREE IVORY CHALK STRINGS WITH JUST A SLIGHT NATURAL ARC, NOT ST
 The strings use the SAME dry chalk thickness as the balloons' colored boundary strokes, about 10-14px at 1254px scale, mildly irregular pressure and tiny chalk skips. Dry chalk grain and transparent gaps break THROUGH the entire line, including its center. Single traces, not double borders, thin pencil, smooth ivory ribbons or thick tubes. Keep rough freehand contours and simple shapes. Interior balloon fills are broad diagonal back-and-forth light side-of-chalk rubbing strokes with visible uneven deposits, see-through gaps and flecks. Same material as a yellow chalk star or pink chalk heart: outline a little stronger than rubbed fill, no grey base, no solid digital coloring. Flat matte muted chalk palette with warm ivory #f5efdb strings. No highlights, gloss, 3D, gradients, shadows, dust clouds, text or extra decorations. Real alpha transparency in background and grain gaps.
 ```
 
-### cat：当前版本完整提示词
+### cat：第七版完整提示词
 
 ```text
 Generate ONE simple chalk cat doodle as actual RGBA TRANSPARENT PNG. Empty background has real alpha, NOT painted checkerboard. Square canvas with FULL 12% clear margin on ALL four sides. No paper, blackboard or surface. Subject only.
 The silhouette MUST look like an ordinary person's quickly drawn chalk sketch, with visible changes of direction and stop/start joins. A very wide slightly squarish head flows into a short squat body, two MEDIUM TRIANGULAR EARS OF NEARLY EQUAL HEIGHT AND WIDTH. Each ear is about 180 pixels tall measured from its own local forehead base and about 190 pixels wide on the 1254px canvas. Left and right ear sizes differ by no more than 5-8 percent. Both are modest normal cat ears, neither huge or rabbit-like; their tips differ only slightly in position because whole cat is tilted a little clockwise. Their gentle natural asymmetry must not become one big ear and one tiny ear. Outer cheeks are drawn with three imperfect long strokes each: one slanted flatter stretch, one mild angled corner, one curved return. BELLY BOTTOM IS A SLIGHTLY SLANTED FLAT STROKE with imperfect corners. Ears have kinked straight-ish sides and slightly blunt points. Draw naturally by hand, not an exact polygon; avoid continuous perfectly round outlines. Those few asymmetries and angled turns should be visible at small icon size. This is a naive simple doodle, not polished character illustration.
 Use warm IVORY #f5efdb dry chalk. Medium thin lines of varying pressure, roughly 10-16 pixels in a 1254px square, broken granular deposit through each stroke, occasional tiny interruptions where the chalk lifts; no smooth tubes, no uniform round line caps. NO white dust clouds or white underpainting. All interior empty spaces are TRANSPARENT. Eyes: two SMALL slightly unequal chubby tilted ovals, filled with grainy ivory chalk scribbling. Smile: one tiny handwritten lowercase w, NO nose. Exactly TWO short uneven whisker dashes inside each cheek, not three. Inner ears simple triangles of similar size. Head and little body share one connected interior with no divider. The ONLY PAW MARK is ONE small handwritten lower-case w formed by TWO downward U-shaped loops joined in the middle. This SINGLE small w is centered inside the body slightly ABOVE outer belly with clear gap below; no separate legs, no circles, NO curled feet, NO toes, no third loop, NEVER two w marks. Small EMPTY loop tail behind lower-right body.
 Add restrained pastel coloring: ONE soft yellow #efd28a patch at upper-left forehead near left ear, ONE smaller yellow patch at lower-right body, a little pink #e6b1ba inside both inner-ear triangles. Face center, most cheeks, most body and tail remain empty transparent. Color patches have NO border. Draw their fill using a few broad short diagonal back-and-forth chalk rubbing strokes with visibly uneven coverage and see-through grain gaps, like a chalk-colored yellow star or pink heart. Clearly show separate chalk strokes and streaks, not smooth solid digital fill, not gradients or shading. Pigment texture gentle and readable. Cute, warm, quiet, simple, handmade. No extra details or surrounding decoration, no shadows or text. Do not smooth the wonky shape. Entire drawing including both ears and belly comfortably inside clear canvas margins. True transparent PNG.
+```
+
+## 第八版：猫咪局部定稿与用户指定三只气球
+
+2026-09-11，用户在第七版猫咪上标注腹部笔画与右侧尾巴，并明确其余部分固定。随后提供新的气球参考，指定仅保留标注的三只气球。本版同时完成两项要求。
+
+### cat：局部编辑范围与固定区域
+
+原图为 `exec-dadd3cdb-b8b4-4b1b-83f5-1d6d69d263cb.png`，SHA256 为 `e098c78dd9442317c44e069088cc7b72d044373c9da49a3756dbbb4e1b47e6b6`。标注 1 位于 x=48.4%、y=72.1%，对应腹部 w 形笔画，将该笔画与邻近粉笔碎屑清为空白；标注 2 位于 x=80.4%、y=71%，对应原环形尾巴，改为细长尾巴。
+
+猫咪主体不重新生成。用内置 imagegen 单独生成透明尾巴，等比缩放后在原尾巴区域局部合成，保留身体交接处。PNG 中两个局部遮罩之外的 RGBA 像素与原图逐像素一致，变化像素数为 0。已单独检查原有耳朵、面部和两处淡黄色块的保留情况。编辑脚本、遮罩坐标与验证记录保存在项目 `codex-generated/chalk-handdrawn-2026-09-10/revision-8/`。
+
+猫咪最终 PNG 的 SHA256 为 `5b882be4c19714944c2846e9bd514f9b9ca975d0c1ef2b91b08c1b3ad15ad58c`。第七版备份保存在 `before-revision-8/`，WebP 从最终 PNG 等比缩小并无损编码。
+
+### cat：当前尾巴插图的完整生成提示词
+
+```text
+Generate a SINGLE ISOLATED CAT TAIL INSERT for a chalk drawing, as a real RGBA PNG with fully transparent background. Draw ONLY a slim elongated hollow tail outline, no cat, body or face. The tail sweeps diagonally from lower-left to upper-right at about 35 degrees above horizontal. Shape is a long narrow slightly bent U: two nearby open ends at lower-left ROOT, the upper outline runs toward upper-right and makes a softly pointed rounded tip, then returns parallel but imperfectly along the lower outline to the second root end. The interior stays transparent. The overall long axis is approximately FIVE TIMES its short axis. This looks like a slender elongated cat tail with a small empty interior, NOT a round ring, handle, circle, coiled spiral or ribbon. Slightly irregular freehand shape, a few tiny angular turns, a charming quickly chalk-sketched outline. Whole insert centered in a transparent square with comfortable clear margin. Drawing extent about 85% canvas width and about 60% canvas height, including its diagonal orientation.
+Material must match an existing simple classroom chalk cat: warm ivory #f5efdb, dry chalk with crumbly grain THROUGH each stroke, slightly uneven pressure, occasional chalk skips and tiny transparent flecks. Use one substantial but not bulky chalk trace along the contour. At 1254px canvas scale the chalk stroke should be roughly 40-55px thick, so when the complete tail is reduced to 230-250px wide the line becomes 10-13px thick. Warm matte ivory only. No smooth opaque tubes, no dark color, no solid fill in the tail, no glossy edges, no gradient, no white dust clouds beyond actual strokes. Background and interior are ACTUAL alpha transparency, not painted checkerboard, black or white paper. No environment, shadow, text, dots, arrows, ornaments, whiskers, body part, face or paws. Just one hollow narrow elongated freehand ivory chalk tail open at its lower-left root.
+```
+
+### balloons：当前参考与完整生成提示词
+
+用户参考图标注 1 为 x=45.5%、y=55.2% 的紫色气球，标注 2 为 x=49.1%、y=37.3% 的黄色气球，标注 3 为 x=68.7%、y=51.6% 的蓝色气球。仅绘制这三只，采用黄色较高、紫色左下受遮挡、蓝色右侧前景的关系；实物的光泽和涂色转换为项目的哑光粉笔擦涂，绳线保留少量弧度。参考原图保存在 `revision-8/balloons-user-reference.png`，不放入网页素材包。使用内置 imagegen 按对参考的描述生成真实透明图。
+
+```text
+Use case: stylized-concept. Generate an original hand-drawn CHALK version of exactly THREE selected balloons from a photo, as actual transparent RGBA PNG. This is a flat dry-chalk web motif for a cozy grey-green classroom board; no board or background in the file. The selected photo balloons are PURPLE at lower-left, YELLOW above it, and BLUE on the right. Draw ONLY these three balloons, not the other pink, mint, cyan, orange or red balloons in the photograph. Preserve the selected trio's overlapping arrangement and natural shape; render entirely in the established chalk style, NOT photography.
+Precise composition on 1254x1254 square with real transparent margins: YELLOW balloon highest, centered approximately (550,295), about 280px wide and 335px tall, almost upright with a slight left tilt of 3 degrees. PURPLE balloon lower-left, centered approximately (480,550), about 280px wide and 345px tall, gently leaning left about 10 degrees; its upper-right portion is visibly OCCLUDED by the yellow balloon, it sits behind yellow. BLUE balloon to the right and in front, centered approximately (755,455), about 290px wide and 335px tall, leaning gently right around 10 degrees; blue overlaps the lower-right edge of yellow and the upper-right side of purple. Thus yellow is highest, purple is lowest, and blue is at intermediate height on the right. Do not arrange in a symmetric horizontal row and do not put blue at the very top. Keep shapes simple, naturally lopsided oval/teardrop latex-balloon silhouettes with small triangular knots. The whole group stays narrower than its height, matching the selected three balloons in the reference rather than spreading across the square.
+Colors: soft muted lavender #b7afd0 for purple, pastel yellow #efd28a for yellow, pale blue #a4c5de for blue, warm ivory #f5efdb for strings. Actual colors come entirely from visibly applied chalk: slightly irregular colored outlines and broad short diagonal back-and-forth side-of-chalk RUBBING with patchy coverage, see-through grain holes and broken streaks. Fills lighter than outline. No solid digital fill, latex gloss, bright highlights, shading, gradients, 3D volume or realistic reflection. Preserve a quiet matte classroom palette and quick handmade simplicity.
+Exactly THREE distinct warm-ivory chalk strings starting at their respective visible knots at different heights and ending at ONE common point approximately (630,1125), directly below the trio. Yellow string is longest and passes behind the foreground balloons where occluded; purple string starts lowest and is shortest, blue string has intermediate length. Each main string has ONLY A SLIGHT SHALLOW ARC, not a rigid straight rod, no large S curves or sideways sweeping. Aim toward the common lower anchor with small natural freehand bends. Use ONE granular chalk stroke for each string, SAME visual stroke width as the balloon colored outlines, about 10-15px on the 1254px canvas; mild pressure variation, tiny interruptions and transparent grain THROUGH the stroke center. No smooth creamy ribbons, no hairline pencil, no double outlines, no decorative loops, bows, weights or knots at the common endpoint.
+Freehand irregular geometry, gently uneven curves and little chalk skips rather than perfect vector ellipses. Original simple cute chalk drawing, no lettering, numbers, labels, watermark, logos, checkerboard pattern, paper, surface, shadows or extra balloons. Entire motif with all strings contained inside square with at least 9% clear padding. Genuine alpha transparency in all empty areas and chalk grain gaps.
 ```
