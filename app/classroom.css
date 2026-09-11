@@ -398,7 +398,7 @@
 .classroom-scene .room-collaboration-trigger .prop-taskboard { transform: scale(1.08); transform-origin: center 92%; }
 /* Anchor to (82,30), the board's top-right corner in its 120x140 SVG.
    Account for bottom-aligned contain sizing and the approved 1.08 zoom around (50%,92%). */
-.classroom-scene .room-collaboration-trigger i { --taskboard-fit-width: min(100cqw, calc(100cqh * 6 / 7)); position: absolute; left: calc(50cqw + var(--taskboard-fit-width) * .198); top: calc(100cqh * 1.0064 - var(--taskboard-fit-width) * .99); right: auto; min-width: 24px; height: 25px; padding: 0 5px; display: grid; place-items: center; background: #b77660; color: #fff3d8; border: 2px solid #e5c997; border-radius: 8px 6px 9px 5px; box-shadow: 1px 2px #735b3826; font: normal 13px/1 'Classroom Sans',sans-serif; transform: translateY(-100%) rotate(4deg); transform-origin: left bottom; }
+.classroom-scene .room-collaboration-trigger i { --taskboard-fit-width: min(100cqw, calc(100cqh * 6 / 7)); position: absolute; left: calc(50cqw + var(--taskboard-fit-width) * .198); top: calc(100cqh * 1.0064 - var(--taskboard-fit-width) * .99); right: auto; min-width: 24px; height: 25px; padding: 0 5px; display: grid; place-items: center; background: #b77660; color: #fff3d8; border: 2px solid #e5c997; border-radius: 8px 6px 9px 5px; box-shadow: 1px 2px #735b3826; font: normal 13px/1 'Classroom Sans',sans-serif; transform: translate(-75%, -15%) rotate(4deg); transform-origin: left bottom; }
 @container (max-width:210px) {
   .device-screen { padding-top: 1px; padding-bottom: 5px; }
   .device-identity { max-width: calc(100% - 79px); height: 29px; flex-basis: 29px; }
