@@ -1,53 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 150">
-  <defs>
-    <linearGradient id="page" x1="0" y1="0" x2=".8" y2="1">
-      <stop stop-color="#fff9e9"/><stop offset="1" stop-color="#eee4ce"/>
-    </linearGradient>
-    <linearGradient id="stand" x1="0" y1="0" x2="1" y2="0">
-      <stop stop-color="#b5ad97"/><stop offset="1" stop-color="#dbd0b6"/>
-    </linearGradient>
-  </defs>
-  <!-- The front foot and the narrow right support share the desktop plane. -->
-  <path fill="#66563b12" d="M18 126 142 116 172 130 128 146 14 132Z"/>
-  <path fill="#66563b20" d="m20 128 108 10 31-12 4 5-36 12-108-11Z"/>
-  <path fill="url(#stand)" stroke="#b6ad94" stroke-width="1" stroke-linejoin="round" d="m143 29 18 99-35 14Z"/>
-  <path fill="#a5a58e" d="m144 46 13 79-26 11Z"/>
-  <path fill="#dcd2b9" d="m144 46 3 67 10 12Z"/>
-  <path fill="#d2c5a7" d="m39 25 104 8-17 109-107-13Z"/>
-  <path fill="#f2e8d3" d="m37 24 105 9-17 105-105-12Z"/>
-  <path fill="#faf2df" d="m25 102 104 11-4 25-105-12Z"/>
-  <path fill="#c9bda048" d="m25 102 104 11-1 5-104-12Z"/>
-  <path fill="#dfd3b8" d="m40 24 106 10-15 81-106-12Z"/>
-  <path fill="#f6edda" d="m38 23 106 10-15 79-106-12Z"/>
-  <path fill="url(#page)" stroke="#d7ccb2" stroke-width=".8" stroke-linejoin="round" d="m37 21 106 10-15 79-105-12Z"/>
-  <path d="m38 22 103 10M24 98l103 11" fill="none" stroke="#fffdf3" stroke-width="1"/>
-  <g fill="#b5ab91">
-    <ellipse cx="44" cy="26" rx="1.9" ry="1.4"/><ellipse cx="53" cy="27" rx="1.9" ry="1.4"/>
-    <ellipse cx="62" cy="28" rx="1.9" ry="1.4"/><ellipse cx="71" cy="29" rx="1.9" ry="1.4"/>
-    <ellipse cx="80" cy="30" rx="1.9" ry="1.4"/><ellipse cx="89" cy="31" rx="1.9" ry="1.4"/>
-    <ellipse cx="98" cy="32" rx="1.9" ry="1.4"/><ellipse cx="107" cy="33" rx="1.9" ry="1.4"/>
-    <ellipse cx="116" cy="34" rx="1.9" ry="1.4"/><ellipse cx="125" cy="35" rx="1.9" ry="1.4"/>
-    <ellipse cx="134" cy="36" rx="1.9" ry="1.4"/>
-  </g>
-  <g fill="none" stroke="#7e8170" stroke-width="1.6" stroke-linecap="round">
-    <path d="M44 26c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M53 27c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-    <path d="M62 28c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M71 29c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-    <path d="M80 30c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M89 31c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-    <path d="M98 32c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M107 33c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-    <path d="M116 34c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M125 35c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-    <path d="M134 36c-3-2-3-10 0-10 3 0 3 3 3 5"/>
-  </g>
-  <g transform="matrix(1 .1 -.19 1 49 42)">
-    <rect width="28" height="4" rx="1.5" fill="#9ba48a"/>
-    <path d="M0 12h75" stroke="#cbc7ae" stroke-width=".9"/>
-    <g fill="#a6ac96">
-      <path d="M0 21h4v4H0zM12 21h4v4h-4zM24 21h4v4h-4zM36 21h4v4h-4zM48 21h4v4h-4zM60 21h4v4h-4zM72 21h4v4h-4z"/>
-      <path d="M0 33h4v4H0zM12 33h4v4h-4zM24 33h4v4h-4zM36 33h4v4h-4zM48 33h4v4h-4zM60 33h4v4h-4zM72 33h4v4h-4z"/>
-      <path d="M0 45h4v4H0zM12 45h4v4h-4zM24 45h4v4h-4zM36 45h4v4h-4zM48 45h4v4h-4z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 150">
+  <!-- Flat blocks share the chalk cup's sage palette; the low base rests on the desk. -->
+  <path fill="#69543b24" d="m8 133 114-6 34 12-29 8-120-6Z"/>
+  <path fill="#4e7370" d="m128 29 25 108-31 9-14-75Z"/>
+  <path fill="#82a297" d="m130 44 15 88-20 6Z"/>
+  <path fill="#668b85" d="m28 19 102 10-8 115-111-9Z"/>
+  <path fill="#82a297" d="m12 128 111 10-1 6-111-9Z"/>
+  <path fill="#d7c5a2" d="m28 24 103 9-10 91-108-10Z"/>
+  <path fill="#f8eed6" d="m26 20 103 9-10 90-107-10Z"/>
+  <path fill="#82a297" d="m26 20 103 9-3 24-103-10Z"/>
+  <path d="m35 18 0 13m19-11 0 13m19-11 0 13m19-11 0 13m19-11 0 13" fill="none" stroke="#877b62" stroke-width="5" stroke-linecap="round"/>
+  <g transform="matrix(1 .09 -.12 1 33 56)">
+    <g fill="#b5b99c">
+      <path d="M0 0h7v5H0zM15 0h7v5h-7zM30 0h7v5h-7zM45 0h7v5h-7zM60 0h7v5h-7zM75 0h7v5h-7z"/>
+      <path d="M0 17h7v5H0zM15 17h7v5h-7zM30 17h7v5h-7zM45 17h7v5h-7zM60 17h7v5h-7zM75 17h7v5h-7z"/>
+      <path d="M0 34h7v5H0zM15 34h7v5h-7zM30 34h7v5h-7zM45 34h7v5h-7zM60 34h7v5h-7z"/>
     </g>
-    <rect x="33" y="30" width="10" height="10" rx="2" fill="#ca9784"/>
-    <path d="m36 35 2 1 2-3" stroke="#fff4df" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="26" y="12" width="16" height="16" rx="3" fill="#bc806b"/>
+    <path d="m30 20 3 3 5-7" fill="none" stroke="#f8eed6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <path d="m67 120 19 2" stroke="#b8bba1" stroke-width="2" stroke-linecap="round"/>
-  <path d="m21 127 104 12 35-11" fill="none" stroke="#f9f0da" stroke-width="1" stroke-linejoin="round"/>
 </svg>

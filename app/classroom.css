@@ -7,7 +7,8 @@
 @font-face { font-family: 'School Caveat'; src: url('/classroom/fonts/caveat.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'School Patrick'; src: url('/classroom/fonts/patrickhand.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'Classroom Sans'; src: url('/classroom/fonts/classroom-sans.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400 600; }
-@font-face { font-family: 'Long Cang'; src: url('/classroom/fonts/long-cang.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
+/* Match fallback glyph height to Classroom Yan without shrinking the whole text run. */
+@font-face { font-family: 'Long Cang'; src: url('/classroom/fonts/long-cang.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; size-adjust: 90%; }
 @font-face { font-family: 'CHAWP'; src: url('/classroom/fonts/chawp.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
 :root { --page: #f5edda; --panel: #fbf5e6; --soft: #eee2ca; --ink: #534738; --muted: #766b58; --line: #d4c19d; --line-strong: #9f8965; --theme-accent: #527769; --theme-accent-dark: #35594c; --theme-accent-hover: #406555; --theme-soft: #dce4c8; --on-accent: #fff9e7; }
 .classroom-scene {
@@ -17,7 +18,7 @@
   --wood: url('/classroom/wood.webp'); --paper: url('/classroom/paper-fiber.jpg');
   --classroom-ui-font: 'Classroom Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --desk-overlap: 34px; --chat-bottom-inset: 27px; --scene-top: 10px; --board-frame: 13px;
-  --chat-paper-inset: 12px;
+  --chat-paper-inset: 12px; --chat-paper-bottom-inset: 8px;
   --panel-shift: clamp(0px, calc((100vw - 1166px) * .138182), 38px);
   --board-growth: clamp(0px, calc((100vw - 1166px) * .101818), 28px);
   font-family: var(--classroom-ui-font);
@@ -38,7 +39,7 @@
 .chalk-public-tasks li { display: flex; gap: 18px; align-items: baseline; flex: 0 0 auto; min-width: 0; }
 .chalk-public-tasks li::before { content: ''; width: 13px; height: 13px; flex-shrink: 0; border: 2px solid #f3eedbbb; border-radius: 2px 3px 1px 4px; transform: rotate(-4deg); }
 .chalk-lettering { font: clamp(26px, 3.6vw, 51px)/1.2 'Classroom Yan', 'Long Cang', cursive; -webkit-text-stroke: .28px currentColor; overflow-wrap: anywhere; min-width: 0; display: block; mask-image: url('/classroom/chalk-grain.png'); mask-size: 192px; }
-.classroom-scene .side-panel { position: relative; min-height: 0; padding: 6px var(--chat-paper-inset) 8px; border: 10px solid #d3a465; border-radius: 12px; background: #fbf4e2 var(--paper) center / 560px; box-shadow: none; }
+.classroom-scene .side-panel { position: relative; min-height: 0; padding: 6px var(--chat-paper-inset) var(--chat-paper-bottom-inset); border: 10px solid #d3a465; border-radius: 12px; background: #fbf4e2 var(--paper) center / 560px; box-shadow: none; }
 .classroom-scene .side-tabs { position: relative; margin: 0; padding: 0 40px 0 0; height: 42px; display: flex; gap: 8px; align-items: end; flex: 0 0 auto; border-bottom: 0; background: transparent; overflow: visible; }
 .classroom-scene .side-tabs > button { position: relative; flex: 1; height: 42px; min-width: 0; padding: 7px 8px; border: 0; border-radius: 10px 13px 0 0; background: #eaddbf; color: #7f5d3e; font: 500 19px/1.2 var(--classroom-ui-font); letter-spacing: .06em; box-shadow: none; }
 .classroom-scene .side-tabs > button.active { background: #4f7669; color: #fff6df; }
@@ -100,7 +101,7 @@
 .classroom-scene .projector-control { max-width: 150px; mix-blend-mode: normal; }
 .classroom-scene .share-canvas > .main-fullscreen-button { position: absolute; top: auto; bottom: 21px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 3px; padding: 0; border: 0; color: #fbf6df; background: #2b4d4040; }
 .classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: -4px; }
-.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 24px; background-image: linear-gradient(to right, transparent 14px, #c9968260 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
+.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 24px; background-image: linear-gradient(to right, transparent 14px, #b8706b80 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
 .classroom-scene .message { margin: 0; max-width: 94%; flex-shrink: 0; }
 .classroom-scene .message > span { font-size: 11px; color: #897c65; margin: 0 6px 3px; }
 .classroom-scene .message p { position: relative; padding: 10px 13px; border: 0; border-radius: 8px 6px 9px 4px / 6px 8px 5px 7px; background: linear-gradient(#eee1c6e6,#eee1c6e6), var(--paper) center / 400px; color: #514738; font: 15px/1.6 var(--classroom-ui-font); box-shadow: 0 2px 2px #6b51371a, 1px 4px 7px #6b51370b; transform: rotate(-.2deg); }
@@ -117,8 +118,8 @@
 .classroom-scene .bell-body { transform-origin: 38px 36px; transition: transform .2s ease-out; }
 .classroom-scene .room-bell-trigger:is(:hover, :focus-visible) .bell-body { transform: rotate(-9deg); }
 .classroom-scene .room-bell-trigger:is(.is-ringing, .has-incoming) .bell-body { animation: school-bell .5s ease-in-out infinite alternate; }
-.classroom-scene .task-view { flex: 1; min-height: 0; padding: 12px 0 0; }
-.classroom-scene .task-view .task-scroll { display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(2,minmax(0,1fr)); gap: 12px; height: 100%; padding: 2px; overflow: hidden; }
+.classroom-scene .task-view { flex: 1; min-height: 0; padding: 0; margin: 0 calc(-1 * var(--chat-paper-inset)) calc(-1 * var(--chat-paper-bottom-inset)); }
+.classroom-scene .task-view .task-scroll { display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(2,minmax(0,1fr)); gap: 0; height: 100%; padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 .classroom-scene .task-person-card { display: flex; flex-direction: column; min-height: 0; padding: 0 9px; border: 0; border-radius: 0; background: transparent; overflow: hidden; }
 .classroom-scene .task-person-card + .task-person-card { border-left: 0; }
 .classroom-scene .activity-heading { padding-bottom: 8px; border-color: #cbb58c80; }
@@ -192,7 +193,7 @@
   .chalk-date { font-size: 17px; top: 18%; right: 4%; }.chalk-lettering { font-size: 28px; }
   .chalk-public-tasks { inset: 25% 7% 38px; gap: 7px; }
   .classroom-scene { --chat-paper-inset: 8px; }
-  .classroom-scene .side-panel { padding: 4px var(--chat-paper-inset) 8px; }.classroom-scene .side-tabs { height: 38px; }
+  .classroom-scene .side-panel { padding: 4px var(--chat-paper-inset) var(--chat-paper-bottom-inset); }.classroom-scene .side-tabs { height: 38px; }
   .classroom-scene .side-tabs > button { font-size: 18px; }
   .classroom-scene .task-copy strong { font-size: 14px; }
   .classroom-scene .whiteboard-shell { grid-template-columns: minmax(0,1fr) 42px; padding-bottom: 33px; }
@@ -370,13 +371,11 @@
 .device-screen { position: absolute; left: 12.5%; right: 12.5%; top: 13%; bottom: 15%; display: flex; flex-direction: column; padding: 3px 0 6px; pointer-events: auto; overflow: hidden; color: #42534b; font-family: var(--device-font); }
 .device-laptop .device-screen { left: 13%; right: 18%; top: 11%; bottom: 27%; }
 .device-tablet .device-screen { left: 13.5%; right: 15%; top: 13%; bottom: 15%; }
-.device-tablet .device-activity { background: #fff9fa9c; border-color: #d5bec64d; }
+.device-tablet .device-activity { padding-inline: 3px; background: #fff9fa9c; border-color: #d5bec64d; }
 .device-screen::after { content: ''; position: absolute; bottom: 2px; left: calc(50% - 17px); width: 34px; height: 2px; border-radius: 2px; background: #a6b9b044; pointer-events: none; }
-.device-identity { height: 35px; flex: 0 0 35px; max-width: calc(100% - 97px); padding: 0 0 0 3px; margin-top: -4px; display: flex; align-items: center; }
-.device-name { display: block; width: 100%; font: 600 21px/1.3 var(--device-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Keep the shared header's flow height so the lower name does not consume input space. */
-.device-laptop .device-identity { align-items: flex-start; pointer-events: none; }
-.device-laptop .device-name { font-size: 17px; margin-top: 11px; height: 38.3px; }
+/* Both screens share the same name inset and flow reservation above the writing area. */
+.device-identity { height: 35px; flex: 0 0 35px; max-width: calc(100% - 97px); padding: 0 0 0 3px; margin-top: -4px; display: flex; align-items: flex-start; pointer-events: none; }
+.device-name { display: block; width: 100%; height: 38.3px; margin-top: 11px; font: 600 17px/1.3 var(--device-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-media-status { position: absolute; top: 0; right: 0; display: flex; gap: 2px; }
 .classroom-scene .device-media-status button { display: flex; align-items: center; justify-content: center; gap: 2px; width: 29px; min-width: 29px; height: 29px; padding: 1px; border: 1px solid #c2cec680; border-radius: 6px; background: #f7faf8b3; color: #6c877b; font: 8px/1 var(--device-font); }
 .device-media-status button svg { width: 16px; height: 16px; }.device-media-status button:disabled { opacity: .45; cursor: default; }
@@ -385,7 +384,7 @@
 .device-activity { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: clamp(8px,6.67cqw,16px) 3px 0; padding: 4px 6px; background: #fbfdfb8c; border: 1px solid #c4d3c859; border-radius: 6px; }
 .device-laptop .device-activity { margin-top: 8px; }
 .device-activity .activity-box { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; margin: 0; }
-.classroom-scene .device-activity :is(p,textarea) { flex: 1; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; color: #42534b; font: 13px/1.45 var(--device-font); overflow-wrap: anywhere; white-space: pre-wrap; }
+.classroom-scene .device-activity :is(p,textarea) { flex: 1; width: 100%; height: 100%; max-width: 146px; max-height: 41px; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; color: #42534b; font: 13px/1.45 var(--device-font); overflow-wrap: anywhere; white-space: pre-wrap; }
 .device-activity p { overflow-y: auto; scrollbar-width: thin; }.device-activity textarea { overflow: hidden; }.device-activity small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .classroom-seating-settings label { display: grid; gap: 8px; margin: 16px 0; }.classroom-seating-settings select { padding: 8px; border: 1px solid #b8bda9; background: #f8f4e8; border-radius: 6px; color: #495c4f; }
 .classroom-board-settings > div { display: flex; justify-content: space-between; margin: 12px 0; }
@@ -393,8 +392,7 @@
 @container (max-width:210px) {
   .device-screen { padding-top: 1px; padding-bottom: 5px; }
   .device-identity { max-width: calc(100% - 79px); height: 29px; flex-basis: 29px; }
-  .device-name { font-size: 18px; }
-  .device-laptop .device-name { font-size: 16px; margin-top: 7px; height: 32px; }
+  .device-name { font-size: 16px; margin-top: 7px; height: 32px; }
   .classroom-scene .device-media-status button { width: 24px; min-width: 24px; height: 24px; font-size: 7px; }
   .device-activity, .device-laptop .device-activity { margin-top: 7px; padding: 3px; }
   .classroom-scene .device-activity :is(p,textarea) { font-size: 11px; line-height: 1.4; }
@@ -413,9 +411,11 @@
 .classroom-scene .device-media-status button:focus-visible { outline: 2px solid #658d7b; outline-offset: -2px; }
 .classroom-scene .prop-calendar-entry { background-image: url('/classroom/calendar-entry.svg'); }
 .classroom-scene .desk-media { gap: clamp(6px,1vw,14px); }
+.classroom-scene .desk-media .calendar-entry-button { flex-grow: 1.35; max-width: 144px; }
 .classroom-scene .side-tabs::after { content: ''; position: absolute; left: calc(-1 * var(--chat-paper-inset)); right: calc(-1 * var(--chat-paper-inset)); bottom: 0; height: 2px; background: #b99c755e; pointer-events: none; }
 .classroom-scene .side-tabs > button:nth-of-type(2) { margin-right: -14px; }
-.classroom-scene .todo-paper-card { min-width: 0; padding: 11px 13px 4px; border: 1px solid #d7cdbc80; border-radius: 7px 5px 8px 6px; background: linear-gradient(#fffdf4e8,#fffdf4e8),var(--paper) center / 500px; box-shadow: 1px 2px 2px #79634718; --todo-font: 'School Caveat','Classroom Yan','Long Cang',cursive; }
+.classroom-scene .todo-paper-card { min-width: 0; padding: 11px 13px 4px; border: 0; border-radius: 0; background: linear-gradient(#fffdf4e8,#fffdf4e8),var(--paper) center / 500px; box-shadow: none; --todo-font: 'School Caveat','Classroom Yan','Long Cang',cursive; }
+.classroom-scene .todo-paper-card + .todo-paper-card { border-top: 2px solid #b99c755e; }
 .classroom-scene .todo-paper-card .activity-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 0 0 4px; margin: 0; border: 0; min-height: 29px; }
 .classroom-scene .todo-paper-card .activity-heading > strong { font: 400 23px/1.1 var(--todo-font); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #615948; }
 .classroom-scene .todo-paper-card .todo-note { margin-left: auto; width: min(100px,38%); flex-shrink: 1; min-width: 0; position: relative; }
