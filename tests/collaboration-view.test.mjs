@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collaborationDate, splitCollaborationTasks } from '../app/collaboration-view.ts';
+import { collaborationDate, collaborationDateAfter, splitCollaborationTasks } from '../app/collaboration-view.ts';
+
+test('drop dates use the preceding Shanghai day without copying its clock time or changing duration', () => {
+  const task = { startDate: '2026-09-10T20:15:00Z', dueDate: '2026-09-12T01:30:00Z' };
+  const previous = { startDate: null, dueDate: '2026-12-31T17:00:00Z' };
+  const fields = collaborationDateAfter(task, previous);
+  assert.deepEqual(fields, { startDate: '2026-12-30T20:15:00.000Z', dueDate: '2027-01-01T01:30:00.000Z' });
+  assert.equal(Date.parse(fields.dueDate) - Date.parse(fields.startDate), Date.parse(task.dueDate) - Date.parse(task.startDate));
+  assert.deepEqual(collaborationDateAfter(task, { startDate: null, dueDate: '2026-09-11T16:30:00Z' }), {});
+});
+
+test('undated drops acquire only a date and start-only tasks retain that date model', () => {
+  const previous = { startDate: '2026-10-01T00:30:00+0800', dueDate: null };
+  assert.deepEqual(collaborationDateAfter({ startDate: null, dueDate: null }, previous), { dueDate: '2026-09-30T16:00:00.000Z' });
+  assert.deepEqual(collaborationDateAfter({ startDate: '2026-09-09T08:30:00Z', dueDate: null }, previous), { startDate: '2026-10-01T08:30:00.000Z' });
+  assert.deepEqual(collaborationDateAfter(previous, { startDate: null, dueDate: null }), {});
+});
 
 test('member lanes retain every task, sort by deadline or start, and preserve undated order without mutating the snapshot', () => {
   const tasks = [

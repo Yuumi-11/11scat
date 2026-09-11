@@ -228,8 +228,8 @@
 .coop-task[data-surface-draggable] :is(input, textarea, [contenteditable]:not([contenteditable="false"])) { cursor: text; user-select: text; -webkit-user-select: text; }
 
 /* September review: cork noticeboard, flush white sewn notebook and compact rows. */
-.coop-surface { --coop-inset: 14px; padding: var(--coop-inset); }
-.coop-column.buffer { --coop-board: #c7a071; background: url('/classroom/taskboard-cork.svg') 0 0 / 192px 192px; border: 5px solid #aa8459; border-radius: 4px; box-shadow: inset 0 1px 5px #704f3330, 0 2px 4px #53473830; }
+.coop-surface { --coop-inset: 14px; padding: var(--coop-inset); border: 10px solid transparent; border-radius: 8px; background: linear-gradient(var(--panel),var(--panel)) padding-box, url('/classroom/wood.webp') center / 620px border-box; }
+.coop-column.buffer { --coop-board: #c3a17a; background: url('/classroom/taskboard-cork.svg') 0 0 / 256px 256px padding-box, url('/classroom/wood.webp') center / 620px border-box; border: 5px solid transparent; border-radius: 4px; box-shadow: inset 0 1px 5px #704f3330, 0 2px 4px #53473830; }
 .coop-column.buffer > header { color: #514330; border-color: #80603e40; }
 .buffer .coop-count { color: #65513a; }
 .room-collaboration-dialog .buffer :is(.coop-refresh,.coop-close) { color: #584a35; border-color: #80603e50; background: #fff9ea35; }
@@ -251,10 +251,12 @@
 .coop-members .coop-member-lanes { margin: 0 4px 4px; }
 .coop-members .coop-lane .coop-task-list { padding: 6px 5px; }
 .coop-members .coop-lane > header { padding: 7px 6px 5px; }
-.member-task { --panel: #fff; --soft: #f6f6f4; --line: #deddd7; --ink: #504c43; --muted: #827b6e; background: #fff; border-color: #deddd7; }
+.member-task { --panel: #fff; --soft: #f6f6f4; --line: #deddd7; --ink: #504c43; --muted: #827b6e; background: #fff; border-color: #deddd7; border-radius: 0; }
 .coop-lane .member-task { padding: 7px 7px 7px 9px; }
-.member-task.priority-5 { --priority-bar: #ed3f3f; }.member-task.priority-3 { --priority-bar: #ffa600; }.member-task.priority-1 { --priority-bar: #4c6fff; }
-.member-task:not(.priority-0)::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 2px 2px 0; background: var(--priority-bar); pointer-events: none; }
+.coop-task.priority-5 { --priority-bar: #ed3f3f; }.coop-task.priority-3 { --priority-bar: #ffa600; }.coop-task.priority-1 { --priority-bar: #4c6fff; }
+.member-task:not(.priority-0)::before, .buffer .coop-task:not(.priority-0)::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; border-radius: 0; background: var(--priority-bar); pointer-events: none; }
+.buffer .coop-task:not(.priority-0)::before { left: 0; top: 0; bottom: 0; border-radius: 2px 0 0 2px; }
+.coop-priority-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Keep the existing keyboard drag control accessible without a visible pin. */
 .room-collaboration-dialog .member-task .coop-drag { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
 .member-task .coop-drag::before { content: none; }

@@ -1,5 +1,19 @@
 type DatedTask = { dueDate: string | null; startDate: string | null };
 
+/** Move the displayed date onto the preceding task's Shanghai day, retaining times and duration. */
+export function collaborationDateAfter(task: DatedTask, previous: DatedTask): Partial<DatedTask> {
+  const preceding = collaborationDate(previous);
+  if (!preceding) return {};
+  const day = (value: string) => Math.floor((Date.parse(value) + 8 * 3600000) / 86400000);
+  const current = collaborationDate(task);
+  if (!current) return { dueDate: new Date(day(preceding) * 86400000 - 8 * 3600000).toISOString() };
+  const shift = (day(preceding) - day(current)) * 86400000;
+  if (!shift) return {};
+  return Object.fromEntries((["startDate", "dueDate"] as const)
+    .filter(key => task[key] && Number.isFinite(Date.parse(task[key]!)))
+    .map(key => [key, new Date(Date.parse(task[key]!) + shift).toISOString()]));
+}
+
 // Match the task board: deadline first, otherwise the scheduled start.
 export function collaborationDate(task: DatedTask): string | null {
   return [task.dueDate, task.startDate].find(date => date && Number.isFinite(Date.parse(date))) || null;

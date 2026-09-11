@@ -15,7 +15,11 @@ function sample(): CollaborationSnapshot {
     { id: 'peer', name: '11scat', connected: true, tasks: [task('b1','复习本周内容','peer',0,3),task('b2','完成阅读记录','peer',1),task('b3','准备讨论材料','peer',3,5),task('b4','检查课程安排','peer',7),task('b5','整理共享文件','peer',undefined,1),task('b6','核对笔记目录','peer'),task('b7','补充学习计划','peer')] }
   ], workflows: [{ id: 'preview-workflow', title: buffer[0].title, fields: buffer[0], source: { ownerId: null, taskId: buffer[0].id, version: 'preview' }, reviewerId: 'self', claimantId: 'peer', targetId: 'preview', status: 'working', version: 1, createdAt: Date.now(), updatedAt: Date.now(), error: '', events: [] }] };
 }
-export function TaskboardPreview() {
-  const [snapshot] = useState(sample);
+export function TaskboardPreview({ chineseNames = false }: { chineseNames?: boolean }) {
+  const [snapshot] = useState(() => {
+    const data = sample();
+    if (chineseNames) { data.members[0].name = '小林'; data.members[1].name = '今天也要认真学习'; }
+    return data;
+  });
   return <main style={{ minHeight: '100dvh', background: '#f5edda', padding: 20 }}><RoomCollaboration identityId="self" previewSnapshot={snapshot} onChanged={async () => true} /></main>;
 }

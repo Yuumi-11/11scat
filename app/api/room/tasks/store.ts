@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { collaborationDate, collaborationDateAfter } from "../../../collaboration-view.ts";
 import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
 import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
@@ -434,6 +435,13 @@ export class CollaborationStore {
     } catch (error) { workflow.error = error instanceof Error ? error.message : "认领任务暂未建立，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
   }
+  private async fieldsAfterTask(state: State, fields: TaskFields, after: TaskSource | undefined, owner: string | null, source: TaskSource): Promise<TaskFields> {
+    if (after === undefined) return fields;
+    if (!after || after.ownerId !== owner || !owner || typeof after.taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(after.taskId) || typeof after.version !== "string" || (after.ownerId === source.ownerId && after.taskId === source.taskId)) throw new CollaborationError("日期参照任务无效", 400);
+    const previous = await this.source(state, after);
+    if (!previous || previous.remote?.status || previous.version !== after.version || !collaborationDate(previous.fields)) throw new CollaborationError("前一条待办已变化，请刷新后重新拖动");
+    return { ...fields, ...collaborationDateAfter(fields, previous.fields) };
+  }
   claim(actor: string, command: CollaborationCommand) {
     return this.serial(async () => {
       const members = await this.requireMember(actor), source = command.source;
@@ -445,6 +453,7 @@ export class CollaborationStore {
       if (existing) {
         if (existing.signature !== signature) throw new CollaborationError("操作编号已使用");
         if (isPersonalCollection(existing)) return this.finishCollection(state, existing);
+        if (existing.edit) return this.finishWorkflowEdit(state, existing);
         return existing.status === "creating" ? this.startWorkflow(state, existing) : this.publicWorkflow(existing);
       }
       if (this.taskWorkflow(state, source.ownerId, source.taskId)) throw new CollaborationError("此任务已经有人认领");
@@ -463,10 +472,18 @@ export class CollaborationStore {
         if (reviewerInbox.projectId === "inbox") throw new CollaborationError("暂不能识别发布者收集箱", 422);
         if (reviewer !== claimant && reviewerInbox.projectId === targetInbox.projectId) throw new CollaborationError("两位成员连接了同一个滴答收集箱", 422);
       }
+      const fields = await this.fieldsAfterTask(state, current.fields, command.dateAfter, claimant, source);
       const now = Date.now();
       const workflow: Workflow = { id: command.id, signature, title: current.fields.title, source: { ...source }, reviewerId: reviewer, claimantId: claimant, targetId: randomBytes(12).toString("hex"), fields: current.fields, status: "creating", version: 0, createdAt: now, updatedAt: now, error: "", targetCreation: { state: "new" }, events: [{ id: command.id, actorId: actor, type: "claimed", at: now, comment: "", files: [] }] };
+      if (!sameFields(fields, current.fields)) {
+        const editId = randomUUID();
+        workflow.edit = { id: editId, fields };
+        workflow.events.push({ id: editId, actorId: actor, type: "updating", at: now, comment: "", files: [] });
+      }
       if (current.remote) workflow.projects = { source: current.remote.projectId };
       state.workflows[workflow.id] = workflow; await this.saveWorkflow(state, workflow);
+      if (isPersonalCollection(workflow)) return this.finishCollection(state, workflow);
+      if (workflow.edit) return this.finishWorkflowEdit(state, workflow);
       return this.startWorkflow(state, workflow);
     });
   }
@@ -783,7 +800,7 @@ export class CollaborationStore {
           if (!current || current.remote?.status) throw new CollaborationError("任务已完成或已移走，请刷新");
           if (current.version !== source.version) throw new CollaborationError("任务已被修改，请刷新后重新操作");
           fields = current.fields;
-          if (command.action === "update") fields = { ...fields, ...validateFields(command.fields) };
+          if (command.action === "update") fields = await this.fieldsAfterTask(state, { ...fields, ...validateFields(command.fields) }, command.dateAfter, source.ownerId, source);
 
         }
         if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);

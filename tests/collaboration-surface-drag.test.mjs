@@ -15,14 +15,16 @@ function visit(node) {
 }
 visit(tree);
 const code = ts.transpileModule(`${handlers.join('\n')}\nreturn {${names.join(',')}, surfaceDown: ${surface}};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-function fixture(enabled = true) {
+function fixture(enabled = true, datedCards = []) {
   const drag = { current: null }, ghosts = [], drops = [], task = { id: 'task' };
   class Target { constructor(interactive = false) { this.interactive = interactive; } closest() { return this.interactive ? this : null; } }
   const listeners = new Map();
   const window = { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const handle = { addEventListener() {}, removeEventListener() {}, captured: null, closest: () => ({ getBoundingClientRect: () => ({ left: 10, top: 20, width: 200 }) }), setPointerCapture(id) { this.captured = id; }, hasPointerCapture(id) { return this.captured === id; }, releasePointerCapture() { this.captured = null; } };
-  const document = { elementFromPoint: () => ({ closest: selector => selector === '[data-coop-owner]' ? { dataset: { coopOwner: 'bob' } } : null }) };
-  const api = new Function('drag', 'setKeyboardDrag', 'setGhost', 'setHoverOwner', 'membersPane', 'canDrop', 'move', 'document', 'Element', 'surfaceDraggable', 'task', 'window', code)(drag, () => {}, value => ghosts.push(value), () => {}, { current: null }, () => true, (...args) => drops.push(args), document, Target, enabled, task, window);
+  const taskKey = task => `${task.ownerId || 'buffer'}:${task.id}`;
+  const snapshot = { members: [{ id: 'bob', tasks: datedCards }] };
+  const document = { elementFromPoint: () => ({ closest: selector => selector === '[data-coop-owner]' ? { dataset: { coopOwner: 'bob' } } : selector === '[data-coop-lane="dated"]' && datedCards.length ? { querySelectorAll: () => datedCards.map((task, index) => ({ dataset: { coopTask: taskKey(task) }, getBoundingClientRect: () => ({ top: 100 + index * 40, height: 32 }) })) } : null }) };
+  const api = new Function('drag', 'setKeyboardDrag', 'setGhost', 'setHoverOwner', 'membersPane', 'canDrop', 'move', 'document', 'Element', 'surfaceDraggable', 'task', 'window', 'snapshot', 'taskKey', code)(drag, () => {}, value => ghosts.push(value), () => {}, { current: null }, () => true, (...args) => drops.push(args), document, Target, enabled, task, window, snapshot, taskKey);
   const event = (extra = {}) => ({ currentTarget: handle, target: new Target(), button: 0, isPrimary: true, pointerId: 1, clientX: 30, clientY: 40, preventDefault() {}, ...extra });
   return { api, drag, ghosts, drops, handle, event, Target, listeners };
 }
@@ -35,6 +37,17 @@ test('card surface drag shares the pin threshold, offset, pointer capture and on
     assert.deepEqual(f.ghosts.at(-1), { x: 30, y: 50, task: { id: 'task' }, width: 200 });
     f.api.finishDrag(f.event()); f.api.finishDrag(f.event());
     assert.equal(f.drops.length, 1); assert.equal(f.drops[0][1], 'bob'); assert.equal(f.handle.captured, null);
+  }
+});
+
+test('drop hit testing picks the preceding visible card and excludes the dragged task itself', () => {
+  const cards = [{ id: 'first', ownerId: 'bob' }, { id: 'task' }, { id: 'last', ownerId: 'bob' }];
+  for (const [y, expected] of [[105, undefined], [125, cards[0]], [175, cards[0]], [210, cards[2]]]) {
+    const f = fixture(true, cards);
+    f.api.startDrag(f.event(), { id: 'task' });
+    f.api.pointerMove(f.event({ clientY: y }));
+    f.api.finishDrag(f.event({ clientY: y }));
+    assert.deepEqual(f.drops[0][2], expected);
   }
 });
 test('interactive descendants and locked card surfaces never capture a pointer', () => {

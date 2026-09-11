@@ -8,7 +8,7 @@ import type { CollaborationCommand, CollaborationSnapshot, OperationView, RoomTa
 import "./room-collaboration.css";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { InlineTaskTitle } from "./InlineTaskTitle";
-import { collaborationDate, collaborationDateLabel, splitCollaborationTasks } from "./collaboration-view";
+import { collaborationDate, collaborationDateAfter, collaborationDateLabel, splitCollaborationTasks } from "./collaboration-view";
 import { CollaborationRecovery } from "./CollaborationRecovery";
 import type { TaskNotice } from "./collaboration-notifications";
 import { TaskNoticeDot } from "./TaskNoticeDot";
@@ -156,6 +156,10 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
         const source = "source" in command ? command.source : undefined;
         const list = source?.ownerId ? next.members.find(member => member.id === source.ownerId)?.tasks : next.buffer;
         const task = list?.find(item => item.id === source?.taskId);
+        if (task && "dateAfter" in command && command.dateAfter) {
+          const previous = next.members.find(member => member.id === command.dateAfter!.ownerId)?.tasks.find(item => item.id === command.dateAfter!.taskId);
+          if (previous) Object.assign(task, collaborationDateAfter(task, previous));
+        }
         if (task && command.action === "update") Object.assign(task, command.fields);
         if (task && ["claim", "move", "complete", "delete"].includes(command.action)) {
           list!.splice(list!.indexOf(task), 1);
@@ -206,9 +210,14 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   const unavailable = busy || !!uncertain;
   const ownerName = (owner: string | null) => owner === null ? "任务板" : snapshot?.members.find(member => member.id === owner)?.name || "成员";
   const canDrop = (owner: string) => owner !== "" && snapshot?.members.some(member => member.id === owner && member.connected && !member.error);
-  const move = async (task: RoomTask, owner: string) => {
-    if (unavailable || task.workflowId || task.pending || task.transferBlocked || (task.ownerId || "") === owner || !canDrop(owner)) return;
-    await perform({ id: crypto.randomUUID(), action: "claim", source: taskSource(task), destination: owner || null });
+  const move = async (task: RoomTask, owner: string, previous?: RoomTask) => {
+    if (unavailable || task.workflowId || task.pending || task.transferBlocked || !canDrop(owner)) return;
+    const dateAfter = previous && Object.keys(collaborationDateAfter(task, previous)).length ? taskSource(previous) : undefined;
+    if ((task.ownerId || "") === owner) {
+      if (dateAfter) await perform({ id: crypto.randomUUID(), action: "update", source: taskSource(task), fields: {}, dateAfter });
+      return;
+    }
+    await perform({ id: crypto.randomUUID(), action: "claim", source: taskSource(task), destination: owner || null, ...(dateAfter ? { dateAfter } : {}) });
   };
   const close = () => { if (!locked.current) { setOpen(false); setEditor(null); setRecoveryOpen(false); setWorkflowOpen(false); setInlineTask(null); setDraftId(null); setKeyboardDrag(null); setHoverOwner(null); setGhost(null); drag.current?.stop(); drag.current = null; } };
   const edit = (task: RoomTask, selectedWorkflow?: ClaimWorkflow) => {
@@ -262,8 +271,17 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     current.stop(); drag.current = null; setGhost(null); setHoverOwner(null);
     if (current.handle.hasPointerCapture(event.pointerId)) current.handle.releasePointerCapture(event.pointerId);
     if (!cancel && current?.moved) {
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-coop-owner]");
-      if (target) void move(current.task, target.dataset.coopOwner!);
+      const hit = document.elementFromPoint(event.clientX, event.clientY);
+      const target = hit?.closest<HTMLElement>("[data-coop-owner]");
+      if (target) {
+        const lane = hit?.closest<HTMLElement>('[data-coop-lane="dated"]');
+        const previousCard = Array.from(lane?.querySelectorAll<HTMLElement>("article[data-coop-task]") || []).filter(card => card.dataset.coopTask !== taskKey(current.task)).findLast(card => {
+          const rect = card.getBoundingClientRect();
+          return event.clientY >= rect.top + rect.height / 2;
+        });
+        const previous = previousCard && snapshot?.members.find(member => member.id === target.dataset.coopOwner)?.tasks.find(task => taskKey(task) === previousCard.dataset.coopTask);
+        void move(current.task, target.dataset.coopOwner!, previous || undefined);
+      }
     }
   }
   function card(task: RoomTask, preview = false) {
@@ -274,11 +292,10 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const controlsLocked = unavailable || pending || !!inlineTask || !!draftId;
     const cardLocked = controlsLocked || !!workflow;
     const canComplete = (workflow?.reviewerId || task.ownerId || task.publisherId) === identityId;
-    const priorityFlag = <svg className="coop-priority" viewBox="0 0 24 24" role="img" aria-label={`${priorities[task.priority]}优先级`}><path d="M4 21V3m1 1h15l-4 6 4 6H5" fill="currentColor" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" /></svg>;
     const compactClaim = task.ownerId !== null;
     const claimButton = !workflow && task.ownerId !== identityId && task.publisherId !== identityId && canDrop(identityId) ? <button className="coop-claim" type="button" disabled={cardLocked || !!task.transferBlocked} onClick={() => void move(task, identityId)}>认领</button> : null;
     const surfaceDraggable = task.ownerId !== null && !preview && !cardLocked && !task.transferBlocked;
-    return <article data-surface-draggable={surfaceDraggable || undefined} onPointerDown={event => {
+    return <article data-coop-task={taskKey(task)} data-surface-draggable={surfaceDraggable || undefined} onPointerDown={event => {
       if (!surfaceDraggable || !(event.target instanceof Element) || event.target.closest('button, input, textarea, select, option, a, label, summary, [role="button"], [role="link"], [contenteditable]:not([contenteditable="false"])')) return;
       startDrag(event, task);
     }} className={`coop-task${task.ownerId !== null ? " member-task" : ""} priority-${task.priority}${pending ? " pending" : ""}${!preview && ghost && taskKey(ghost.task) === taskKey(task) ? " dragging" : ""}`} key={taskKey(task)}>
@@ -308,7 +325,8 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
         {task.ownerId === null && <button className="coop-more" type="button"  aria-label={`任务详情 ${task.title}`} disabled={unavailable || pending} onClick={() => { if (workflow) showWorkflow(); else edit(task); }}><Ellipsis size={18} aria-hidden="true" /></button>}
         {canComplete && <button className="coop-complete" type="button"  aria-label={`完成任务 ${task.title}`} disabled={controlsLocked} onClick={() => void perform(workflow ? { id: crypto.randomUUID(), action: "owner-complete", workflowId: workflow.id, version: workflow.version } : { id: crypto.randomUUID(), action: "complete", source: taskSource(task) })}><Check size={15} aria-hidden="true" /></button>}</div>
       {description && <p className="coop-task-description">{description}</p>}
-      <div className="coop-task-footer">{((task.ownerId === null && collaborationDate(task)) || (task.ownerId === null && task.priority !== 0) || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{task.ownerId === null && collaborationDate(task) && <span >{collaborationDateLabel(task)}</span>}{task.ownerId === null && task.priority !== 0 && priorityFlag}{task.repeatFlag && <span>重复</span>}
+      {task.priority !== 0 && <span className="coop-priority-label">{priorities[task.priority]}优先级</span>}
+      <div className="coop-task-footer">{((task.ownerId === null && collaborationDate(task)) || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{task.ownerId === null && collaborationDate(task) && <span >{collaborationDateLabel(task)}</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
       {workflow && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" aria-label={`认领者：${ownerName(workflow.claimantId)}`}>{ownerName(workflow.claimantId)}</span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}</div>
@@ -320,7 +338,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const { dated, undated } = splitCollaborationTasks(tasks);
     return <section key={owner || "buffer"} data-coop-owner={owner || ""} className={`coop-column${owner === null ? " buffer" : ""}${hoverOwner === (owner || "") ? " drop-active" : ""}`}>
       <header>{owner !== null && <span className="coop-notebook-title">title:</span>}<h3>{name}</h3><span className="coop-count">{tasks.length}</span>{owner === null && <><button type="button" className="coop-recovery-trigger" onClick={() => { setWorkflowId(null); setWorkflowOpen(true); setError(""); }}>工作流程 {taskNotices.some(item => item.kind === "workflow") && <span className="task-notice-count">{taskNotices.filter(item => item.kind === "workflow").length}</span>}</button><button type="button" className="coop-icon coop-refresh" disabled={loading || busy}  aria-label="刷新全室任务" onClick={() => { setError(""); void load(); void onChanged(); }}><RefreshCw size={17} className={loading ? "coop-spin" : ""} /></button><button type="button" className="coop-icon coop-close" disabled={busy || !!editor}  aria-label="关闭协作区" onClick={close}><X size={21} /></button></>}</header>
-      {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", tasks: dated }, { label: "无日期", tasks: undated }]).map(lane => <section className="coop-lane" key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(task => card(task))}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(task => card(task))}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
+      {problem ? <div className="coop-task-list"><p className="coop-empty">{problem}</p>{(diagnostic || owner === identityId) && <TickTickDiagnostics report={diagnostic} />}</div> : owner !== null ? <div className="coop-member-lanes">{([{ label: "有日期", tasks: dated }, { label: "无日期", tasks: undated }]).map(lane => <section className="coop-lane" data-coop-lane={lane.label === "有日期" ? "dated" : "undated"} key={lane.label} aria-label={`${name}的${lane.label}待办`}><header><h4>{lane.label}</h4><span>{lane.tasks.length}</span></header><div className="coop-task-list">{lane.tasks.map(task => card(task))}</div></section>)}</div> : <div className="coop-task-list">{tasks.map(task => card(task))}{draftId ? <div className="coop-new-task editing"><Plus size={18} aria-hidden="true" /><InlineTaskTitle key={draftId} initialValue="" label="新任务标题" disabled={unavailable || !!snapshot?.operations.some(operation => operation.id === draftId && operation.status === "pending")} onCancel={() => setDraftId(null)} onSave={async title => {
         const done = await perform({ id: draftId, action: "create", fields: { title } }); if (done) setDraftId(null); return done;
       }} /></div> : <button className="coop-new-task" type="button"  aria-label="新建任务" disabled={unavailable || !!inlineTask} onClick={() => { setDraftId(crypto.randomUUID()); setError(""); }}><Plus size={25} aria-hidden="true" /></button>}</div>}
     </section>;
