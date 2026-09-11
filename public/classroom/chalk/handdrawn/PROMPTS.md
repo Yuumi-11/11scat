@@ -4,7 +4,7 @@
 
 固定配色参考：[原始材质参照](../../../../docs/assets/classroom-approved-material-reference-2026-09-09.png)；配色值来自上一级粉笔素材说明。以下提示词使用文字描述这些要求，生成时没有把旧 SVG 作为编辑目标。
 
-生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，第九版猫咪采用坐姿版本与用户认可的圆环眼睛局部合成，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
+生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，当前第十版猫咪采用用户选定的高挑坐姿生成原图，仅局部去除双颊红晕，两个区域以外像素保持一致，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
 
 ## 第一版完整提示词
 
@@ -38,7 +38,7 @@ Subject: ONE very cute simple sitting kitten, front-facing, with a slightly tilt
 
 ## 第二版：气球绳线与猫咪手绘感
 
-2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第九版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
+2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第十版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
 
 ### balloons：第二版记录
 
@@ -223,4 +223,20 @@ TAIL: from behind right hip, one moderately slim full tail runs right along the 
 FACE: EXACTLY TWO SIMPLE FILLED IVORY OVAL EYES, little chubby ovals with softly granular chalk fill all the way across. Absolutely NO separate eye outline, hollow center, iris ring, pupil, eye socket or shiny highlight. Just two filled chalk dots/ovals like a simple marker-cat doodle. Tiny ivory nose and tiny handwritten curved smile, two short whisker lines extending just beyond each cheek. Facial marks are small, clear and economical, no elaborate expression.
 MATERIAL: warm ivory #f5efdb chalk linework on real alpha, in a quiet classroom chalk aesthetic. Lines are CONTINUOUS along their whole paths, not dashed, dotted or disconnected. Chalk pores may be tiny but do NOT introduce visible gaps across the entire stroke width. Keep readable contours with natural mild pressure variation and very slight freehand wobble, some gentle uneven turns; not perfect mechanical Bezier curves and not jagged polygon edges. Single slender-but-readable chalk traces, about 10-14px at 1254px canvas. All anatomy contours and the tail use a consistent visual line weight. No thick creamy tubes, doubled outlines, scratchy broken line clusters or diffuse dust clouds outside the drawing. Smoothness of the gesture is natural, not vector precision.
 COLOR: retain mostly empty transparent face, torso, legs and tail. Add one modest pale-yellow #efd28a chalk rubbed patch on one side of the forehead and one on the rounded right haunch. Tiny dusty-pink #e6b1ba rubbed inner ears and two very small soft cheek blush marks. Every colored area MUST show several short diagonal back-and-forth side-of-chalk strokes, uneven coverage with transparent grain and streaks like filling a chalk-drawn yellow star or pink heart. No digitally solid coloring, white base fur fill, photographic shading, gradients, glossy highlights or black filled areas. Eyes filled with IVORY CHALK only, never hollow. Very simple and easy to copy by hand, no text, logo, watermark, accessories, extra motifs, ground, paper, board, background or checkerboard. Actual alpha transparency.
+```
+
+## 第十版：指定高挑坐姿猫局部去除双颊红晕
+
+2026-09-11，用户选择此前生成的 `exec-593ced30-65fd-43cf-bced-02375f398aea.png`，要求去除脸上的红晕。本版采用该图的完整造型，仅清除两处面颊红晕的透明度，保留原始 RGB 和其他像素。圆环眼睛、鼻口与耳朵均经过原图对比，坐姿和尾巴保持原样。
+
+原图 SHA256：`2fd98176f2bbc5e01d832d59be42530ea130eb09239b0e415f5100fd279b9719`。最终 PNG SHA256：`e8d40947a4a2e2457e9eca2cb572ae642f9fbf30dc1f71e3b2b21f064dbaca77`。最终 PNG 为 1254 × 1254 像素，网页 WebP 为 512 × 512 像素，两者均有真实透明通道。
+
+两处面颊区域以椭圆限定，并排除相邻眼睛的保护椭圆：左侧中心 `(361,409)`、半径 `(36,27)`，右侧中心 `(556,469)`、半径 `(35,25)`。共清除 4,946 个像素的透明度，区域外变化为 0；记录见项目 `codex-generated/chalk-handdrawn-2026-09-10/revision-10/blush-removal-checks.json`。爱心、星星及已确认的第八版气球 PNG/WebP 保持原文件。
+
+### cat：未采用的局部生图编辑尝试
+
+曾使用内置 imagegen 附上述选定原图进行局部编辑，返回的 `exec-1cbe515b-11fb-47c9-97df-d1e5699b2b2d.png` 含绘制的棋盘格且改变了眼睛内部，因此未采用。以下为该次实际输入；最终素材来自选定原图的局部擦除，未使用该次编辑结果。
+
+```text
+Use case: precise-object-edit. Edit the supplied exact transparent chalk cat image. ONLY remove the TWO dusty-pink blush marks on its cheeks: the small pink patch under the left eye at approximately x=29%, y=32.5%, and the small pink patch under the right eye at approximately x=44.5%, y=37.5%. Erase these two cheek blush patches back to completely transparent empty space. Leave the nearby ivory eye rings, ivory face outlines, whiskers, mouth and small pink NOSE unchanged. Preserve the pink inner ears and the pale-yellow forehead and haunch coloring. Every other aspect of the supplied image must stay identical: the slender tall seated pose, long front legs, head tilt, ear shapes, round haunch, curved tail, natural continuous ivory chalk lines and their exact texture. Do not redraw or reinterpret the cat. No changes to proportions, placement, colors, grain, expression or ring-shaped eyes. Retain square canvas, original framing and size. Output an actual RGBA PNG with real transparent alpha background and transparent unfilled interiors. No checkerboard, no white or dark backing, no new background. This is an extremely localized erasure of two pink cheek marks, no other edit.
 ```
