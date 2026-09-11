@@ -16,7 +16,7 @@ export function inboxResponseShape(value: unknown) {
 }
 
 export type TickProject = { id: string; name: string; closed?: boolean };
-export type TickTask = { id: string; projectId: string; title: string; status?: number; dueDate?: string; startDate?: string };
+export type TickTask = { id: string; projectId: string; title: string; status?: number; dueDate?: string; startDate?: string; isAllDay?: boolean };
 
 export async function tickFetch(path: string, token: string, init?: RequestInit) {
   return fetch(`https://api.dida365.com/open/v1${path}`, {

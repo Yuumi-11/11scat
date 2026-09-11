@@ -4,7 +4,7 @@ import test from "node:test";
 
 const projectFile = (path) => new URL(`../${path}`, import.meta.url);
 
-test("ships an installable PWA with authenticated Web Push", async () => {
+test("retains installed PWA push delivery without the retired notification settings", async () => {
   const [layout, page, manifestText, serviceWorker, proxy, messageRoute, pushStore] = await Promise.all([
     readFile(projectFile("app/layout.tsx"), "utf8"),
     readFile(projectFile("app/page.tsx"), "utf8"),
@@ -21,12 +21,7 @@ test("ships an installable PWA with authenticated Web Push", async () => {
   assert.match(layout, /manifest:\s*"\/manifest\.webmanifest"/);
   assert.match(layout, /appleWebApp:\s*\{\s*capable:\s*true/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"\)/);
-  assert.match(page, /Notification\.requestPermission\(\)/);
-  const enablePush = page.slice(page.indexOf("const enablePushNotifications"), page.indexOf("const disablePushNotifications"));
-  assert.ok(
-    enablePush.indexOf("if (isIos && !isStandalone)") < enablePush.indexOf('if (!("serviceWorker" in navigator)'),
-    "iPhone install guidance must be shown before the generic unsupported-browser message",
-  );
+  assert.doesNotMatch(page, /Notification\.requestPermission\(\)|enablePushNotifications|disablePushNotifications/);
   assert.match(serviceWorker, /addEventListener\("push"/);
   assert.match(serviceWorker, /showNotification/);
   assert.match(serviceWorker, /addEventListener\("notificationclick"/);

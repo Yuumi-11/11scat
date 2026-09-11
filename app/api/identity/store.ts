@@ -1,9 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { applyClassroomAction, CLASSROOM_DEVICE_FONT, type ClassroomAction, type ClassroomProfile } from '../../classroom-members.ts';
 
 export type UserRecord = {
   nickname?: string;
   activity?: string;
+  todoNote?: string;
   ticktickToken?: string;
   updatedAt: string;
 };
@@ -11,6 +13,7 @@ export type UserRecord = {
 type IdentityStore = {
   version: 1;
   users: Record<string, UserRecord>;
+  classroom?: { seats: string[] };
 };
 
 const dataDirectory = process.env.DATA_DIR
@@ -24,7 +27,7 @@ async function readStore(): Promise<IdentityStore> {
   try {
     const parsed = JSON.parse(await readFile(storePath, "utf8")) as Partial<IdentityStore>;
     if (parsed.version !== 1 || !parsed.users || typeof parsed.users !== "object") return emptyStore();
-    return { version: 1, users: parsed.users };
+    return { version: 1, users: parsed.users, classroom: parsed.classroom };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyStore();
     throw error;
@@ -46,6 +49,30 @@ export async function getUser(identityId: string): Promise<UserRecord | null> {
 export async function listRoomMembers() {
   await writeQueue;
   return Object.entries((await readStore()).users).map(([id, user]) => ({ id, name: user.nickname || "成员" }));
+}
+
+function classroomProfileFromStore(store: IdentityStore): ClassroomProfile {
+  const members = Object.entries(store.users).map(([id, user]) => ({ id, name: user.nickname || '成员', activity: user.activity || '', todoNote: user.todoNote || '' }));
+  const available = new Set(members.map(member => member.id));
+  const seats = [...new Set([...(store.classroom?.seats || []), ...members.map(member => member.id)])].filter(id => available.has(id)).slice(0, 2);
+  return { members, seats, font: CLASSROOM_DEVICE_FONT };
+}
+
+export async function getClassroomProfile() {
+  await writeQueue;
+  return classroomProfileFromStore(await readStore());
+}
+
+export function updateClassroomProfile(identityId: string, action: ClassroomAction) {
+  let result: ClassroomProfile;
+  const operation = writeQueue.then(async () => {
+    const store = await readStore();
+    result = applyClassroomAction(classroomProfileFromStore(store), identityId, action);
+    store.classroom = { seats: result.seats };
+    await writeStore(store);
+  });
+  writeQueue = operation.catch(() => undefined);
+  return operation.then(() => result!);
 }
 
 export function updateUser(identityId: string, update: (current: UserRecord | null) => UserRecord): Promise<UserRecord> {

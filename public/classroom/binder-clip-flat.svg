@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 112">
+  <!-- Raised rear lever, partly hidden by the front lever and shell. -->
+  <path d="M29 98 43 44c2-8-1-12-6-20-5-8-3-12 4-16 7-4 13-3 19 1 8 5 9 9 3 17-5 7-8 11-6 19l14 53" fill="none" stroke="#8c8c79" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Closed shell overlaps the paper edge; mouth lies at y=101. -->
+  <path d="M11 62h74l2 37H9z" fill="#38463f"/>
+  <path d="M11 63h74v34H11z" fill="#454e48"/>
+  <path d="M12 63h72v2H12z" fill="#687064"/>
+  <path d="M10 96h76v6H10z" fill="#303c36"/>
+  <!-- Front lever pivots at the rolled ends of the mouth and folds upward. -->
+  <path d="M27 99 40 43c2-8-1-12-6-19-6-8-4-12 3-16 7-4 14-4 21 0 8 4 10 8 4 16-5 7-9 11-7 19l14 56" fill="none" stroke="#877b62" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M27 98 40 43c2-8-1-12-6-19-6-8-4-12 3-16 7-4 14-4 21 0 8 4 10 8 4 16-5 7-9 11-7 19l14 55" fill="none" stroke="#d0cdb6" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 97h16v5H10q-2-2 0-5m60 0h16q2 3 0 5H70z" fill="#38463f"/>
+  <path d="M11 97h14m46 0h14" fill="none" stroke="#768071" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

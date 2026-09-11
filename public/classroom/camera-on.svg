@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 140">
+  <path fill="#454e48" d="M111 64h24q6 0 6 6v55q0 5-6 5h-24z"/>
+  <path fill="#65695f" d="m62 62 8-16h32l9 16z"/>
+  <rect x="28" y="53" width="20" height="10" rx="3" fill="#7d7e6c"/>
+  <path fill="#565e55" d="M18 62h110q6 0 6 6v58q0 5-6 5H18q-6 0-6-5V68q0-6 6-6z"/>
+  <path fill="#687064" d="M18 62h110q6 0 6 6v3H12v-3q0-6 6-6z"/>
+  <circle cx="77" cy="97" r="29" fill="#bab8a0"/>
+  <circle cx="77" cy="97" r="22" fill="#414c48"/>
+  <circle cx="77" cy="97" r="14" fill="#586860"/>
+  <path fill="#829187" d="M65 93q2-8 10-9l-4 8z"/>
+  <rect x="106" y="76" width="17" height="9" rx="2" fill="#c1bca5"/>
+<defs><radialGradient id="record-light"><stop stop-color="#ff2635" stop-opacity=".75"/><stop offset=".35" stop-color="#f52132" stop-opacity=".4"/><stop offset="1" stop-color="#ea1e30" stop-opacity="0"/></radialGradient><filter id="red-bloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="1.8"/></filter></defs><circle cx="120" cy="68" r="16.8" fill="url(#record-light)"/><circle cx="120" cy="68" r="6" fill="#f32731" opacity=".7" filter="url(#red-bloom)"/><circle cx="120" cy="68" r="4" fill="#e7353e"/><circle cx="77" cy="97" r="15" fill="none" stroke="#a1bfb0" stroke-width="2"/></svg>

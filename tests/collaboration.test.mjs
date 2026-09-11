@@ -31,11 +31,75 @@ async function fixture() {
 }
 const source = task => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
 
+async function preceding(f, owner = 'bob') {
+  f.accounts[owner].set('preceding', { id: 'preceding', projectId: 'inbox-' + owner, ...taskFields({ title: '前一条待办', dueDate: '2026-10-01T01:30:00+0800' }) });
+  return (await f.store.snapshot(owner)).members.find(member => member.id === owner).tasks.find(task => task.id === 'preceding');
+}
+
+test('same-owner date drops persist and stale, wrong-owner or self references leave tasks unchanged', async () => {
+  const f = await fixture(), task = await personal(f, { dueDate: '2026-09-01T08:00:00Z', startDate: '2026-08-31T08:00:00Z', isAllDay: false });
+  const previous = await preceding(f, 'alice');
+  const command = { id: randomUUID(), action: 'update', source: source(task), fields: {}, dateAfter: source(previous) };
+  for (const dateAfter of [{ ...source(previous), version: 'old' }, { ...source(previous), ownerId: 'bob' }, source(task)]) {
+    await assert.rejects(f.store.execute('alice', { ...command, id: randomUUID(), dateAfter }), /参照|已变化/);
+    assert.equal(f.accounts.alice.get(task.id).dueDate, task.dueDate);
+  }
+  assert.equal((await f.store.execute('alice', command)).status, 'done');
+  assert.equal(f.accounts.alice.get(task.id).dueDate, '2026-10-01T08:00:00.000Z');
+  assert.equal(f.accounts.alice.get(task.id).startDate, '2026-09-30T08:00:00.000Z');
+  assert.equal(f.accounts.alice.get(task.id).isAllDay, false);
+  assert.equal((await f.store.execute('alice', command)).status, 'done');
+});
+
+test('claims onto a dated predecessor synchronize public and personal sources and survive response loss', async () => {
+  for (const publicTask of [false, true]) {
+    const f = await fixture(), task = publicTask ? await f.create('拖动公共任务') : await personal(f, { dueDate: '2026-09-01T08:00:00Z', isAllDay: false });
+    const previous = await preceding(f);
+    const command = { id: randomUUID(), action: 'claim', source: source(task), destination: 'bob', dateAfter: source(previous) };
+    const update = f.gateway.update; let lose = true;
+    f.gateway.update = async (...args) => { await update(...args); if (lose) { lose = false; throw new Error('lost date-update response'); } };
+    let w = await f.store.claim('bob', command);
+    assert.ok(w.error); assert.ok(w.editPending);
+    f.store = new CollaborationStore(f.dir, f.gateway);
+    w = await f.store.claim('bob', command);
+    assert.equal(w.status, 'working'); assert.equal(w.error, ''); assert.equal(w.editPending, false);
+    const expected = publicTask ? '2026-09-30T16:00:00.000Z' : '2026-10-01T08:00:00.000Z';
+    assert.equal(w.fields.dueDate, expected);
+    assert.equal(f.accounts.bob.get(w.targetId).dueDate, expected);
+    if (publicTask) assert.equal((await f.store.snapshot('alice')).buffer.find(item => item.id === task.id).dueDate, expected);
+    else assert.equal(f.accounts.alice.get(task.id).dueDate, expected);
+    assert.equal(f.counts.creates, 1);
+    assert.equal((await f.store.claim('bob', command)).id, w.id);
+  }
+});
+
+test('collecting own public task applies predecessor date and remains an ordinary inbox task', async () => {
+  const f = await fixture(), task = await f.create('自己的公共任务'), previous = await preceding(f, 'alice');
+  const command = { id: randomUUID(), action: 'claim', source: source(task), destination: 'alice', dateAfter: source(previous) };
+  const w = await f.store.claim('alice', command);
+  assert.equal(w.status, 'done'); assert.equal(w.error, ''); assert.equal(w.editPending, false);
+  const snapshot = await f.store.snapshot('alice');
+  assert.ok(!snapshot.buffer.some(item => item.id === task.id));
+  const collected = snapshot.members.find(member => member.id === 'alice').tasks.find(item => item.id === w.targetId);
+  assert.equal(collected.dueDate, '2026-09-30T16:00:00.000Z'); assert.equal(collected.workflowId, undefined);
+  assert.equal((await f.store.claim('alice', command)).status, 'done'); assert.equal(f.counts.creates, 1);
+});
+
+test('invalid claim predecessors are rejected before any task is created', async () => {
+  const f = await fixture(), task = await f.create('保留公共任务'), previous = await preceding(f);
+  const command = { id: randomUUID(), action: 'claim', source: source(task), destination: 'bob', dateAfter: source(previous) };
+  f.accounts.bob.get(previous.id).dueDate = null;
+  await assert.rejects(f.store.claim('bob', command), /前一条待办已变化/);
+  assert.equal(f.counts.creates, 0);
+  assert.ok((await f.store.snapshot('alice')).buffer.some(item => item.id === task.id));
+});
+
 test('lightweight task notices expose active IDs without querying external inboxes', async () => {
   const f = await fixture();
   const a = await f.create('first'), b = await f.create('second');
   const before = await f.store.revision();
   assert.deepEqual(new Set(before.bufferIds), new Set([a.id, b.id]));
+  assert.deepEqual(before.bufferPreview, [{ id: a.id, title: 'first' }, { id: b.id, title: 'second' }]);
   await f.store.execute('alice', { id: randomUUID(), action: 'update', source: source(a), fields: { title: 'edited title' } });
   assert.deepEqual((await f.store.revision()).bufferIds, before.bufferIds);
   await f.store.execute('alice', { id: randomUUID(), action: 'complete', source: source(b) });
@@ -44,10 +108,12 @@ test('lightweight task notices expose active IDs without querying external inbox
   const after = await f.store.revision();
   assert.equal(after.bufferCount, before.bufferCount);
   assert.deepEqual(new Set(after.bufferIds), new Set([a.id, c.id]));
+  assert.deepEqual(after.bufferPreview, [{ id: a.id, title: 'edited title' }, { id: c.id, title: 'replacement' }]);
   const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
   state.buffer[a.id].stagedBy = 'pending'; state.buffer[c.id].completedAt = Date.now();
   await writeFile(file, JSON.stringify(state));
   assert.deepEqual((await f.store.revision()).bufferIds, []);
+  assert.deepEqual((await f.store.revision()).bufferPreview, []);
 });
 
 test('reading either member inbox never creates transfers and preserves task ownership', async () => {

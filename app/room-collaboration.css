@@ -63,7 +63,7 @@
 .coop-task-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-height: 3em; }
 .room-collaboration-dialog .coop-task-title:disabled { opacity: 1; }
 .coop-task-top { display: flex; align-items: start; gap: 5px; }
-.coop-task-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; color: var(--ink); padding: 3px 0; font-weight: 550; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.coop-task-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; color: var(--ink); padding: 3px 0; font-weight: 400; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .coop-inline-title { flex: 1; min-width: 0; margin: 0; }
 .coop-inline-title input { display: block; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--theme-accent); border-radius: 5px; padding: 3px 5px; color: var(--ink); background: var(--panel); font-size: 13px; line-height: 1.5; }
 .coop-drag, .coop-complete, .coop-more { flex-shrink: 0; display: grid; place-items: center; border: 0; background: transparent; padding: 4px 0; color: var(--muted); min-width: 24px; min-height: 28px; }
@@ -264,3 +264,88 @@
 .task-attachment-preview-body pre { margin: 0; width: 100%; height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 ui-monospace, monospace; }
 
 .coop-drag::before { content: ""; position: absolute; pointer-events: none; top: 11px; left: calc(50% - 5px); width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 32% 26%, #ffffffc0, #ffffff00 48%), var(--theme-accent); box-shadow: 1px 3px 2px #00000050, inset 0 -1px 2px #00000040; }
+
+/* Two-page ring notebook; public task-board surface remains unchanged. */
+.coop-surface { background: #f5edda url('/classroom/paper.webp') center / 600px; border-color: #c6b99f; }
+.coop-notebook { flex: 1; min-height: 0; overflow: auto; padding: 3px 3px 8px; overscroll-behavior: contain; }
+.coop-members { position: relative; isolation: isolate; box-sizing: border-box; height: 100%; min-height: 220px; min-width: 780px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); grid-auto-rows: auto; gap: 26px; padding: 9px 10px 12px; overflow: visible; border: 1px solid #d5d0c5; border-radius: 9px 9px 13px 13px; background: linear-gradient(90deg,#faf9f4 48%,#d5d1c8 50%,#faf9f4 52%); box-shadow: 0 3px 0 #c6c2b9, 0 5px 0 #eeece5, 0 7px 12px #53473825; }
+.coop-members > .coop-column { position: relative; z-index: 1; border: 1px solid #e0d7c6; border-radius: 2px 2px 4px 3px; background: linear-gradient(90deg,#fffdf6 88%,#eae4d5); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8, 2px 3px 4px #50463520; }
+.coop-members > .coop-column:last-child { background: linear-gradient(90deg,#eae4d5,#fffdf6 12%); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8,-2px 3px 4px #50463520; }
+.coop-members > .coop-column > header { margin: 0 14px; padding: 11px 0 7px; gap: 8px; border: 0; }
+.coop-notebook-title { align-self: end; padding-bottom: 4px; color: #7a705e; font: 400 14px/1 Georgia, 'Times New Roman', serif; }
+.coop-members h3 { flex: 1; min-width: 0; padding: 0 5px 2px; border-bottom: 1px solid #a99b81; font: 25px/1.1 'School Caveat', 'Long Cang', cursive; color: #534738; }
+.coop-members h3 small { font: 11px/1.4 'Classroom Sans', sans-serif; }
+.coop-members .coop-count { font-size: 11px; color: #80755f; }
+.coop-members .coop-member-lanes { margin: 0 9px 5px; }
+.coop-members .coop-lane + .coop-lane { border-left: 1px solid #c9bea7; }
+.coop-members .coop-lane > header { padding: 7px 9px 5px; gap: 6px; }
+.coop-members .coop-lane:first-child > header { justify-content: flex-end; }
+.coop-members .coop-lane:first-child > header > span { order: -1; margin-left: 0; margin-right: auto; }
+.coop-members .coop-lane:last-child > header > span { margin-left: auto; }
+.coop-task-footer { display: flex; align-items: flex-start; gap: 4px; }
+.coop-task-footer:empty { display: none; }
+.coop-task-footer > .coop-task-meta { flex: 1; min-width: 0; }
+.coop-task-footer > .coop-stamp-clip { flex: 0 1 64%; margin-top: 0; padding-top: 4px; margin-left: auto; }
+.coop-task-footer > .coop-stamp-clip:only-child { flex-basis: 100%; }
+.coop-task-footer .coop-claim-stamp { max-width: 100%; font-size: clamp(20px, 2.2vw, 29px); }
+.coop-priority { display: inline-block; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 0; background: none; vertical-align: -3px; flex: 0 0 16px; }
+.coop-task-title .coop-priority { margin-left: 5px; }
+.priority-5 .coop-priority { color: #ed3f3f; }.priority-3 .coop-priority { color: #ffa600; }.priority-1 .coop-priority { color: #4c6fff; }
+@media (max-width: 640px) { .coop-notebook { padding: 2px 2px 7px; }.coop-members { gap: 26px; }.coop-layout { gap: 12px; } }
+
+.coop-task[data-surface-draggable] { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.coop-task[data-surface-draggable]:active { cursor: grabbing; }
+.coop-task[data-surface-draggable] :is(input, textarea, [contenteditable]:not([contenteditable="false"])) { cursor: text; user-select: text; -webkit-user-select: text; }
+
+/* September review: cork noticeboard, flush white sewn notebook and compact rows. */
+.coop-surface { --coop-inset: 14px; padding: var(--coop-inset); border: 0; border-radius: 8px; background: var(--panel); }
+/* Cork comes from the earlier photo; only the frame comes from the later reference. */
+.coop-column.buffer { --coop-board: #b48052; position: relative; container: coop-board / inline-size; background: url('/classroom/taskboard-cork-reference.webp') 0 0 / 400px 400px padding-box; border: 18px solid #d6ad73; border-image: url('/classroom/taskboard-frame-reference.webp') 15 / 18px / 0 stretch; border-radius: 0; box-shadow: inset 1px 2px 6px #57391955, 0 2px 4px #53473830; }
+.coop-column.buffer > header { color: #fff; border: 0; }
+.buffer .coop-count { color: #fff; }
+.room-collaboration-dialog .buffer :is(.coop-refresh,.coop-close) { color: #fff; border-color: #ffffff80; background: #ffffff14; }
+.buffer .coop-recovery-trigger { color: #fff; border-color: #ffffff80; background: #ffffff14; }
+.buffer .coop-new-task { border-color: #fff; color: #fff; background: #ffffff08; }
+.buffer .coop-new-task:hover:not(:disabled), .buffer .coop-new-task.editing { background: #ffffff20; border-color: #fff; }
+.buffer .coop-new-task input { color: #514330; background: #fff9ea90; border-color: #80603e50; }
+.buffer .coop-task { padding-top: 22px; }
+/* Original pin geometry: 10px head, centered at 7px from the paper top. */
+.room-collaboration-dialog .buffer .coop-drag { top: 0; }
+.buffer .coop-drag::before { top: 7px; background: radial-gradient(circle at 32% 26%, #ffffffc0, #ffffff00 48%), var(--coop-pin-color, var(--theme-accent)); }
+/* Reserve the final first-row cell for tools and creation so notes start at the top left. */
+@container coop-board (min-width: 460px) {
+  .coop-column.buffer > header { position: absolute; z-index: 2; right: 16px; top: 12px; padding: 0; }
+  .coop-column.buffer .coop-task-list { padding-top: 12px; }
+  .buffer .coop-new-task { grid-column: -2 / -1; grid-row: 1; margin-top: 42px; }
+}
+.coop-notebook { padding: 0; margin: 0 calc(-1 * var(--coop-inset)) calc(-1 * var(--coop-inset)); }
+.coop-members { gap: 0; padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.coop-members::after { content: ''; position: absolute; z-index: 2; pointer-events: none; top: 0; bottom: 0; left: calc(50% - 9px); width: 18px; background: linear-gradient(90deg,transparent,#6d625612 43%,#786e6235 50%,#6d625612 57%,transparent); border-radius: 50%; }
+.coop-members > .coop-column, .coop-members > .coop-column:last-child { border: 0; border-radius: 0 6px 0 0; background: #fff; box-shadow: none; }
+.coop-members > .coop-column:last-child { border-radius: 6px 0 0 0; }
+.coop-members > .coop-column > header { margin: 0 12px; }
+.coop-members h3 { flex: 0 1 180px; width: 30%; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: 'School Caveat','Classroom Yan','Long Cang',cursive; }
+.coop-members .coop-member-lanes { margin: 0 4px 4px; }
+.coop-members .coop-lane .coop-task-list { padding: 6px 5px; }
+.coop-members .coop-lane > header { padding: 7px 6px 5px; }
+.member-task { --panel: #fff; --soft: #f6f6f4; --line: #deddd7; --ink: #504c43; --muted: #827b6e; background: #fff; border-color: #deddd7; border-radius: 0; }
+.coop-lane .member-task { padding: 7px 7px 7px 9px; }
+.coop-task.priority-5 { --priority-bar: #ed3f3f; }.coop-task.priority-3 { --priority-bar: #ffa600; }.coop-task.priority-1 { --priority-bar: #4c6fff; }
+.member-task:not(.priority-0)::before, .buffer .coop-task:not(.priority-0)::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; border-radius: 0; background: var(--priority-bar); pointer-events: none; }
+.buffer .coop-task:not(.priority-0)::before { left: 0; top: 0; bottom: 0; border-radius: 2px 0 0 2px; }
+.coop-priority-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* Keep the existing keyboard drag control accessible without a visible pin. */
+.room-collaboration-dialog .member-task .coop-drag { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.member-task .coop-drag::before { content: none; }
+.member-task:has(.coop-drag:focus-visible) { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+.member-task .coop-task-top { align-items: center; gap: 5px; }
+.member-task .coop-task-title { flex: 1 1 0; min-width: 0; margin-left: -2px; margin-right: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; overflow-wrap: normal; }
+/* Undated cards retain the same date slot as a noninteractive drag area. */
+.coop-task-date { flex: 0 0 auto; min-width: 49px; text-align: right; white-space: nowrap; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.coop-date-space { align-self: stretch; }
+.room-collaboration-dialog .member-task .coop-claim { flex: 0 0 auto; margin: 0; min-height: 25px; padding: 3px 5px; color: #655f54; background: #fff; border: 1px solid #deddd7; border-radius: 5px; font-size: 10px; line-height: 17px; }
+.room-collaboration-dialog .member-task .coop-claim:hover:not(:disabled) { background: #f5f5f2; border-color: #aaa79e; }
+.member-task .coop-task-footer .coop-workflow-badge { margin: 4px 0 0; }
+.buffer .coop-task-footer > .coop-stamp-clip { flex-shrink: 0; flex-basis: auto; min-width: 0; max-width: 76%; padding-left: 0; }
+.buffer .coop-claim-stamp { white-space: nowrap; overflow-wrap: normal; padding-left: 10px; padding-right: 12px; }
+@media (max-width: 640px) { .coop-surface { --coop-inset: 9px; }.coop-notebook { padding: 0; }.coop-members { gap: 0; } }

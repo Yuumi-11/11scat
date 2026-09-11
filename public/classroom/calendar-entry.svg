@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 150">
+  <!-- Flat blocks share the chalk cup's sage palette; the low base rests on the desk. -->
+  <path fill="#69543b24" d="m8 133 114-6 34 12-29 8-120-6Z"/>
+  <path fill="#4e7370" d="m128 29 25 108-31 9-14-75Z"/>
+  <path fill="#82a297" d="m130 44 15 88-20 6Z"/>
+  <path fill="#668b85" d="m28 19 102 10-8 115-111-9Z"/>
+  <path fill="#82a297" d="m12 128 111 10-1 6-111-9Z"/>
+  <path fill="#d7c5a2" d="m28 24 103 9-10 91-108-10Z"/>
+  <path fill="#f8eed6" d="m26 20 103 9-10 90-107-10Z"/>
+  <path fill="#82a297" d="m26 20 103 9-3 24-103-10Z"/>
+  <path d="m35 18 0 13m19-11 0 13m19-11 0 13m19-11 0 13m19-11 0 13" fill="none" stroke="#877b62" stroke-width="5" stroke-linecap="round"/>
+  <g transform="matrix(1 .09 -.12 1 33 56)">
+    <g fill="#b5b99c">
+      <path d="M0 0h7v5H0zM15 0h7v5h-7zM30 0h7v5h-7zM45 0h7v5h-7zM60 0h7v5h-7zM75 0h7v5h-7z"/>
+      <path d="M0 17h7v5H0zM15 17h7v5h-7zM30 17h7v5h-7zM45 17h7v5h-7zM60 17h7v5h-7zM75 17h7v5h-7z"/>
+      <path d="M0 34h7v5H0zM15 34h7v5h-7zM30 34h7v5h-7zM45 34h7v5h-7zM60 34h7v5h-7z"/>
+    </g>
+    <rect x="26" y="12" width="16" height="16" rx="3" fill="#bc806b"/>
+    <path d="m30 20 3 3 5-7" fill="none" stroke="#f8eed6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

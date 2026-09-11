@@ -1,0 +1,445 @@
+@font-face { font-family: 'Classroom Yan'; src: url('/classroom/fonts/classroom-yan.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
+@font-face { font-family: 'School Calendar Pen'; src: url('/classroom/fonts/calendar-pen.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
+@font-face { font-family: 'School Calendar Brush'; src: url('/classroom/fonts/calendar-brush.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
+@font-face { font-family: 'School Running'; src: url('/classroom/fonts/zhimangxing.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'School Cursive'; src: url('/classroom/fonts/liujianmaocao.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'School Rounded'; src: url('/classroom/fonts/zcoolkuaile.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'School Caveat'; src: url('/classroom/fonts/caveat.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'School Patrick'; src: url('/classroom/fonts/patrickhand.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Classroom Sans'; src: url('/classroom/fonts/classroom-sans.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400 600; }
+/* Match fallback glyph height to Classroom Yan without shrinking the whole text run. */
+@font-face { font-family: 'Long Cang'; src: url('/classroom/fonts/long-cang.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; size-adjust: 90%; }
+@font-face { font-family: 'CHAWP'; src: url('/classroom/fonts/chawp.woff2') format('woff2'); font-display: swap; font-style: normal; font-weight: 400; }
+:root { --page: #f5edda; --panel: #fbf5e6; --soft: #eee2ca; --ink: #534738; --muted: #766b58; --line: #d4c19d; --line-strong: #9f8965; --theme-accent: #527769; --theme-accent-dark: #35594c; --theme-accent-hover: #406555; --theme-soft: #dce4c8; --on-accent: #fff9e7; }
+.classroom-scene {
+  --page: #f5edda; --panel: #fbf5e6; --soft: #eee2ca; --ink: #534738; --muted: #766b58;
+  --line: #d4c19d; --line-strong: #9f8965; --theme-accent: #527769; --theme-accent-dark: #35594c;
+  --theme-accent-hover: #406555; --theme-soft: #dce4c8; --on-accent: #fff9e7;
+  --wood: url('/classroom/wood.webp'); --paper: url('/classroom/paper-fiber.jpg');
+  --board-color: #3c645a; --board-overlay: #3c645a8f;
+  --classroom-ui-font: 'Classroom Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --desk-overlap: 34px; --chat-bottom-inset: 27px; --scene-top: 10px; --board-frame: 13px;
+  --chat-paper-inset: 12px; --chat-paper-bottom-inset: 8px;
+  --panel-shift: clamp(0px, calc((100vw - 1166px) * .138182), 38px);
+  --board-growth: clamp(0px, calc((100vw - 1166px) * .101818), 28px);
+  font-family: var(--classroom-ui-font);
+  height: 100dvh; min-height: 540px; overflow: hidden; padding: var(--scene-top) 14px 0;
+  background: #f5edda url('/classroom/paper.webp') center / 600px; color: var(--ink);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.classroom-scene .workspace { flex: 1 1 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, calc(31.825% - var(--panel-shift))); gap: calc(9px + var(--panel-shift) - var(--board-growth)); width: 100%; max-width: none; margin: 0; height: auto; min-height: 0; }
+.classroom-scene .focus-stage { position: relative; padding: 0; gap: 0; border: 13px solid #cf9f60; border-radius: 8px; border-image: none; background: var(--board-color); box-shadow: 0 2px 1px #93744133, inset 0 3px 7px #203b33; overflow: visible; }
+.classroom-scene .focus-stage::before { content: ''; position: absolute; inset: -13px; background: var(--wood) center / 620px; border-radius: 9px; z-index: 0; pointer-events: none; }
+.classroom-scene .share-canvas { position: relative; isolation: isolate; flex: 1; height: 100%; min-height: 0; border: 0; border-radius: 1px; overflow: visible; background: linear-gradient(#344b421a,#344b421a), url('/classroom/board.webp') center / 650px; box-shadow: inset 0 6px 9px #18382e55; }
+.classroom-scene .share-canvas::before { display: none; }
+.idle-chalkboard { position: absolute; inset: 0; overflow: hidden; color: #f6f1dc; }
+.chalk-date { position: absolute; right: 3.5%; top: 4%; font: clamp(18px, 2.1vw, 32px)/1.4 CHAWP, cursive; transform: rotate(-1.1deg); }
+.chalk-public-tasks { position: absolute; inset: clamp(76px, 14%, 96px) 23.84% 83px 15.38%; padding: 0; margin: 0; display: flex; flex-direction: column; justify-content: flex-start; gap: 8px; list-style: none; overflow: hidden; }
+.chalk-task-measure { visibility: hidden; pointer-events: none; }
+.chalk-public-tasks.chalk-task-overflow { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #f6f1dc88 transparent; }
+.chalk-public-tasks li { display: flex; gap: 18px; align-items: baseline; flex: 0 0 auto; min-width: 0; }
+.chalk-public-tasks li::before { content: ''; width: 13px; height: 13px; flex-shrink: 0; border: 2px solid #f3eedbbb; border-radius: 2px 3px 1px 4px; transform: rotate(-4deg); }
+.chalk-lettering { font: clamp(26px, 3.6vw, 51px)/1.2 'Classroom Yan', 'Long Cang', cursive; -webkit-text-stroke: .28px currentColor; overflow-wrap: anywhere; min-width: 0; display: block; mask-image: url('/classroom/chalk-grain.png'); mask-size: 192px; }
+.classroom-scene .side-panel { position: relative; min-height: 0; padding: 6px var(--chat-paper-inset) var(--chat-paper-bottom-inset); border: 10px solid #d3a465; border-radius: 12px; background: #fbf4e2 var(--paper) center / 560px; box-shadow: none; }
+.classroom-scene .side-tabs { position: relative; margin: 0; padding: 0 40px 0 0; height: 42px; display: flex; gap: 8px; align-items: end; flex: 0 0 auto; border-bottom: 0; background: transparent; overflow: visible; }
+.classroom-scene .side-tabs > button { position: relative; flex: 1; height: 42px; min-width: 0; padding: 7px 8px; border: 0; border-radius: 10px 13px 0 0; background: #eaddbf; color: #7f5d3e; font: 500 19px/1.2 var(--classroom-ui-font); letter-spacing: .06em; box-shadow: none; }
+.classroom-scene .side-tabs > button.active { background: #4f7669; color: #fff6df; }
+.classroom-scene .side-tabs > button svg { display: none; }
+/* The SVG mount ends 2px inside its host; bridge that and the paper inset. */
+.classroom-scene .chat-bell-host { position: absolute; top: 4px; right: calc(-1 * var(--chat-paper-inset) - 2px); z-index: 8; width: 58px; height: 68px; }
+.classroom-scene .scene-desks { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 20px; flex: 0 0 clamp(115px, 16vh, 165px); min-height: 0; align-items: end; }
+.classroom-desk { height: 100%; min-width: 0; display: flex; position: relative; align-items: end; justify-content: center; gap: 4px; padding: 0 5px 9px; }
+.classroom-desk::before { content: ''; position: absolute; left: -3px; right: -3px; bottom: -8px; height: 49px; border-radius: 8px 8px 0 0; background: linear-gradient(#ffefbc22 0 64%, #96633026 66%), var(--wood) center / 500px; box-shadow: inset 0 5px 2px #f1c58977; transform: perspective(400px) rotateX(13deg); }
+.classroom-prop { display: block; background-image: url('/classroom/objects.webp'); background-repeat: no-repeat; background-size: 300% 300%; width: 100%; height: 100%; mix-blend-mode: multiply; pointer-events: none; }
+.prop-calendar { background-position: 0 0; }.prop-chalk-cup { background-position: 50% 0; }.prop-projector { background-position: 100% 0; }
+.prop-microphone { background-position: 0 50%; }.prop-camera { background-position: 50% 50%; }.prop-taskboard { background-position: 100% 50%; }
+.prop-folder { background-position: 0 100%; }.prop-settings { background-position: 50% 100%; }.prop-bell { background-position: 100% 100%; }
+.desk-calendar { position: relative; width: min(100%, 280px); height: 145px; align-self: end; isolation: isolate; }
+.desk-calendar > .classroom-prop { position: absolute; inset: 0; }
+.desk-calendar.projecting { filter: drop-shadow(0 0 6px #d3b054); }
+.calendar-content { position: absolute; left: 14%; right: 20%; top: 30%; bottom: 15%; display: flex; flex-direction: column; gap: 3px; overflow: auto; scrollbar-width: thin; }
+.calendar-name { display: block; font: 600 21px/1.2 var(--classroom-ui-font); text-align: center; color: #835830; background: transparent; border: 0; padding: 0; overflow-wrap: anywhere; }
+.calendar-content .activity-box { display: block; padding: 0; min-height: 0; border: 0; background: transparent; }
+.calendar-content .activity-box label { display: none; }
+.calendar-content .activity-box input { width: 100%; padding: 3px 0; border: 0; border-radius: 0; background: transparent; font: 14px/1.4 var(--classroom-ui-font); color: #5b4d37; text-align: center; }
+.calendar-content p { margin: 0; font: 14px/1.4 var(--classroom-ui-font); text-align: center; overflow-wrap: anywhere; }
+.calendar-content small { font-size: 10px; }
+.classroom-scene .object-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .settings-button { position: relative; flex: 1 1 0; width: 98px; max-width: 120px; height: 106px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; display: block; }
+.classroom-scene .object-button:hover, .classroom-scene .room-collaboration-trigger:hover, .classroom-scene .settings-button:hover { background: transparent; transform: translateY(-3px); filter: drop-shadow(0 3px 3px #47321925); }
+.classroom-scene .object-button[aria-pressed=true] { filter: drop-shadow(0 0 4px #a6c065); }
+.classroom-scene .room-collaboration-trigger i { position: absolute; top: 6px; right: 3px; }
+.classroom-scene .projector-control { position: absolute; left: 44%; top: -47px; width: 150px; height: 125px; z-index: 3; }
+.board-ledge { position: absolute; left: -4px; right: -4px; bottom: -10px; height: 23px; z-index: 3; background: linear-gradient(#8d7959 0 12%, #bd9e6d 14% 51%, #d1ad75 52% 65%, #ba915c 67% 100%); border-radius: 2px 2px 4px 4px; box-shadow: inset 0 2px 1px #78684c66, 0 3px 2px #66573e33; pointer-events: none; }
+.board-ledge::before { content: ''; position: absolute; inset: 3px 8px 11px; background: #a98f64; border-radius: 1px; box-shadow: inset 0 2px 2px #77654766; }
+.board-ledge::after { content: ''; position: absolute; left: 0; right: 0; bottom: 7px; height: 4px; background: #dfbd83; border-radius: 1px; }
+.ledge-decoration { position: absolute; left: 5%; bottom: 11px; display: flex; align-items: end; gap: 12px; }
+.chalk-stick { width: 36px; height: 9px; border-radius: 3px 2px 2px 1px; box-shadow: inset 0 2px 2px #fff8, 1px 2px 1px #1e342d33; transform: rotate(-3deg); background: var(--chalk-color, #f6f1dc); }
+.chalk-eraser { width: 67px; height: 23px; border-radius: 5px 5px 2px 2px; background: linear-gradient(#766c5a 0 22%, #494843 25% 92%, #353c36 92%); box-shadow: 2px 1px 2px #1b322766; }
+.classroom-scene .projection-sheet { position: absolute; inset: -36px 0 16px; z-index: 5; background: #ebe8dc url('/classroom/fabric.webp') center / 480px; box-shadow: 0 10px 18px #142b3260; transform-origin: 50% 0; animation: cloth-lower .65s cubic-bezier(.2,.7,.2,1); padding: 20px 15px 30px; }
+.projection-sheet::before { content: ''; position: absolute; top: 0; left: -4px; right: -4px; height: 10px; background: #b4aa96; border-radius: 3px; box-shadow: 0 2px 3px #655b4433; }
+.projection-sheet::after { content: ''; position: absolute; bottom: 0; left: -2px; right: -2px; height: 9px; background: #c0b8a6; border-radius: 3px; box-shadow: 0 2px 2px #51472d55; }
+.classroom-scene .projection-sheet .main-media { width: 100%; height: 100%; position: static; object-fit: contain; background: #282e2b; border-radius: 0; }
+.classroom-scene .main-fullscreen-button { z-index: 8; color: #fbf6df; background: #2b4d4040; border-color: transparent; bottom: 21px; right: 14px; }
+.classroom-scene .projection-sheet ~ .main-fullscreen-button { color: #fff; }
+.classroom-scene .projection-sheet { clip-path: inset(0 0 100%); visibility: hidden; pointer-events: none; animation: none; transition: clip-path .6s cubic-bezier(.2,.7,.2,1), visibility 0s .6s; }
+.classroom-scene .projection-sheet.is-open { clip-path: inset(0); visibility: visible; pointer-events: auto; transition: clip-path .6s cubic-bezier(.2,.7,.2,1), visibility 0s; }
+.classroom-scene .projection-sheet.is-open .media-caption { bottom: 15px; background: #292e2bc9; font-size: 12px; }
+.classroom-scene .projection-sheet .media-window-actions { bottom: 48px; max-width: calc(100% - 24px); flex-wrap: wrap; }
+/* Black Paper by Atle Mo, CC BY-SA 3.0; attribution in public/classroom/ATTRIBUTION.md. */
+.classroom-scene .share-canvas { background: var(--board-surface); }
+.classroom-scene { background-image: linear-gradient(#f5eddac0,#f5eddac0), url('/classroom/paper.webp'); }
+.classroom-scene .side-panel { height: calc(100% - var(--chat-bottom-inset)); background-image: linear-gradient(#f6efdeba,#f6efdeba), var(--paper); background-size: auto, 640px auto; }
+.classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .desk-calendar { mix-blend-mode: multiply; }
+.classroom-scene .desk-calendar { width: min(100%, 256.75px); height: auto; aspect-ratio: 13 / 8; isolation: auto; }
+.classroom-scene .classroom-desk { align-self: stretch; }
+.classroom-scene .classroom-prop { mix-blend-mode: normal; }
+.classroom-scene .classroom-prop { background-size: contain; background-position: center bottom; mask-image: none; }
+.prop-chalk-cup, .prop-camera, .prop-settings { --prop-x: 50%; }
+.prop-projector, .prop-taskboard, .prop-bell { --prop-x: 100%; }
+.prop-microphone, .prop-camera, .prop-taskboard { --prop-y: 50%; }
+.prop-folder, .prop-settings, .prop-bell { --prop-y: 100%; }
+.classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .desk-calendar, .classroom-scene .room-bell-trigger { mix-blend-mode: normal; }
+.classroom-scene .projector-control { max-width: 150px; mix-blend-mode: normal; }
+.classroom-scene .share-canvas > .main-fullscreen-button { position: absolute; top: auto; bottom: 21px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 3px; padding: 0; border: 0; color: #fbf6df; background: #2b4d4040; }
+.classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: -4px; }
+.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 14px, #b74c5066 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
+.classroom-scene .message { margin: 0; max-width: 94%; flex-shrink: 0; }
+.classroom-scene .message > span { font-size: 11px; color: #897c65; margin: 0 6px 3px; }
+.classroom-scene .message:not(.own) > span { margin-left: 0; }
+.classroom-scene .message p { position: relative; padding: 10px 13px; border: 0; border-radius: 8px 6px 9px 4px / 6px 8px 5px 7px; background: linear-gradient(#eee1c6e6,#eee1c6e6), var(--paper) center / 400px; color: #514738; font: 15px/1.6 var(--classroom-ui-font); box-shadow: 0 2px 2px #6b51371a, 1px 4px 7px #6b51370b; transform: rotate(-.2deg); }
+.classroom-scene .message.own p { background: linear-gradient(#dce5bee6,#dce5bee6),var(--paper) center / 400px; border-radius: 6px 8px 5px 9px / 8px 4px 9px 5px; transform: rotate(.25deg); }
+.classroom-scene .message p::before, .classroom-scene .message p::after { display: none; }
+.classroom-scene .chat-form { flex-shrink: 0; margin: 0; padding: 9px 0 0; border-top: 1px solid #ccb99077; }
+.classroom-scene .chat-input-row textarea { border: 1px solid #c6b690; border-radius: 9px; background: #fffaf080; box-shadow: inset 0 1px 1px #a8957530; }
+.classroom-scene .chat-attach-button, .classroom-scene .voice-record-button { border: 0; background: transparent; color: #716650; }
+.classroom-scene .room-bell-trigger { position: relative; display: block; width: 65px; height: 72px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.classroom-scene .room-bell-trigger::before, .classroom-scene .room-bell-trigger::after { display: none; }
+.classroom-scene .room-bell-trigger:hover { transform: none; background: transparent; }
+.classroom-scene .room-bell-trigger .classroom-prop { transform: none; width: 100%; height: 100%; }
+.classroom-scene .room-bell-trigger svg.classroom-prop { animation: none; transform: none; background: none; overflow: visible; }
+.classroom-scene .bell-body { transform-origin: 38px 36px; transition: transform .2s ease-out; }
+.classroom-scene .room-bell-trigger:is(:hover, :focus-visible) .bell-body { transform: rotate(-9deg); }
+.classroom-scene .room-bell-trigger:is(.is-ringing, .has-incoming) .bell-body { animation: school-bell .5s ease-in-out infinite alternate; }
+.classroom-scene .task-view { flex: 1; min-height: 0; padding: 0; margin: 0 calc(-1 * var(--chat-paper-inset)) calc(-1 * var(--chat-paper-bottom-inset)); }
+.classroom-scene .task-view .task-scroll { display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: repeat(2,minmax(0,1fr)); gap: 0; height: 100%; padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+.classroom-scene .task-person-card { display: flex; flex-direction: column; min-height: 0; padding: 0 9px; border: 0; border-radius: 0; background: transparent; overflow: hidden; }
+.classroom-scene .task-person-card + .task-person-card { border-left: 0; }
+.classroom-scene .activity-heading { padding-bottom: 8px; border-color: #cbb58c80; }
+.classroom-scene .activity-heading strong { font: 600 19px/1.3 var(--classroom-ui-font); }
+.classroom-scene .task-person-list { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.classroom-scene .task-row { padding: 10px 0; gap: 6px; align-items: flex-start; }
+.classroom-scene .task-due { display: none; }
+.classroom-scene .task-copy strong { color: #534738; font: 400 14px/1.6 var(--classroom-ui-font); overflow-wrap: anywhere; }
+.classroom-scene .task-empty { font-size: 12px; padding: 8px 0; }
+.classroom-scene .custom-check { flex: 0 0 17px; width: 17px; height: 17px; margin-top: 3px; border-color: #b9a780; }
+.calendar-invite { border: 0; padding: 1px; background: transparent; font: 13px/1.4 var(--classroom-ui-font); color: #735d3e; }
+.calendar-name { font-family: var(--classroom-ui-font); font-size: 18px; }
+.calendar-content p, .calendar-content .activity-box input, .calendar-content .activity-box textarea { font: 12px/1.45 var(--classroom-ui-font); }
+.calendar-content .activity-box textarea { display: block; width: 100%; height: 36px; min-height: 0; resize: none; text-align: center; padding: 2px 0; margin: 0; border: 0; border-radius: 0; color: #514738; background: transparent; }
+.desk-classmates { overflow-x: auto; justify-content: safe center; scrollbar-width: thin; }
+.desk-classmates .desk-calendar { flex: 0 0 min(100%,256.75px); }
+.board-shelf { position: absolute; left: 0; right: 0; bottom: 100%; z-index: 20; border: 1px solid #b6a27b; border-radius: 8px; padding: 6px; background: #fcf4e1; box-shadow: 0 5px 20px #4b443344; }
+.board-shelf > div { display: flex; gap: 4px; }
+.board-shelf > div > button:first-child { flex: 1; text-align: left; }
+.board-shelf button { min-height: 34px; border: 0; border-radius: 3px; background: transparent; display: inline-flex; align-items: center; padding: 4px 8px; gap: 5px; }
+.board-shelf button:hover { background: #e9dfc5; }
+.desk-stop-share { position: absolute; top: -9px; left: 0; display: flex; gap: 4px; align-items: center; border: 1px solid #c8b99c; border-radius: 4px; padding: 4px 6px; background: #fff8e7; font-size: 11px; z-index: 5; }
+.classroom-scene .whiteboard-shell { grid-template-columns: minmax(0,1fr) 42px; gap: 0; padding: 0 5px 30px 0; background: transparent; z-index: 4; overflow: visible; }
+.classroom-scene .whiteboard-paper { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.whiteboard-paper .chalk-stroke-canvas, .whiteboard-paper .chalk-text-canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.whiteboard-paper .chalk-text-canvas { pointer-events: none; }
+.whiteboard-paper .chalk-stroke-canvas { cursor: crosshair; }
+.tool-erase-stroke .chalk-stroke-canvas, .tool-erase-area .chalk-stroke-canvas { cursor: cell; }
+.classroom-scene .board-text-content { color: transparent; }
+.classroom-scene .board-text-box { border-color: transparent; }
+.classroom-scene .board-text-box.editing { border: 1px dashed #f5eedb66; }
+.classroom-scene .board-text-box textarea { color: inherit; background: #36594b33; }
+.classroom-scene .whiteboard-tools { position: relative; align-self: center; min-width: 0; width: 42px; padding: 5px 2px; border: 0; border-radius: 0; gap: 8px; background: transparent; box-shadow: none; backdrop-filter: none; color: #f8f0dd; }
+.classroom-scene .whiteboard-tools > button { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 4px; color: #f8f0dd; background: transparent; }
+.classroom-scene .whiteboard-tools > button.active { background: #e4ead62b; }
+.classroom-scene .chalk-choice[aria-pressed=true], .classroom-scene .ledge-eraser.selected { background: transparent; box-shadow: none; border-color: transparent; }
+.classroom-scene .board-colors { display: flex; justify-content: center; }
+.classroom-scene .board-colors .custom-color { width: 32px; height: 30px; border-radius: 4px; border-color: #d7d6b177; }
+.classroom-scene .board-width { color: #f5edd8; width: 36px; }
+.classroom-scene .board-width input { width: 34px; accent-color: #e1d7b9; }
+.chalk-palette { position: absolute; bottom: -9px; left: 4%; z-index: 7; display: flex; align-items: end; gap: 2px; }
+.chalk-palette button { display: flex; align-items: end; justify-content: center; height: 44px; width: 46px; padding: 0 4px 10px; border: 0; border-radius: 4px; background: transparent; }
+.chalk-palette .ledge-eraser { width: 75px; margin-right: 9px; }
+.chalk-choice[aria-pressed=true] .chalk-stick, .ledge-eraser.selected .chalk-eraser { transform: translateY(-4px) rotate(-4deg); box-shadow: 0 0 0 1px #f9f2d566, 1px 4px 4px #192e2844; }
+.classroom-scene .share-canvas:fullscreen { border: 13px solid #ce9e62; border-radius: 0; padding: 0; }
+.classroom-scene .share-canvas:fullscreen .projection-sheet { inset: 0 0 18px; }
+.app-shell.classroom-scene > .classroom-preview-toolbar { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 30; display: flex; flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100vw - 16px); gap: 4px; padding: 2px 6px; border-radius: 6px 6px 0 0; background: #fff9e9; box-shadow: 0 0 6px #6c563333; font-size: 11px; }
+.classroom-preview-toolbar :is(span, button) { white-space: nowrap; }
+.classroom-preview-toolbar button { background: transparent; border: 0; padding: 3px 6px; }
+.classroom-preview-toolbar button[aria-pressed=true] { background: #dce4c8; }
+.classroom-preview-toolbar a { padding: 3px 6px; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+@keyframes school-bell { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@media (max-width: 1000px) and (min-width: 721px) {
+  .classroom-scene { padding: var(--scene-top) 12px 0; gap: 8px; }
+  .classroom-scene .workspace { grid-template-columns: minmax(0,1.65fr) minmax(285px,1fr); gap: 8px; }
+  .classroom-scene .focus-stage, .classroom-scene .side-panel { height: auto; max-height: none; min-height: 0; }
+  .classroom-scene .scene-desks { gap: 12px; grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .calendar-name { font-size: 21px; }.calendar-content p { font-size: 14px; }
+  .classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger { height: 85px; }
+  .classroom-scene .projector-control { height: 115px; }
+}
+@media (max-width: 720px) {
+  .classroom-scene { height: auto; min-height: 100dvh; overflow: visible; padding: var(--scene-top) 10px 0; gap: 12px; }
+  .classroom-scene .workspace { flex: none; display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(280px,46dvh) minmax(330px,48dvh); gap: 16px; }
+  .classroom-scene .focus-stage, .classroom-scene .side-panel { height: auto; min-height: 0; max-height: none; }
+  .classroom-scene .focus-stage { border-width: 10px; }.classroom-scene .focus-stage::before { inset: -10px; }
+  .classroom-scene .scene-desks { flex: none; height: 230px; grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: 110px 108px; gap: 12px; }
+  .classroom-scene .desk-calendar { height: auto; }.classroom-scene .calendar-content { top: 30%; bottom: 15%; }
+  .classroom-scene .desk-media .object-button, .classroom-scene .desk-room .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger { height: 90px; }
+  .classroom-scene .projector-control { width: 116px; height: 95px; left: 42%; top: -35px; }
+  .chalk-date { font-size: 17px; top: 18%; right: 4%; }.chalk-lettering { font-size: 28px; }
+  .chalk-public-tasks { inset: 25% 7% 38px; gap: 7px; }
+  .classroom-scene { --chat-paper-inset: 8px; }
+  .classroom-scene .side-panel { padding: 4px var(--chat-paper-inset) var(--chat-paper-bottom-inset); }.classroom-scene .side-tabs { height: 38px; }
+  .classroom-scene .side-tabs > button { font-size: 18px; }
+  .classroom-scene .task-copy strong { font-size: 14px; }
+  .classroom-scene .whiteboard-shell { grid-template-columns: minmax(0,1fr) 42px; padding-bottom: 33px; }
+  .classroom-scene .whiteboard-tools { max-height: 100%; gap: 1px; overflow-y: auto; padding: 2px; }
+  .classroom-scene .whiteboard-tools > button { min-height: 36px; }
+  .chalk-palette { left: 1%; gap: 0; }.chalk-palette .ledge-eraser { margin-right: 2px; width: 63px; }.chalk-palette .chalk-eraser { width: 55px; }.chalk-palette .chalk-choice { width: 41px; }
+  .classroom-scene .projection-sheet { inset: -30px -2px 12px; padding: 15px 8px 25px; }
+}
+.classroom-scene .room-error, .classroom-scene .board-notice, .classroom-scene .focus-stage > .error-message { position: absolute; left: 12px; bottom: 42px; z-index: 12; background: #fff3d9; padding: 6px 10px; border-radius: 5px; }
+@keyframes cloth-lower { from { clip-path: inset(0 0 100%); transform: translateY(-10px); } to { clip-path: inset(0); transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .classroom-scene *, .classroom-scene *::before, .classroom-scene *::after { animation: none !important; transition: none !important; } }
+
+/* The foreground row overlaps the board on desktop. Empty areas pass pointer input through. */
+.app-shell.classroom-scene > .scene-desks { z-index: 6; grid-template-rows: minmax(0, 1fr); margin-top: calc(-1 * var(--desk-overlap)); pointer-events: none; }
+.classroom-scene .classroom-desk { min-height: 0; pointer-events: none; }
+.classroom-scene .classroom-desk :is(button, input, textarea, .desk-calendar, .board-shelf) { pointer-events: auto; }
+.classroom-scene .classroom-desk .desk-calendar { pointer-events: none; }
+.classroom-scene .classroom-desk .calendar-content { pointer-events: auto; }
+.classroom-scene :is(button, input, textarea, select) { font-family: var(--classroom-ui-font); }
+.classroom-scene .board-text-box textarea { font-family: 'Classroom Yan', 'Long Cang', cursive; }
+.classroom-scene .desk-room { padding-right: clamp(48px,5.9vw,84px); gap: clamp(18px,2.4vw,34px); }
+.classroom-scene .desk-room .cloud-entry-button { left: clamp(4px,.56vw,8px); }
+.classroom-scene :is(.desk-media,.desk-room) :is(.object-button,.room-collaboration-trigger,.settings-button) { min-width: 0; height: 112px; }
+.classroom-scene .prop-calendar, .classroom-scene .prop-taskboard, .classroom-scene .prop-folder, .classroom-scene .prop-settings, .classroom-scene .prop-bell { background-size: contain; background-position: center bottom; mask-image: none; }
+.classroom-scene .prop-calendar { background-image: url('/classroom/calendar-flat.svg'); }
+.classroom-scene .prop-taskboard { background-image: url('/classroom/taskboard-flat.svg'); }
+.classroom-scene .prop-folder { background-image: url('/classroom/folder-flat.svg'); }
+.classroom-scene .prop-settings { background-image: url('/classroom/settings-flat.svg'); }
+.classroom-scene .prop-bell { background-image: url('/classroom/bell-flat.svg'); }
+.app-shell.classroom-scene > .wall-exit { position: absolute; right: 17px; bottom: 66px; z-index: 7; width: 68px; height: 44px; padding: 3px 0; border: 0; border-radius: 2px; background: transparent; box-shadow: none; }
+.emergency-exit-sign { display: block; width: 100%; height: 100%; background: url('/classroom/emergency-exit.svg') center / contain no-repeat; filter: drop-shadow(0 2px 1px #625a4033); }
+.classroom-scene .wall-exit:hover { background: transparent; filter: brightness(1.08); }
+.classroom-scene .wall-exit:focus-visible { outline: 2px solid #527769; outline-offset: 2px; }
+/* Chalk and eraser sit directly on the lower right wooden sill. */
+.classroom-scene .ledge-decoration { left: auto; right: 14px; bottom: 15px; transform: none; z-index: 1; }
+.classroom-scene .chalk-palette { left: auto; right: 10px; bottom: -1px; }
+.classroom-scene .share-canvas:has(.whiteboard-shell) .ledge-decoration { display: none; }
+.classroom-scene .share-canvas > .main-fullscreen-button { bottom: 49px; }
+.classroom-scene .prop-chalk-cup { background-image: url('/classroom/chalk-cup-flat.svg'); }
+.classroom-scene .prop-microphone { background-image: url('/classroom/microphone-flat.svg'); }
+.classroom-scene .prop-camera { background-image: url('/classroom/camera-flat.svg'); }
+.classroom-scene .prop-projector { background-image: url('/classroom/projector-rear.svg'); }
+.classroom-scene .object-button.projector-control { left: 50%; top: -35px; width: 150px; height: auto; aspect-ratio: 18 / 11; z-index: 8; transform: translateX(-50%); }
+.classroom-scene .object-button.projector-control:hover { transform: translate(-50%, -2px); }
+.classroom-scene .projection-sheet { inset: calc(-1 * (var(--scene-top) + var(--board-frame))) 0 8px; padding: 10px 10px 11px; }
+.classroom-scene .chalk-tool-icon { display: block; width: 32px; height: 32px; background-position: center; background-repeat: no-repeat; background-size: contain; }
+.classroom-scene .main-fullscreen-button.is-chalk { background: transparent; box-shadow: none; }
+.classroom-scene .main-fullscreen-button.is-chalk:hover { background: #f6f1dc12; }
+@media (min-width: 721px) {
+  .classroom-scene .focus-stage { height: calc(100% - 22px); align-self: start; }
+}
+@media (min-width: 721px) and (max-width: 1000px) {
+  .classroom-scene { --desk-overlap: 26px; --chat-bottom-inset: 19px; --scene-top: 10px; }
+  .classroom-scene .chalk-palette, .classroom-scene .ledge-decoration { transform: scale(.65); transform-origin: right bottom; }
+  .classroom-scene :is(.desk-media,.desk-room) :is(.object-button,.room-collaboration-trigger,.settings-button) { height: 96px; }
+  .app-shell.classroom-scene > .wall-exit { right: 12px; width: 58px; }
+  .classroom-scene .calendar-name { font-size: 17px; }
+}
+.classroom-scene .share-canvas:fullscreen .chalk-palette, .classroom-scene .share-canvas:fullscreen .ledge-decoration { transform: none; }
+@media (max-width: 720px) {
+  .classroom-scene { --desk-overlap: 0px; --chat-bottom-inset: 0px; --scene-top: 10px; --board-frame: 10px; }
+  .app-shell.classroom-scene > .scene-desks { grid-template-rows: 110px 108px; }
+  .classroom-scene .desk-room { padding-right: 8px; padding-top: 20px; }
+  .classroom-scene :is(.desk-media,.desk-room) :is(.object-button,.room-collaboration-trigger,.settings-button) { height: 88px; }
+  .app-shell.classroom-scene > .wall-exit { right: 18px; bottom: 102px; width: 56px; height: 34px; }
+  .classroom-scene .object-button.projector-control { width: 120px; top: -32px; }
+  .classroom-scene .projection-sheet { padding: 10px 8px 11px; }
+  .classroom-scene .chalk-palette { right: 5px; }
+  .classroom-scene .scene-desks { height: 262px; gap: 44px 12px; }
+  .app-shell.classroom-scene > .wall-exit { bottom: 112px; }
+}
+
+/* Only handwriting on the calendar changes; buttons elsewhere retain the print face. */
+.classroom-scene { --calendar-hand-font: 'School Calendar Pen', 'Classroom Yan', 'Long Cang', cursive; }
+.classroom-scene[data-calendar-font=brush] { --calendar-hand-font: 'School Calendar Brush', 'School Calendar Pen', cursive; }
+.classroom-scene[data-calendar-font=yan] { --calendar-hand-font: 'Classroom Yan', 'Long Cang', cursive; }
+.classroom-scene[data-calendar-font=running] { --calendar-hand-font: 'School Running', 'School Calendar Pen', cursive; }
+.classroom-scene[data-calendar-font=cursive] { --calendar-hand-font: 'School Cursive', 'School Calendar Pen', cursive; }
+.classroom-scene[data-calendar-font=rounded] { --calendar-hand-font: 'School Rounded', 'School Calendar Pen', cursive; }
+.classroom-scene[data-calendar-font=long] { --calendar-hand-font: 'Long Cang', cursive; }
+.classroom-scene[data-calendar-title=caveat] { --calendar-title-font: 'School Caveat'; }
+.classroom-scene[data-calendar-title=patrick] { --calendar-title-font: 'School Patrick'; }
+.classroom-scene .calendar-content :is(strong, p, button, input, textarea, label, small) { font-family: var(--calendar-hand-font); font-weight: 400; }
+.classroom-scene .calendar-content .calendar-name { font-size: clamp(19px, 1.8vw, 26px); line-height: 1.15; }
+.classroom-scene .calendar-content :is(p, .activity-box input, .activity-box textarea, .calendar-invite) { font-size: clamp(15px, 1.25vw, 18px); line-height: 1.35; }
+.classroom-scene .calendar-content .activity-box textarea { height: 2.7em; flex-shrink: 0; }
+.classroom-scene .calendar-content small { font-size: 12px; }
+.classroom-scene .calendar-content .calendar-name-chinese { font-family: var(--classroom-ui-font); font-weight: 500; }
+.classroom-scene .calendar-content .calendar-name-latin { font-family: var(--calendar-title-font, 'CHAWP'), var(--classroom-ui-font); }
+.classroom-scene .desk-calendar.projecting { filter: drop-shadow(0 0 5px #e0ba65) drop-shadow(0 0 13px #e8cc8077); }
+.desk-calendar.projecting::after { content: ''; position: absolute; inset: 15% 14% 14% 6%; border-radius: 3px; box-shadow: inset 0 0 16px #efcf6855; pointer-events: none; }
+.chalk-eraser { position: relative; display: grid; place-items: center; }
+.chalk-eraser small { font: 11px/1 'School Calendar Pen', cursive; color: #efe1bd; letter-spacing: .06em; opacity: .85; padding-top: 2px; }
+.rainbow-chalk { position: relative; display: flex; justify-content: center; align-items: end; width: 46px; height: 44px; padding: 0 4px 10px; cursor: pointer; }
+.rainbow-chalk .chalk-stick { background: linear-gradient(95deg,#e1a0b4,#e5c67c 32%,#b6cda3 59%,#95bdcf 83%,#b0a4ce); }
+.rainbow-chalk input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.rainbow-chalk:focus-within { outline: 1px dashed #f6f1dc; outline-offset: 1px; }
+/* Grow foreground overlap only as space opens beside the calendars. */
+@media (min-width:721px) {
+  .classroom-scene { --desk-overlap: clamp(0px, calc((100vw - 1366px) * .2), 34px); }
+  .classroom-scene .chalk-palette, .classroom-scene .ledge-decoration { transform: none; }
+}
+
+/* Fifth review: one material, stable fullscreen geometry, sliding board rails. */
+.classroom-scene { --board-surface: linear-gradient(var(--board-overlay),var(--board-overlay)), url('/classroom/board-grain.png') 0 0 / 400px 400px, var(--board-color); }
+.classroom-scene .stage-content { position: relative; width: 100%; height: 100%; isolation: isolate; background: var(--board-surface); }
+.classroom-scene .share-canvas:fullscreen { border: 0; background: var(--board-color); }
+.classroom-scene .share-canvas:fullscreen::backdrop { background: var(--board-color,#3c645a); }
+.classroom-scene .share-canvas:fullscreen .stage-content { position: absolute; left: 50%; top: 50%; width: var(--stage-base-width); height: var(--stage-base-height); transform: translate(-50%,-50%) scale(var(--stage-scale,1)); transform-origin: center; }
+.classroom-scene .share-canvas:fullscreen .chalk-lettering { font-size: var(--stage-chalk-font,51px); }
+.classroom-scene .share-canvas:fullscreen .chalk-date { font-size: var(--stage-date-font,32px); }
+.classroom-scene .share-canvas:fullscreen .projection-sheet { inset: calc(-1 * (var(--scene-top) + var(--board-frame))) 0 8px; }
+.classroom-scene .stage-content > .main-fullscreen-button { position: absolute; z-index: 8; inset: auto 14px 49px auto; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 3px; display: grid; place-items: center; }
+.chalk-public-tasks li::before { content: none; }
+.classroom-scene .side-panel { border-color: transparent; isolation: isolate; background-image: linear-gradient(#f6efdeba,#f6efdeba),var(--paper),var(--wood); background-origin: padding-box,padding-box,border-box; background-clip: padding-box,padding-box,border-box; background-size: auto,640px auto,620px auto; }
+.classroom-scene .side-panel::before { content: none; }
+@media(min-width:1001px) { .classroom-scene { --desk-overlap: 34px; } }
+@media(min-width:721px) and (max-width:1000px) { .classroom-scene { --desk-overlap: 26px; } }
+.blackboard-cabinet { --board-peek: 26px; --peek-left: 0px; --peek-right: 0px; position: absolute; inset: 0; background: #7e8068; isolation: isolate; }
+.blackboard-cabinet::before,.blackboard-cabinet::after { content: ''; position: absolute; left: 0; right: 0; height: 7px; z-index: 1; background: linear-gradient(#88886e 0 35%,#4e604f 36% 65%,#b0a487 66%); pointer-events: none; }
+.blackboard-cabinet::before { top: 0; }.blackboard-cabinet::after { bottom: 0; }
+.blackboard-back { position: absolute; inset: 8px 0 6px; border: 5px solid #ad936a; background: var(--board-surface); box-shadow: inset 0 0 0 1px #314b4088; }
+.blackboard-front { position: absolute; inset: 0 var(--peek-right) 0 var(--peek-left); z-index: 2; border: 5px solid #b49b70; border-top-width: 4px; border-bottom-width: 4px; background: var(--board-surface); box-shadow: 3px 2px 0 #32463a66,-2px 0 0 #dfc599; }
+.blackboard-front::before,.blackboard-front::after { content: ''; position: absolute; top: 2px; bottom: 1px; width: 2px; background: #e0c39788; z-index: 5; pointer-events: none; }
+.blackboard-front::before { left: -4px; }.blackboard-front::after { right: -4px; }
+.board-layer-navigation { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+.board-layer-side { position: absolute; top: 0; bottom: 0; width: var(--board-peek); border: 0; padding: 0; background: transparent; pointer-events: auto; cursor: pointer; }
+.board-layer-side.previous { left: 0; }.board-layer-side.next { right: 0; }
+.board-layer-position { position: absolute; left: calc(var(--peek-left) + 18px); bottom: 12px; font: 12px 'CHAWP',sans-serif; color: #f5efdb99; }
+.classroom-scene .blackboard-front > .main-fullscreen-button { position: absolute; z-index: 8; inset: auto 14px 49px auto; width: 36px; height: 36px; display: grid; place-items: center; border: 0; padding: 0; }
+.classroom-scene .board-close-button { position: absolute; top: 10px; right: 9px; z-index: 8; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px; background: transparent; }
+.board-close-button:hover { background: #f6f1dc12; }.board-close-button:focus-visible { outline: 1px dashed #f6f1dc; }
+.chalk-palette .chalk-slot { display: flex; align-items: end; justify-content: center; height: 44px; width: 46px; padding: 0 4px 10px; }
+.chalk-palette .chalk-slot.ledge-eraser { width: 75px; margin-right: 9px; }.chalk-slot-empty { visibility: hidden; }
+.classroom-scene .idle-chalk-palette { pointer-events: none; }
+@media(max-width:720px) { .blackboard-cabinet { --board-peek: 18px; }.chalk-palette .chalk-slot.ledge-eraser { width: 63px; margin-right: 2px; }.chalk-palette .chalk-slot.chalk-choice { width: 41px; }}
+.classroom-scene .media-nav { background: #fffcf269; border: 1px solid #fff9; box-shadow: none; backdrop-filter: none; color: #fff; width: 36px; height: 58px; border-radius: 7px; }
+.classroom-scene .media-nav:hover { background: #fffcf29e; }.classroom-scene .media-prev { left: 10px; }.classroom-scene .media-next { right: 10px; }
+.classroom-scene .projection-sheet { background-color: #f4f1e8; background-image: linear-gradient(#fffdf370,#fffdf370),url('/classroom/fabric.webp'); }
+.classroom-scene .prop-projector { background-image: url('/classroom/projector-off.svg'); }
+.classroom-scene .prop-projector.is-on { background-image: url('/classroom/projector-on.svg'); }
+.classroom-scene .prop-camera.is-on { background-image: url('/classroom/camera-on.svg'); }
+.classroom-scene .prop-microphone { background-image: url('/classroom/microphone-off.svg'); }
+.classroom-scene .prop-microphone.is-on { background-image: url('/classroom/microphone-on.svg'); }
+.classroom-scene .chalk-choice, .classroom-scene .ledge-eraser, .classroom-scene .rainbow-chalk { filter: none; }
+.classroom-scene .chalk-choice[aria-pressed=true] .chalk-stick { transform: translateY(-4px); box-shadow: inset 0 1px #fff8,0 1px 0 1px #f9f2d5; }
+.classroom-scene .chalk-choice { position: relative; }.classroom-scene .chalk-choice[aria-pressed=true]::after { content: ''; position: absolute; bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: #f6f1dc; }
+.chalk-palette .ledge-eraser { position: relative; }
+.eraser-mode-art { position: absolute; right: -4px; bottom: 0; width: 36px; height: 18px; background: center / contain no-repeat url('/classroom/chalk/eraser-whole.svg'); pointer-events: none; }
+.eraser-mode-art.erase-area { background-image: url('/classroom/chalk/eraser-area.svg'); }
+.classroom-scene .board-text-box.editing { resize: none; overflow: visible; border: 1px dashed #f6f1dc88; outline: 0; background: transparent; box-shadow: none; border-radius: 1px; }
+.classroom-scene .board-text-box { min-width: 0; min-height: 0; }
+.classroom-scene .stage-content .main-fullscreen-error { position: absolute; z-index: 9; top: 12px; left: 12px; max-width: calc(100% - 72px); padding: 8px 12px; border-radius: 6px; background: #fff3d9; color: #514738; }
+.classroom-scene .share-canvas:fullscreen .stage-content::before { content: ''; position: absolute; inset: -13px; z-index: 10; border: 13px solid #cf9f60; border-image: var(--wood) 20 / 13px stretch; background: none; pointer-events: none; }
+.classroom-scene .board-text-box textarea { background: transparent; overflow-y: auto; scrollbar-width: thin; }
+.classroom-scene .board-text-drag { left: 50%; top: -17px; width: 40px; height: 18px; margin-left: -20px; background: transparent; border-radius: 8px; }
+.board-text-drag span { width: 28px; height: 3px; border-radius: 3px; background: #f6f1dcaa; mask: url('/classroom/chalk-grain.png') center / 60px; }
+.classroom-scene .board-text-delete { right: -1px; top: -27px; width: 24px; height: 24px; background: transparent; }
+.classroom-scene .board-text-delete .chalk-tool-icon { width: 20px; height: 20px; }
+.text-resize-handle { position: absolute; z-index: 4; width: 12px; height: 12px; padding: 0; border: 0; background: transparent; touch-action: none; }
+.text-resize-handle::after { content: ''; position: absolute; inset: 3px; border: 1px solid #f6f1dcaa; background: var(--board-color,#3c645a); }
+.handle-n,.handle-s { left: calc(50% - 6px); cursor: ns-resize; }.handle-n { top: -6px; }.handle-s { bottom: -6px; }
+.handle-e,.handle-w { top: calc(50% - 6px); cursor: ew-resize; }.handle-e { right: -6px; }.handle-w { left: -6px; }
+.handle-ne,.handle-se { right: -6px; }.handle-nw,.handle-sw { left: -6px; }.handle-ne,.handle-nw { top: -6px; }.handle-se,.handle-sw { bottom: -6px; }
+.handle-ne,.handle-sw { cursor: nesw-resize; }.handle-nw,.handle-se { cursor: nwse-resize; }
+.classroom-scene { --device-font: 'Device Latin','Device Han Rounded',sans-serif; }
+.classroom-scene[data-device-font=sans] { --device-font: 'Device Sans',sans-serif; }
+.classroom-scene[data-device-font=rounded] { --device-font: 'Device Latin','Device Rounded','Device Sans',sans-serif; }
+.classroom-scene[data-device-font=youyuan],.classroom-scene[data-device-font=resource-rounded] { --device-font: 'Device Latin','Device Han Rounded',sans-serif; }
+.device-card { position: relative; width: min(100%,240px); aspect-ratio: 3 / 2; flex-shrink: 0; pointer-events: none; container-type: inline-size; }
+.device-tablet { width: min(93.3333%,224px); }
+.device-shell { display: block; position: absolute; inset: 0; background: center bottom / contain no-repeat; }
+.device-tablet .device-shell { background-image: url('/classroom/tablet-on.svg'); }.device-tablet.is-offline .device-shell { background-image: url('/classroom/tablet-off.svg'); }
+.device-laptop .device-shell { background-image: url('/classroom/laptop-on.svg'); }.device-laptop.is-offline .device-shell { background-image: url('/classroom/laptop-off.svg'); }
+.device-screen { position: absolute; left: 12.5%; right: 12.5%; top: 13%; bottom: 15%; display: flex; flex-direction: column; padding: 3px 0 6px; pointer-events: auto; overflow: hidden; color: #42534b; font-family: var(--device-font); }
+.device-laptop .device-screen { left: 13%; right: 18%; top: 11%; bottom: 27%; }
+.device-tablet .device-screen { left: 13.5%; right: 15%; top: 13%; bottom: 15%; }
+.device-tablet .device-activity { padding-inline: 3px; background: #fff9fa9c; border-color: #d5bec64d; }
+.device-screen::after { content: ''; position: absolute; bottom: 2px; left: calc(50% - 17px); width: 34px; height: 2px; border-radius: 2px; background: #a6b9b044; pointer-events: none; }
+.device-screen:not([data-font-status=ready]) > :is(.device-identity,.device-media-status,.device-activity) { visibility: hidden; }
+.device-font-loading { position: absolute; width: 18px; height: 18px; top: calc(50% - 9px); left: calc(50% - 9px); border: 2px solid #b7c7bf; border-top-color: #5d7e6c; border-radius: 50%; }
+.classroom-scene .device-font-retry { position: absolute; inset: 30% 5%; padding: 5px; border: 1px solid #bdcdc3; border-radius: 6px; background: #f8fbf9; color: #52695c; font: 11px/1.5 sans-serif; }
+/* Both screens share the same name inset and flow reservation above the writing area. */
+.device-identity { height: 35px; flex: 0 0 35px; max-width: calc(100% - 97px); padding: 0 0 0 3px; margin-top: -4px; display: flex; align-items: flex-start; pointer-events: none; }
+.device-name { display: block; width: 100%; height: 38.3px; margin-top: 11px; font: 600 17px/1.3 var(--device-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Center the 29px controls on the 17px name's line box, leaving the writing area in place. */
+.device-media-status { position: absolute; top: 6.5px; right: 0; display: flex; gap: 2px; }
+.classroom-scene .device-media-status button { display: flex; align-items: center; justify-content: center; gap: 2px; width: 29px; min-width: 29px; height: 29px; padding: 1px; border: 1px solid #c2cec680; border-radius: 6px; background: #f7faf8b3; color: #6c877b; font: 8px/1 var(--device-font); }
+.device-media-status button svg { width: 16px; height: 16px; }.device-media-status button:disabled { opacity: .45; cursor: default; }
+.classroom-scene .device-media-status button.is-live { border-color: #adc5a5; color: #426c51; background: #dfeccc; box-shadow: inset 0 0 5px #66885712; }
+.device-media-status i { width: 3px; height: 3px; background: #64835b; border-radius: 50%; }
+.device-activity { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: clamp(8px,6.67cqw,16px) 3px 0; padding: 4px 6px; background: #fbfdfb8c; border: 1px solid #c4d3c859; border-radius: 6px; }
+.device-laptop .device-activity { margin-top: 8px; }
+.device-activity .activity-box { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; margin: 0; }
+.classroom-scene .device-activity :is(p,textarea) { flex: 1; width: 100%; height: 100%; max-width: 146px; max-height: 41px; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; color: #42534b; font: 13px/1.45 var(--device-font); overflow-wrap: anywhere; white-space: pre-wrap; }
+.device-activity p { overflow-y: auto; scrollbar-width: thin; }.device-activity textarea { overflow: hidden; }.device-activity small { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+.classroom-board-settings > div { display: flex; justify-content: space-between; margin: 12px 0; }
+.classroom-scene .room-collaboration-trigger { container-type: size; }
+.classroom-scene .room-collaboration-trigger .prop-taskboard { transform: scale(1.08); transform-origin: center 92%; }
+/* Anchor to (82,30), the board's top-right corner in its 120x140 SVG.
+   Account for bottom-aligned contain sizing and the approved 1.08 zoom around (50%,92%). */
+.classroom-scene .room-collaboration-trigger i { --taskboard-fit-width: min(100cqw, calc(100cqh * 6 / 7)); position: absolute; left: calc(50cqw + var(--taskboard-fit-width) * .198); top: calc(100cqh * 1.0064 - var(--taskboard-fit-width) * .99); right: auto; min-width: 24px; height: 25px; padding: 0 5px; display: grid; place-items: center; background: #b77660; color: #fff3d8; border: 2px solid #e5c997; border-radius: 8px 6px 9px 5px; box-shadow: 1px 2px #735b3826; font: normal 13px/1 'Classroom Sans',sans-serif; transform: translate(-55%, -40%) rotate(4deg); transform-origin: left bottom; }
+@container (max-width:210px) {
+  .device-screen { padding-top: 1px; padding-bottom: 5px; }
+  .device-identity { max-width: calc(100% - 79px); height: 29px; flex-basis: 29px; }
+  .device-name { font-size: 16px; margin-top: 7px; height: 32px; }
+  .device-media-status { top: 2.5px; }
+  .classroom-scene .device-media-status button { width: 24px; min-width: 24px; height: 24px; font-size: 7px; }
+  .device-activity, .device-laptop .device-activity { margin-top: 7px; padding: 3px; }
+  .classroom-scene .device-activity :is(p,textarea) { font-size: 11px; line-height: 1.4; }
+}
+.room-audio-enable,.room-microphone-error { position: fixed; z-index: 25; left: 50%; bottom: 180px; transform: translateX(-50%); border: 1px solid #bcac8b; border-radius: 8px; padding: 8px 12px; background: #fff7e6; color: #514d3c; }
+
+/* Seventh review: state-aware rear panels, a compact device toolbar and paper todo. */
+@font-face { font-family: 'Device Nunito'; src: url('/classroom/fonts/nunito-latin-400.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Device Nunito'; src: url('/classroom/fonts/nunito-latin-600.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+.blackboard-cabinet[data-has-previous=true] { --peek-left: var(--board-peek); }
+.blackboard-cabinet[data-has-next=true] { --peek-right: var(--board-peek); }
+.blackboard-cabinet[data-has-previous=false][data-has-next=false] .blackboard-back { display: none; }
+.board-layer-side:hover { background: #edf0cc12; }
+.board-layer-side:focus-visible { outline: 2px dashed #f6f1dc; outline-offset: -3px; }
+.classroom-scene .device-media-status button { flex-shrink: 0; letter-spacing: -.03em; }
+.classroom-scene .device-media-status button:focus-visible { outline: 2px solid #658d7b; outline-offset: -2px; }
+.classroom-scene .prop-calendar-entry { background-image: url('/classroom/calendar-entry.svg'); }
+.classroom-scene .desk-media { gap: clamp(6px,1vw,14px); }
+.classroom-scene .desk-media .calendar-entry-button { flex-grow: 1.35; max-width: 144px; }
+.classroom-scene .side-tabs::after { content: ''; position: absolute; left: calc(-1 * var(--chat-paper-inset)); right: calc(-1 * var(--chat-paper-inset)); bottom: 0; height: 2px; background: #b99c755e; pointer-events: none; }
+.classroom-scene .side-tabs > button:nth-of-type(2) { margin-right: -14px; }
+.classroom-scene .todo-paper-card { min-width: 0; padding: 11px 13px 4px; border: 0; border-radius: 0; background: linear-gradient(#fffdf4e8,#fffdf4e8),var(--paper) center / 500px; box-shadow: none; --todo-font: 'School Caveat','Classroom Yan','Long Cang',cursive; }
+.classroom-scene .todo-paper-card + .todo-paper-card { border-top: 2px solid #b99c755e; }
+.classroom-scene .todo-paper-card .activity-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; padding: 0 0 4px; margin: 0; border: 0; min-height: 29px; }
+.classroom-scene .todo-paper-card .activity-heading > strong { font: 400 23px/1.1 var(--todo-font); max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #615948; }
+.classroom-scene .todo-paper-card .todo-note { margin-left: auto; width: min(100px,38%); flex-shrink: 1; min-width: 0; position: relative; }
+.classroom-scene .todo-note input { display: block; width: 100%; min-height: 0; padding: 0 2px 2px; background: transparent; color: #655747; border: 0; border-bottom: 1px solid #d3c9b8; border-radius: 0; box-shadow: none; font: 400 22px/1.15 var(--todo-font); text-align: center; }
+.classroom-scene .todo-note input:focus { border-bottom-color: #9d8e71; outline: none; }
+.todo-note small { position: absolute; z-index: 2; right: 0; width: 145px; background: #fff9e8; font-size: 11px; }
+.classroom-scene .todo-paper-card .task-person-list { outline-offset: -2px; overflow-x: hidden; scrollbar-color: #baa88a66 transparent; }
+.classroom-scene .todo-paper-card .task-list { display: block; padding: 0; }
+.classroom-scene .todo-paper-card .task-row { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 5px; min-height: 38px; height: 38px; padding: 0; border: 0; align-items: center; background: transparent; }
+.classroom-scene .todo-paper-card .task-copy { display: block; min-width: 0; height: 34px; border-bottom: 1px solid #b5b9b340; overflow: hidden; }
+.classroom-scene .todo-paper-card .task-copy strong { display: block; max-width: 100%; color: #5d554a; font: 400 25px/33px var(--todo-font); overflow: hidden; overflow-wrap: normal; text-overflow: clip; white-space: nowrap; }
+.classroom-scene .todo-paper-card .task-row.is-done .task-copy strong { color: #8d8475; text-decoration: line-through; text-decoration-color: #8d847599; text-decoration-thickness: 1px; }
+.classroom-scene .todo-hand-check { display: grid; place-items: center; width: 24px; height: 30px; min-height: 0; padding: 0; background: transparent; border: 0; border-radius: 0; opacity: 1; cursor: pointer; }
+.todo-hand-check > span { position: relative; display: block; width: 14px; height: 15px; border: 1.2px solid #9c9687; border-radius: 1px 2px 1px 1px; transform: rotate(-3deg); }
+.todo-hand-check[aria-checked=true] > span::after { content: ''; position: absolute; left: 3px; top: -3px; width: 7px; height: 14px; border: solid #696955; border-width: 0 2px 2px 0; transform: rotate(38deg) skewY(-8deg); border-radius: 0 0 2px; }
+.todo-hand-check:disabled { cursor: default; }.todo-hand-check:focus-visible { outline: 1px dashed #857961; outline-offset: -2px; }

@@ -27,6 +27,8 @@ async function verifyIdentitySession(token?: string): Promise<boolean> {
 }
 
 export async function proxy(request: NextRequest) {
+  // An isolated, fixture-only visual preview. It is unavailable in production.
+  if (process.env.NODE_ENV === "development" && ["/classroom-preview/taskboard", "/classroom-preview", "/classroom-preview/fonts", "/classroom-preview/chalk-art"].includes(request.nextUrl.pathname)) return NextResponse.next();
   const token = request.cookies.get(ACCESS_COOKIE)?.value;
   if (!(await verifyIdentitySession(token))) {
     const accessUrl = new URL("/access", request.url);
@@ -40,5 +42,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!access|api/access|api/chat/files|fonts/task-stamp/|_next/static|_next/image|favicon.svg|sw.js|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)"],
+  matcher: ["/((?!access|api/access|api/chat/files|fonts/task-stamp/|classroom/|_next/static|_next/image|favicon.svg|sw.js|manifest.webmanifest|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico)$).*)"],
 };

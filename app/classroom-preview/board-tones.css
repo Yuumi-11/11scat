@@ -1,0 +1,12 @@
+.board-tone-picker > summary { padding: 3px 6px; border-radius: 4px; cursor: pointer; color: #456659; white-space: nowrap; }
+.board-tone-picker[open] > summary { background: #dce4c8; }
+.board-tone-picker > summary:focus-visible { outline: 2px solid #658d7b; outline-offset: -1px; }
+.board-tone-popover { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: min(420px,calc(100vw - 24px)); max-height: 60dvh; overflow-y: auto; padding: 12px; border: 1px solid #cbbb9d; border-radius: 10px; background: #fff9eb; box-shadow: 0 5px 20px #584a3433; }
+.board-tone-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.board-tone-picker .board-tone-choice { display: flex; flex-direction: column; align-items: stretch; gap: 5px; min-width: 0; padding: 6px; border: 1px solid #d2c6ab; border-radius: 6px; background: #fffaf0; color: #514c3f; text-align: left; white-space: normal; }
+.board-tone-picker .board-tone-choice[aria-pressed=true] { border-color: #577b65; background: #e5ebd6; box-shadow: inset 0 0 0 1px #577b65; }
+.board-tone-picker .board-tone-swatch { display: grid; place-items: center; height: 55px; border-radius: 2px; color: #f6f1dc; font: 28px 'CHAWP',cursive; background: linear-gradient(var(--board-overlay),var(--board-overlay)),url('/classroom/board-grain.png') 0 0 / 400px,var(--board-color); }
+.board-tone-choice strong { font-size: 12px; font-weight: 600; }
+.board-tone-choice small { font-size: 11px; line-height: 1.45; }
+.board-tone-popover p { margin: 10px 0 0; color: #82765f; font-size: 11px; }
+@media(max-width:460px) { .board-tone-options { grid-template-columns: repeat(2,minmax(0,1fr)); } }
