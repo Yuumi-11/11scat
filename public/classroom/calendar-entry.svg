@@ -1,21 +1,53 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 150">
-  <path fill="#654d3924" d="m27 124 96-8 41 14-102 10Z"/>
-  <path fill="#ac8163" d="m105 28 45 95-92 10-25-91Z"/>
-  <path fill="#c59879" d="m105 28 40 92-36-9Z"/>
-  <path fill="#dcb799" d="m34 42 71-14 7 85-78 15Z"/>
-  <path fill="#c7ad89" d="m39 43 66-12 2 82-71 14Z"/>
-  <path fill="#ede4ce" d="m39 38 67-12-3 82-74 15Z"/>
-  <path fill="#faf3e3" d="m36 36 68-12-5 80-74 15Z"/>
-  <path fill="#d2aa91" d="m36 36 68-12-1 16-69 13Z"/>
-  <path fill="#e6c4ac" d="m36 36 68-12-1 5-69 13Z"/>
-  <g fill="none" stroke="#847964" stroke-width="3.5" stroke-linecap="round">
-    <path d="m49 36 1-12q1-6 5-4l2 10"/><path d="m88 28 1-12q1-6 5-4l2 10"/>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2=".8" y2="1">
+      <stop stop-color="#fff9e9"/><stop offset="1" stop-color="#eee4ce"/>
+    </linearGradient>
+    <linearGradient id="stand" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#b5ad97"/><stop offset="1" stop-color="#dbd0b6"/>
+    </linearGradient>
+  </defs>
+  <!-- The front foot and the narrow right support share the desktop plane. -->
+  <path fill="#66563b12" d="M18 126 142 116 172 130 128 146 14 132Z"/>
+  <path fill="#66563b20" d="m20 128 108 10 31-12 4 5-36 12-108-11Z"/>
+  <path fill="url(#stand)" stroke="#b6ad94" stroke-width="1" stroke-linejoin="round" d="m143 29 18 99-35 14Z"/>
+  <path fill="#a5a58e" d="m144 46 13 79-26 11Z"/>
+  <path fill="#dcd2b9" d="m144 46 3 67 10 12Z"/>
+  <path fill="#d2c5a7" d="m39 25 104 8-17 109-107-13Z"/>
+  <path fill="#f2e8d3" d="m37 24 105 9-17 105-105-12Z"/>
+  <path fill="#faf2df" d="m25 102 104 11-4 25-105-12Z"/>
+  <path fill="#c9bda048" d="m25 102 104 11-1 5-104-12Z"/>
+  <path fill="#dfd3b8" d="m40 24 106 10-15 81-106-12Z"/>
+  <path fill="#f6edda" d="m38 23 106 10-15 79-106-12Z"/>
+  <path fill="url(#page)" stroke="#d7ccb2" stroke-width=".8" stroke-linejoin="round" d="m37 21 106 10-15 79-105-12Z"/>
+  <path d="m38 22 103 10M24 98l103 11" fill="none" stroke="#fffdf3" stroke-width="1"/>
+  <g fill="#b5ab91">
+    <ellipse cx="44" cy="26" rx="1.9" ry="1.4"/><ellipse cx="53" cy="27" rx="1.9" ry="1.4"/>
+    <ellipse cx="62" cy="28" rx="1.9" ry="1.4"/><ellipse cx="71" cy="29" rx="1.9" ry="1.4"/>
+    <ellipse cx="80" cy="30" rx="1.9" ry="1.4"/><ellipse cx="89" cy="31" rx="1.9" ry="1.4"/>
+    <ellipse cx="98" cy="32" rx="1.9" ry="1.4"/><ellipse cx="107" cy="33" rx="1.9" ry="1.4"/>
+    <ellipse cx="116" cy="34" rx="1.9" ry="1.4"/><ellipse cx="125" cy="35" rx="1.9" ry="1.4"/>
+    <ellipse cx="134" cy="36" rx="1.9" ry="1.4"/>
   </g>
-  <g fill="#b5b8a0" transform="matrix(1 -.18 -.06 1 40 65)">
-    <rect width="7" height="6" rx="1"/><rect x="15" width="7" height="6" rx="1"/><rect x="30" width="7" height="6" rx="1"/><rect x="45" width="7" height="6" rx="1"/>
-    <rect y="14" width="7" height="6" rx="1"/><rect x="15" y="14" width="7" height="6" rx="1"/><rect x="30" y="14" width="7" height="6" rx="1"/><rect x="45" y="14" width="7" height="6" rx="1"/>
-    <rect y="28" width="7" height="6" rx="1"/><rect x="15" y="28" width="7" height="6" rx="1"/><rect x="30" y="28" width="7" height="6" rx="1"/>
-    <path fill="#c88778" d="M14 13q5-4 10-1l-1 9-11 1Z"/>
+  <g fill="none" stroke="#7e8170" stroke-width="1.6" stroke-linecap="round">
+    <path d="M44 26c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M53 27c-3-2-3-10 0-10 3 0 3 3 3 5"/>
+    <path d="M62 28c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M71 29c-3-2-3-10 0-10 3 0 3 3 3 5"/>
+    <path d="M80 30c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M89 31c-3-2-3-10 0-10 3 0 3 3 3 5"/>
+    <path d="M98 32c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M107 33c-3-2-3-10 0-10 3 0 3 3 3 5"/>
+    <path d="M116 34c-3-2-3-10 0-10 3 0 3 3 3 5"/><path d="M125 35c-3-2-3-10 0-10 3 0 3 3 3 5"/>
+    <path d="M134 36c-3-2-3-10 0-10 3 0 3 3 3 5"/>
   </g>
-  <path d="m26 123 73-15" fill="none" stroke="#fff9e8" stroke-width="1.5"/>
+  <g transform="matrix(1 .1 -.19 1 49 42)">
+    <rect width="28" height="4" rx="1.5" fill="#9ba48a"/>
+    <path d="M0 12h75" stroke="#cbc7ae" stroke-width=".9"/>
+    <g fill="#a6ac96">
+      <path d="M0 21h4v4H0zM12 21h4v4h-4zM24 21h4v4h-4zM36 21h4v4h-4zM48 21h4v4h-4zM60 21h4v4h-4zM72 21h4v4h-4z"/>
+      <path d="M0 33h4v4H0zM12 33h4v4h-4zM24 33h4v4h-4zM36 33h4v4h-4zM48 33h4v4h-4zM60 33h4v4h-4zM72 33h4v4h-4z"/>
+      <path d="M0 45h4v4H0zM12 45h4v4h-4zM24 45h4v4h-4zM36 45h4v4h-4zM48 45h4v4h-4z"/>
+    </g>
+    <rect x="33" y="30" width="10" height="10" rx="2" fill="#ca9784"/>
+    <path d="m36 35 2 1 2-3" stroke="#fff4df" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="m67 120 19 2" stroke="#b8bba1" stroke-width="2" stroke-linecap="round"/>
+  <path d="m21 127 104 12 35-11" fill="none" stroke="#f9f0da" stroke-width="1" stroke-linejoin="round"/>
 </svg>

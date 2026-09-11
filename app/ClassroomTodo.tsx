@@ -38,7 +38,7 @@ function TodoNote({ name, value, onSave }: { name: string; value: string; onSave
 export function ClassroomTodoCard<T extends TodoTask>({ name, tasks, note = '', onNoteSave, onComplete, headerActions, empty }: {
   name: string; tasks: T[]; note?: string; onNoteSave?: (note: string) => Promise<void> | void; onComplete?: (task: T) => void; headerActions?: ReactNode; empty?: ReactNode;
 }) {
-  return <section className="task-person-card todo-paper-card" aria-label={`${name}的今日 todo`}>
+  return <section className="task-person-card todo-paper-card" aria-label={`${name}的今日任务`}>
     <div className="activity-heading"><strong >{name}</strong>{headerActions}<TodoNote name={name} value={note} onSave={onNoteSave} /></div>
     <div className="task-person-list" tabIndex={0} aria-label={`${name}的任务列表`}>
       <div className="task-list" aria-live="polite">{tasks.map(task => <div className={`task-row${task.done ? ' is-done' : ''}`} key={task.id}>

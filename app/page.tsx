@@ -2391,7 +2391,7 @@ export default function Home() {
         <aside className="side-panel panel">
           <div className="side-tabs" aria-label="侧栏内容">
             <button className={sideView === "chat" ? "active" : ""} onClick={() => setSideView("chat")}><MessageCircle size={18} aria-hidden="true" />传纸条</button>
-            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />今日todo</button>
+            <button className={sideView === "tasks" ? "active" : ""} onClick={() => setSideView("tasks")}><ListTodo size={18} aria-hidden="true" />今日任务</button>
             <div className="chat-bell-host" ref={setBellHost} />
           </div>
 
@@ -2548,11 +2548,11 @@ export default function Home() {
         <div className="classroom-desk desk-media">
           <button className="object-button" type="button" onClick={createBoard} aria-label="画板"  aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
           <button className="object-button calendar-entry-button" type="button" onClick={() => setBoardNotice("双人日历将在后续开放")} aria-label="双人日历" ><ClassroomProp name="calendar-entry" /></button>
+          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
 
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
         </div>
         <div className="classroom-desk desk-room">
-          <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
           <button className="object-button" type="button" onClick={openCloud} aria-label="云盘" ><ClassroomProp name="folder" /></button>
           <RoomSettings triggerContent={<ClassroomProp name="settings" />} sections={[
             { id: 'seating', label: '座位与设备字体', icon: <ListTodo size={19} />, content: <><ClassroomSeatingSettings profile={classroomProfile.profile} saving={classroomProfile.saving} error={classroomProfile.error} onChange={value => void classroomProfile.save(value)} /><button type="button" onClick={() => void copyInviteLink()}>{inviteCopied ? '邀请链接已复制' : '复制邀请链接'}</button></> },
