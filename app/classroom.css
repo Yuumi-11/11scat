@@ -101,9 +101,10 @@
 .classroom-scene .projector-control { max-width: 150px; mix-blend-mode: normal; }
 .classroom-scene .share-canvas > .main-fullscreen-button { position: absolute; top: auto; bottom: 21px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 3px; padding: 0; border: 0; color: #fbf6df; background: #2b4d4040; }
 .classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: -4px; }
-.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 24px; background-image: linear-gradient(to right, transparent 14px, #b8706b80 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
+.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 14px, #b74c5080 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
 .classroom-scene .message { margin: 0; max-width: 94%; flex-shrink: 0; }
 .classroom-scene .message > span { font-size: 11px; color: #897c65; margin: 0 6px 3px; }
+.classroom-scene .message:not(.own) > span { margin-left: 0; }
 .classroom-scene .message p { position: relative; padding: 10px 13px; border: 0; border-radius: 8px 6px 9px 4px / 6px 8px 5px 7px; background: linear-gradient(#eee1c6e6,#eee1c6e6), var(--paper) center / 400px; color: #514738; font: 15px/1.6 var(--classroom-ui-font); box-shadow: 0 2px 2px #6b51371a, 1px 4px 7px #6b51370b; transform: rotate(-.2deg); }
 .classroom-scene .message.own p { background: linear-gradient(#dce5bee6,#dce5bee6),var(--paper) center / 400px; border-radius: 6px 8px 5px 9px / 8px 4px 9px 5px; transform: rotate(.25deg); }
 .classroom-scene .message p::before, .classroom-scene .message p::after { display: none; }
@@ -263,7 +264,6 @@
   .classroom-scene .chalk-palette { right: 5px; }
   .classroom-scene .scene-desks { height: 262px; gap: 44px 12px; }
   .app-shell.classroom-scene > .wall-exit { bottom: 112px; }
-  .classroom-scene .message-list { padding-left: 22px; }
 }
 
 /* Only handwriting on the calendar changes; buttons elsewhere retain the print face. */
@@ -376,7 +376,8 @@
 /* Both screens share the same name inset and flow reservation above the writing area. */
 .device-identity { height: 35px; flex: 0 0 35px; max-width: calc(100% - 97px); padding: 0 0 0 3px; margin-top: -4px; display: flex; align-items: flex-start; pointer-events: none; }
 .device-name { display: block; width: 100%; height: 38.3px; margin-top: 11px; font: 600 17px/1.3 var(--device-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.device-media-status { position: absolute; top: 0; right: 0; display: flex; gap: 2px; }
+/* Center the 29px controls on the 17px name's line box, leaving the writing area in place. */
+.device-media-status { position: absolute; top: 6.5px; right: 0; display: flex; gap: 2px; }
 .classroom-scene .device-media-status button { display: flex; align-items: center; justify-content: center; gap: 2px; width: 29px; min-width: 29px; height: 29px; padding: 1px; border: 1px solid #c2cec680; border-radius: 6px; background: #f7faf8b3; color: #6c877b; font: 8px/1 var(--device-font); }
 .device-media-status button svg { width: 16px; height: 16px; }.device-media-status button:disabled { opacity: .45; cursor: default; }
 .classroom-scene .device-media-status button.is-live { border-color: #adc5a5; color: #426c51; background: #dfeccc; box-shadow: inset 0 0 5px #66885712; }
@@ -393,6 +394,7 @@
   .device-screen { padding-top: 1px; padding-bottom: 5px; }
   .device-identity { max-width: calc(100% - 79px); height: 29px; flex-basis: 29px; }
   .device-name { font-size: 16px; margin-top: 7px; height: 32px; }
+  .device-media-status { top: 2.5px; }
   .classroom-scene .device-media-status button { width: 24px; min-width: 24px; height: 24px; font-size: 7px; }
   .device-activity, .device-laptop .device-activity { margin-top: 7px; padding: 3px; }
   .classroom-scene .device-activity :is(p,textarea) { font-size: 11px; line-height: 1.4; }
