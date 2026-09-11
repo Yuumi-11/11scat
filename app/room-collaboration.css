@@ -246,3 +246,19 @@
 .task-description-editable a, .task-description .coop-workflow-description a { color: var(--theme-accent-dark); text-decoration: underline; cursor: pointer; }
 .task-description-editable[aria-disabled="true"] { opacity: .7; }
 .coop-workflow-settings .task-description-editable { flex: 1; min-height: 26px; height: 0; }
+.workflow-settings-footer { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.workflow-settings-footer > .coop-workflow-actions { margin-left: auto; }
+.workflow-task-deletion { min-width: 0; }
+.coop-workflow-settings .workflow-task-deletion .coop-workflow-actions { justify-content: flex-start; }
+.workflow-task-deletion .coop-workflow-actions .workflow-delete-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 7px 0; border: 0; background: transparent; color: #c42b37; }
+.workflow-delete-icon:hover { background: #c42b3710 !important; }
+.task-attachment-preview { width: min(900px, calc(100vw - 32px)); height: min(700px, calc(100dvh - 40px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); }
+.task-attachment-preview::backdrop { background: #0008; }
+.task-attachment-preview[open] { display: flex; flex-direction: column; }
+.task-attachment-preview header { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.task-attachment-preview header strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+.task-attachment-preview header a, .task-attachment-preview header button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-decoration: none; }
+.task-attachment-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 16px; display: grid; place-items: center; }
+.task-attachment-preview-body :is(img, video) { max-width: 100%; max-height: 100%; object-fit: contain; }
+.task-attachment-preview-body iframe { width: 100%; height: 100%; border: 0; }
+.task-attachment-preview-body pre { margin: 0; width: 100%; height: 100%; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.65 ui-monospace, monospace; }

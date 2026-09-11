@@ -16,6 +16,8 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
   const users = Object.fromEntries(['alice', 'bob'].map(id => [id, { nickname: id, ticktickToken: encryptToken('fixture-' + id) }]));
   if (previous === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previous;
   await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, users }));
+  await mkdir(path.join(dir, 'cloud-drive', 'tasks', 'test'), { recursive: true });
+  await writeFile(path.join(dir, 'cloud-drive', 'tasks', 'test', 'test.pdf'), 'fixture attachment');
   await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify({ alice: { original: { id: 'original', projectId: 'inbox-alice', ...taskFields({ title: 'HTTP 认领测试' }) } }, bob: {} }));
   const socket = createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve)); const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
   const child = spawn(process.execPath, ['--import', './tests/helpers/dida-fixture.mjs', 'node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], { env: { ...process.env, DATA_DIR: dir, AUTH_SESSION_SECRET: secret, TICKTICK_STORAGE_SECRET: secret, SITE_PASSWORD: 'fixture', IDENTITY_CODE_HASHES: '', VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' }, stdio: 'ignore', windowsHide: true });

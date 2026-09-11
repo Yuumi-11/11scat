@@ -5,6 +5,7 @@ import { workflowSettingChanges } from "../../../workflow-setting-changes.ts";
 import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
 import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
+import { descriptionAttachments } from "../../../task-description-attachments.ts";
 
 export type RemoteTask = Partial<TaskFields> & { id: string; projectId: string; status?: number; parentId?: string; [key: string]: unknown };
 export type Gateway = {
@@ -13,6 +14,7 @@ export type Gateway = {
   get(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
   locate?(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
   notify?(notice: TaskNotice): Promise<void>;
+  taskAttachments?: { publish(actor: string, before: string, after: string): Promise<void>; remove(files: string[]): Promise<void> };
   create(owner: string, id: string, fields: TaskFields, receipt?: (actualId: string) => Promise<void>): Promise<void>;
   update(owner: string, id: string, fields: TaskFields, version: string, projectId?: string): Promise<void>;
   remove(owner: string, id: string, projectId?: string): Promise<void>;
@@ -22,12 +24,14 @@ export type Gateway = {
 };
 type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; completedAt?: number };
 type Creation = { state: "new" | "sent" | "received"; beforeIds?: string[] };
-type WorkflowEdit = { id: string; fields: TaskFields; summary?: string; targets?: { owner: string; id: string; before: string; done: boolean }[] };
+type AttachmentChange = { actor: string; before: string; after: string; publishBefore?: string };
+type WorkflowEdit = { id: string; fields: TaskFields; attachments?: AttachmentChange; summary?: string; targets?: { owner: string; id: string; before: string; done: boolean }[] };
 type WorkflowSide = "source" | "target";
 type TaskRecovery = { id: string; creation: Creation; done?: boolean };
 type Workflow = ClaimWorkflow & { ownerDeletion?: { id: string }; reopenReceipt?: { before: RemoteTask; retryAt: number }; submittedFields?: { source: TaskFields; target: TaskFields }; projects?: Partial<Record<WorkflowSide, string>>; recovery?: Partial<Record<WorkflowSide, TaskRecovery>>; signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean; repeating?: boolean }; submitted?: { source: string; target: string }; edit?: WorkflowEdit };
 type Operation = OperationView & {
   signature: string; source?: TaskSource; fields: TaskFields; targetId: string;
+  attachments?: AttachmentChange;
   phase: "prepared" | "destination-ready" | "source-removed";
   creation?: { state: "new" | "sent" | "received"; beforeIds?: string[] };
 };
@@ -128,10 +132,31 @@ export class CollaborationStore {
   }
   private async checkpoint(state: State, op: Operation) { op.updatedAt = Date.now(); state.revision++; await this.write(state); }
   private async finish(state: State, op: Operation) {
+    if (op.attachments) {
+      // Persist accepted task contents before removing files, so interruption
+      // leaves a resumable cleanup receipt rather than an old broken task.
+      await this.checkpoint(state, op);
+      await this.cleanAttachments(state, op.attachments);
+    }
     if (op.to === null && state.buffer[op.targetId]?.stagedBy === op.id) delete state.buffer[op.targetId].stagedBy;
     op.status = "done"; op.error = ""; await this.checkpoint(state, op);
   }
   private publicOperation(op: Operation): OperationView { const { id, actorId, title, action, from, to, status, error, createdAt, updatedAt } = op; return { id, actorId, title, action, from, to, status, error, ...(createdAt === undefined ? {} : { createdAt }), updatedAt }; }
+  private async cleanAttachments(state: State, change: AttachmentChange) {
+    if (!this.gateway.taskAttachments) return;
+    const paths = (content: string) => descriptionAttachments(content).attachments.map(file => file.path);
+    const remaining = new Set(paths(change.after));
+    const removed = [...new Set(paths(change.before))].filter(file => !remaining.has(file));
+    if (!removed.length) return;
+    for (const task of Object.values(state.buffer)) paths(task.fields.content).forEach(file => remaining.add(file));
+    for (const workflow of Object.values(state.workflows).filter(item => item.status !== 'done')) paths((workflow.edit?.fields || workflow.fields).content).forEach(file => remaining.add(file));
+    for (const op of Object.values(state.operations).filter(item => item.status === 'pending')) paths(op.fields.content).forEach(file => remaining.add(file));
+    // Shared links remain valid while another current task still uses the file.
+    for (const member of (await this.gateway.members()).filter(item => item.connected)) {
+      for (const task of (await this.gateway.inbox(member.id)).tasks.filter(item => !item.status)) paths(task.content || '').forEach(file => remaining.add(file));
+    }
+    await this.gateway.taskAttachments.remove(removed.filter(file => !remaining.has(file)));
+  }
   private async candidates(state: State, op: Operation) {
     if (!op.to) return [];
     const inbox = await this.gateway.inbox(op.to);
@@ -525,6 +550,7 @@ export class CollaborationStore {
   private async finishWorkflowEdit(state: State, workflow: Workflow) {
     const edit = workflow.edit!;
     try {
+      if (edit.attachments) await this.gateway.taskAttachments?.publish(edit.attachments.actor, edit.attachments.publishBefore ?? edit.attachments.before, edit.attachments.after);
       if (workflow.status === "creating") {
         await this.startWorkflow(state, workflow);
         if (workflow.status === "creating") return this.publicWorkflow(workflow);
@@ -565,6 +591,7 @@ export class CollaborationStore {
       // but preserve acknowledged/sent completion markers, including repeating tasks.
       if (workflow.status === "approving") workflow.submitted = { source: sides.source ? remoteVersion(sides.source) : "", target: remoteVersion(sides.target) };
       const event = workflow.events.find(item => item.id === edit.id)!;
+      if (edit.attachments) { await this.saveWorkflow(state, workflow); await this.cleanAttachments(state, edit.attachments); }
       event.type = "updated";
       event.comment = edit.summary || "旧记录未保存具体修改内容";
       delete workflow.edit; workflow.error = "";
@@ -693,7 +720,8 @@ export class CollaborationStore {
           const replaced = workflow.events.find(item => item.id === workflow.edit!.id);
           if (replaced) { replaced.type = "update-replaced"; replaced.comment = "此修改由后续详情设置替代"; }
         }
-        workflow.edit = { id: command.id, fields, summary: workflowSettingChanges(workflow.fields, fields) };
+        const before = [workflow.fields.content, workflow.edit?.attachments?.before || '', workflow.edit?.fields.content || ''].join('\n');
+        workflow.edit = { id: command.id, fields, attachments: { actor, before, publishBefore: workflow.fields.content, after: fields.content }, summary: workflowSettingChanges(workflow.fields, fields) };
         workflow.events.push({ id: command.id, signature, actorId: actor, type: "updating", at: Date.now(), comment: "已保存详情修改，正在同步关联任务", files: [] });
         await this.saveWorkflow(state, workflow);
         return this.finishWorkflowEdit(state, workflow);
@@ -812,7 +840,7 @@ export class CollaborationStore {
         if (op.action === "complete" && op.status === "pending") this.requireCompletionOwner(state, actorId, op.source);
         if (op.status !== "pending") return this.publicOperation(op);
       } else {
-        let fields = taskFields({}); const source = command.source;
+        let fields = taskFields({}), beforeContent = ''; const source = command.source;
         if (command.action === "create") { fields = taskFields(validateFields(command.fields)); if (!fields.title) throw new CollaborationError("请填写任务标题", 400); }
         else {
           if (!source || (source.ownerId !== null && !members.some(member => member.id === source!.ownerId)) || typeof source.taskId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(source.taskId) || typeof source.version !== "string") throw new CollaborationError("任务来源无效", 400);
@@ -823,11 +851,13 @@ export class CollaborationStore {
           if (!current || current.remote?.status) throw new CollaborationError("任务已完成或已移走，请刷新");
           if (current.version !== source.version) throw new CollaborationError("任务已被修改，请刷新后重新操作");
           fields = current.fields;
+          beforeContent = fields.content;
           if (command.action === "update") fields = { ...fields, ...validateFields(command.fields) };
 
         }
         if (fields.startDate && fields.dueDate && Date.parse(fields.startDate) > Date.parse(fields.dueDate)) throw new CollaborationError("截止时间不能早于开始时间", 400);
         op = { id: command.id, signature, actorId, action: command.action, title: fields.title, from: source?.ownerId ?? null, to: null, source, fields, targetId: randomUUID(), creation: { state: "new" }, status: "pending", phase: "prepared", error: "", createdAt: Date.now(), updatedAt: Date.now() };
+        if (['create', 'update'].includes(command.action)) op.attachments = { actor: actorId, before: beforeContent, after: fields.content };
         state.operations[op.id] = op; await this.checkpoint(state, op);
       }
       return this.run(state, op);
@@ -865,6 +895,7 @@ export class CollaborationStore {
     if (op.action === "complete") this.requireCompletionOwner(state, op.actorId, op.source);
     try {
       if (op.source && this.taskWorkflow(state, op.source.ownerId, op.source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
+      if (op.attachments) await this.gateway.taskAttachments?.publish(op.attachments.actor, op.attachments.before, op.attachments.after);
       if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1, publisherId: op.actorId };
       else if (op.action === "move") throw new CollaborationError("旧转移已停用，请重新认领");
       else {

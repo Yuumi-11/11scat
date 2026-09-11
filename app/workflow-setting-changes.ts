@@ -1,8 +1,10 @@
 import type { TaskFields } from "./collaboration-types";
+import { attachmentDisplayText } from "./task-description-attachments.ts";
 
 export function workflowSettingChanges(before: TaskFields, after: TaskFields): string {
   const labels: Partial<Record<keyof TaskFields, string>> = { title: "标题", content: "说明", priority: "优先级", startDate: "开始时间", dueDate: "结束时间", isAllDay: "全天", timeZone: "时区", tags: "标签", repeatFlag: "重复", reminders: "提醒" };
   const display = (key: keyof TaskFields, value: unknown, fields: TaskFields): string => {
+    if (key === "content") return attachmentDisplayText(String(value || "无")).replace(/\s+/g, " ");
     if (key === "priority") return ({ 0: "无", 1: "低", 3: "中", 5: "高" } as Record<string, string>)[String(value)] || String(value);
     if (key === "isAllDay") return value ? "是" : "否";
     if (key === "startDate" || key === "dueDate") {

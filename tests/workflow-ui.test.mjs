@@ -23,6 +23,7 @@ test('workflow detail offers settings to every member and direct completion only
     assert.equal(settings.includes('删除我的任务'), member === 'bob');
     const deletion = [...settings.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(match => match[0].includes('删除发起任务'))?.[0];
     if (member === 'alice') assert.ok(!deletion.includes('disabled'), 'initiator deletion stays enabled without unsaved edits');
+    if (member === 'alice') assert.ok(!deletion.includes('>删除发起任务'), 'delete action is an accessible icon without visible text');
   }
   assert.ok(render('bob').includes('提交完成')); assert.ok(!render('bob', 'working', true).includes('提交完成'));
   assert.ok(render('charlie', 'working', true).includes('核对并继续'));
@@ -48,6 +49,9 @@ test('workflow detail offers settings to every member and direct completion only
   assert.match(attachmentHtml, /前文 <a[^>]+>报告.pdf<\/a> 后文/);
   assert.match(attachmentHtml, /aria-label="任务附件"/);
   assert.ok(!attachmentHtml.includes('[附件：报告.pdf]'), 'raw Markdown is not shown in the description');
+  assert.ok(!attachmentHtml.includes('target="_blank"'), 'task attachment clicks stay in the current page');
+  workflow.events.push({ id: 'old-attachment-change', actorId: 'alice', type: 'updated', at: 1700000000000, comment: `说明：无 → ${workflow.fields.content}`, files: [] });
+  assert.ok(render('alice').includes('说明：无 → 前文 报告.pdf 后文'));
   workflow.fields.content = '';
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {

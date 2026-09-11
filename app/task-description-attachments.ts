@@ -1,4 +1,6 @@
 export type DescriptionAttachment = { name: string; path: string; url: string };
+export const taskAttachmentUrl = (path: string, download = false) => `/api/room/tasks/attachments?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
+export const attachmentDisplayText = (content: string) => descriptionParts(content).map(part => 'text' in part ? part.text : part.file.name).join('');
 export function descriptionParts(content: string): ({ text: string } | { file: DescriptionAttachment; markdown: string })[] {
   const parts: ({ text: string } | { file: DescriptionAttachment; markdown: string })[] = [];
   const pattern = /\[附件：([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;
