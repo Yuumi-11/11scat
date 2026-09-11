@@ -187,6 +187,20 @@ test('partial deletion automatically resumes after restart without duplicate del
   await f.store.recoverPendingWorkflows();assert.equal(f.counts.removes,2);
 });
 
+test('archived deletion suppresses a stale public card after restart without touching remote tasks',async()=>{
+  const f=await fixture(),task=await f.create('不得重现的便签');let w=await claim(f,task);
+  const file=path.join(f.dir,'room-collaboration.json'),before=JSON.parse(await readFile(file,'utf8')).buffer[task.id];
+  w=await act(f,w,'alice','delete-owner-task');assert.equal(w.status,'deleted');
+  const saved=JSON.parse(await readFile(file,'utf8'));saved.buffer[task.id]=before;
+  await writeFile(file,JSON.stringify(saved));
+  const reopened=new CollaborationStore(f.dir,f.gateway),removes=f.counts.removes;
+  assert.equal((await reopened.revision('alice')).bufferCount,0);
+  assert.deepEqual((await reopened.revision('alice')).bufferPreview,[]);
+  const snapshot=await reopened.snapshot('alice');assert.equal(snapshot.buffer.length,0);
+  assert.equal(snapshot.workflows.find(item=>item.id===w.id).status,'deleted');
+  assert.equal(f.counts.removes,removes);
+});
+
 test('deletion uses exact relocated links and protects a later recurring occurrence',async()=>{
   const f=await fixture(),task=await personal(f);let w=await claim(f,task);
   f.accounts.alice.get(task.id).projectId='other-project';

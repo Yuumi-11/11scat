@@ -74,7 +74,7 @@ export function ClassroomPreview({ initialBoardTone = 'deep' }: { initialBoardTo
   const activeMedia = media.find(item=>item.id===activeMediaId) || media[0];
   const board = boards.find(item=>item.id===activeBoardId);
   const boardIndex = board ? orderClassroomBoards(boards).findIndex(item=>item.id===board.id)+1 : 0;
-  const projection = useProjectionCurtain(activeMedia,!!board);
+  const projection = useProjectionCurtain(activeMedia);
   const {stageRef,fullscreen,toggleFullscreen}=useMainFullscreen();
   const createBoard = () => {
     if(boards.length>=12) {setNotice('最多保留 12 张画板');return;}
@@ -83,12 +83,12 @@ export function ClassroomPreview({ initialBoardTone = 'deep' }: { initialBoardTo
   };
   const updateBoard=(change:(current:RoomBoard)=>RoomBoard)=>setBoards(items=>items.map(item=>item.id===activeBoardId?change(item):item));
   const stepBoard=(direction:-1|1)=>{setActiveBoardId(adjacentBoardId(boards,activeBoardId,direction));projection.fold();};
-  const toggleSelf=async (kind:'screen'|'camera'|'microphone')=>{if(!selfOnline)return;if(await localMedia.toggle(kind) && kind!=='microphone'){setActiveBoardId('');setActiveMediaId('self-'+kind);projection.reveal();}};
-  const view=(id:string)=>{setActiveMediaId(id);setActiveBoardId('');projection.reveal();};
+  const toggleSelf=async (kind:'screen'|'camera'|'microphone')=>{if(!selfOnline)return;if(await localMedia.toggle(kind) && kind!=='microphone'){setActiveMediaId('self-'+kind);projection.reveal();}};
+  const view=(id:string)=>{setActiveMediaId(id);projection.reveal();};
   const stepMedia=(direction:number)=>{const current=media.findIndex(item=>item.id===activeMedia?.id);setActiveMediaId(media[(current+direction+media.length)%media.length].id);};
   return <main className="app-shell classroom-scene" data-device-font={profile.font} style={boardToneStyle(boardTone)} aria-label="本地教室外观预览">
     <section className="workspace"><section className="focus-stage panel"><div className="share-canvas" ref={stageRef}><div className="stage-content">
-      <ProjectorControl open={projection.open} hasSource={!!activeMedia} onClick={()=>{if(board){setActiveBoardId('');projection.reveal();}else projection.toggle();}} />
+      <ProjectorControl open={projection.open} hasSource={!!activeMedia} onClick={projection.toggle} />
       {!projection.open && <BlackboardSurface index={boardIndex} count={boards.length+1} onStep={stepBoard} drawing={!!board}>
       {!board && !projection.open && <IdleChalkboard date={date} tasks={longTitles?longTitleTasks:moreTasks?[...previewTasks,...additionalTasks]:previewTasks}/>}
       {board && <Whiteboard key={board.id} board={board} onDelete={()=>{setBoards(items=>items.filter(item=>item.id!==board.id));projection.fold();}} fullscreen={fullscreen} onToggleFullscreen={toggleFullscreen}
@@ -117,6 +117,6 @@ export function ClassroomPreview({ initialBoardTone = 'deep' }: { initialBoardTo
     <RoomBell triggerHost={bellHost} onShowChat={()=>setSide('chat')}/>
     {cloudOpen && <CloudDrive onClose={()=>setCloudOpen(false)} onStatusChange={setCloudStatus} onImage={setViewedImage}/>}
     {viewedImage && <ChatImageViewer image={viewedImage} onClose={()=>setViewedImage(null)}/>}
-    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span><BoardTonePicker selected={boardTone} onChange={changeBoardTone}/><button onClick={()=>{setActiveBoardId('');projection.fold();}}>待机</button><button onClick={()=>{setActiveBoardId('');projection.reveal();}}>投影</button><button onClick={createBoard}>画板</button><button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>toggleSelf('screen')} aria-pressed={selfScreen}>我的投屏</button><button onClick={()=>setPeerScreen(value=>!value)} aria-pressed={peerScreen}>同桌投屏</button><button onClick={()=>setPeerCamera(value=>!value)} aria-pressed={peerCamera}>同桌摄像头</button><button onClick={()=>{setSelfOnline(value=>!value);localMedia.stopAll();}} aria-pressed={!selfOnline}>本人离开</button><button onClick={()=>setPeerOnline(value=>!value)} aria-pressed={!peerOnline}>同桌离开</button><button onClick={()=>setMultiDevice(value=>!value)} aria-pressed={multiDevice}>同账号多端</button>{multiDevice&&<span>同桌 2 台设备</span>}<button onClick={()=>setBadge(value=>value?0:6)}>任务板角标</button><button onClick={()=>{setSettingsIdentity(value=>value==='self'?'peer':'self');}}>设置视角 · {settingsIdentity==='self'?'11':'11scat'}</button><a href="/classroom-preview/chalk-art">粉笔图案样例</a>{board&&<><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)updateBoard(()=>next);}}>重新载入笔迹</button><span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span></>}{notice&&<span role="status">{notice}</span>}</div>
+    <div className="classroom-preview-toolbar" aria-label="本地预览工具"><span>本地预览</span><BoardTonePicker selected={boardTone} onChange={changeBoardTone}/><button onClick={()=>{setActiveBoardId('');projection.fold();}}>待机</button><button onClick={projection.reveal}>投影</button><button onClick={createBoard}>画板</button><button onClick={()=>setMoreTasks(value=>!value)} aria-pressed={moreTasks}>更多任务</button><button onClick={()=>setLongTitles(value=>!value)} aria-pressed={longTitles}>长标题</button><button onClick={()=>toggleSelf('screen')} aria-pressed={selfScreen}>我的投屏</button><button onClick={()=>setPeerScreen(value=>!value)} aria-pressed={peerScreen}>同桌投屏</button><button onClick={()=>setPeerCamera(value=>!value)} aria-pressed={peerCamera}>同桌摄像头</button><button onClick={()=>{setSelfOnline(value=>!value);localMedia.stopAll();}} aria-pressed={!selfOnline}>本人离开</button><button onClick={()=>setPeerOnline(value=>!value)} aria-pressed={!peerOnline}>同桌离开</button><button onClick={()=>setMultiDevice(value=>!value)} aria-pressed={multiDevice}>同账号多端</button>{multiDevice&&<span>同桌 2 台设备</span>}<button onClick={()=>setBadge(value=>value?0:6)}>任务板角标</button><button onClick={()=>{setSettingsIdentity(value=>value==='self'?'peer':'self');}}>设置视角 · {settingsIdentity==='self'?'11':'11scat'}</button><a href="/classroom-preview/chalk-art">粉笔图案样例</a>{board&&<><button onClick={()=>{const next=normalizeBoard(JSON.parse(JSON.stringify(board)));if(next)updateBoard(()=>next);}}>重新载入笔迹</button><span>{board.strokes.length} 笔 · {board.strokes.at(-1)?.points.length || 0} 点</span></>}{notice&&<span role="status">{notice}</span>}</div>
   </main>;
 }

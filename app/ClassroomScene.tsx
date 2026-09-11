@@ -27,10 +27,10 @@ export function ClassroomFullscreenIcon({ fullscreen, chalk = true }: { fullscre
 export function ChalkToolIcon({ name }: { name: 'expand' | 'collapse' | 'text' | 'clear' | 'save' | 'close' }) {
   return <span className="chalk-tool-icon" style={{ backgroundImage: `url('/classroom/chalk/${name}.svg')` }} aria-hidden="true" />;
 }
-export function useProjectionCurtain(source: object | undefined, boardOpen = false) {
+export function useProjectionCurtain(source: object | undefined) {
   const [expanded, setExpanded] = useState(false);
   return {
-    open: expanded && !boardOpen,
+    open: expanded,
     working: !!source,
     toggle: () => setExpanded(current => !current),
     reveal: () => setExpanded(true),

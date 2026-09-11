@@ -1,7 +1,8 @@
 import { createChalkRenderer } from './chalk-renderer.mjs';
+import { fitBoardText, measureBoardText } from './board-text-layout.mjs';
+export { CHALK_FONT } from './board-text-layout.mjs';
 
 export const BOARD_COLOR = '#3c645a';
-export const CHALK_FONT = '"Classroom Yan", "Long Cang", cursive';
 export const CHALK_COLORS = [
   { name: '白色粉笔', color: '#f6f1dc' }, { name: '黄色粉笔', color: '#efd28a' },
   { name: '粉色粉笔', color: '#e0a7b5' },
@@ -43,21 +44,12 @@ export function createBoardPainter(createCanvas) {
     if (ordered.length) paintStroke(ctx,ordered.at(-1));
   }
   function drawTexts(ctx, texts) {
-    for (const item of texts) {
-      const size=item.fontSize, padX=size*.6, padY=size*.8;
-      const font=`${size}px ${item.material==='chalk-v1'?CHALK_FONT:'system-ui, sans-serif'}`;
+    for (const source of texts) {
+      const item = fitBoardText(ctx, source);
+      const { font, padX, padY, baseline, lineHeight, lines } = measureBoardText(ctx, item);
       ctx.save();ctx.beginPath();ctx.rect(item.x,item.y,item.width,item.height);ctx.clip();ctx.font=font;
-      const metrics=ctx.measureText('Mg');
-      const ascent=metrics.fontBoundingBoxAscent || size*.8, descent=metrics.fontBoundingBoxDescent || size*.2;
-      const baseline=(size*1.25-ascent-descent)/2+ascent;
-      const lines=[];
-      for(const paragraph of item.text.split('\n')) {
-        let line='';
-        for(const character of paragraph) { const next=line+character; if(line && ctx.measureText(next).width>Math.max(1,item.width-padX*2)){lines.push(line);line=character;}else line=next; }
-        lines.push(line);
-      }
       lines.forEach((text,index)=> {
-        const x=item.x+padX,y=item.y+padY+baseline+index*size*1.25;
+        const x=item.x+padX,y=item.y+padY+baseline+index*lineHeight;
         if (item.material==='chalk-v1') renderer.drawText(ctx,{text,x,y,font,color:visibleBoardColor(item)});
         else {ctx.fillStyle=visibleBoardColor(item);ctx.textBaseline='alphabetic';ctx.fillText(text,x,y);}
       });

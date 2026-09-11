@@ -1,0 +1,26 @@
+/* General dialogs share the Claude palette; the designed task board keeps its own colors. */
+body :is(.coop-workflows, .room-settings-dialog, .cloud-modal.cloud-drive, .coop-editor) {
+  --page: #f4f3ee;
+  --panel: #faf9f5;
+  --soft: #f0eee6;
+  --ink: #3d3929;
+  --muted: #777468;
+  --line: #dedbd2;
+  --line-strong: #aaa599;
+  --theme-seed: #c96442;
+  --theme-accent: #c96442;
+  --theme-accent-dark: #98482f;
+  --theme-accent-hover: #b55436;
+  --theme-soft: #f6e6de;
+  --on-accent: #fffaf6;
+  --shadow-rgb: 61 57 41;
+  color: var(--ink);
+  background: var(--panel);
+  accent-color: var(--theme-accent);
+}
+body .room-settings-dialog :is(.settings-close, .room-settings-sections > button, .settings-seat-choices span) { background: var(--panel); }
+body .room-settings-dialog .room-settings-sections > button.active,
+body .room-settings-dialog .settings-seat-choices input:checked + span { background: var(--theme-soft); color: var(--theme-accent-dark); }
+body .room-settings-dialog .settings-save { background: var(--theme-accent); border-color: var(--theme-accent); }
+body .room-settings-dialog .settings-save:hover:not(:disabled) { background: var(--theme-accent-hover); }
+body .room-settings-dialog .settings-seat-choices input:focus-visible + span { outline-color: var(--theme-accent-dark); }

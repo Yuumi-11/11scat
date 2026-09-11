@@ -11,11 +11,10 @@ export function WorkflowTaskDeletion({ workflow, identityId, disabled, perform, 
   const label = "删除任务";
   return <div className="workflow-task-deletion">
     <div className="coop-workflow-actions">
-      <button type="button" className="coop-delete workflow-delete-icon"  aria-label={armed ? `确认${label}` : label} disabled={disabled} onClick={() => {
+      <button type="button" className={armed ? "coop-delete workflow-delete-confirm" : "coop-delete workflow-delete-icon"} aria-label={armed ? "确认删除" : label} disabled={disabled} onClick={() => {
         if (!armed) { setArmed(true); return; }
         void perform({ id: crypto.randomUUID(), workflowId: workflow.id, version: workflow.version, action: owner ? "delete-owner-task" : "delete-claimed-task" }).then(done => { if (done) { setArmed(false); onDeleted?.(); } });
-      }}><Trash2 size={19} aria-hidden="true" /></button>
-      {armed && <button type="button" disabled={disabled} onClick={() => setArmed(false)}>取消删除</button>}
+      }}>{armed ? "确认删除" : <Trash2 size={19} aria-hidden="true" />}</button>
     </div>
   </div>;
 }

@@ -32,7 +32,7 @@ export function ClaimWorkflows({ snapshot, initialId, busy, error, perform, onCl
     {workflow ? <WorkflowDetail key={workflow.id} notices={notices} onRead={onRead} workflow={workflow} identityId={snapshot.identityId} name={name} busy={busy || !!retryUncertain} error={error} perform={perform} back={() => setSelected(null)} /> : <WorkflowList notices={notices} onRead={onRead} workflows={snapshot.workflows} archived={archived} setArchived={setArchived} select={setSelected} name={name} />}
   </dialog>;
 }
-export function WorkflowList({ workflows, archived, setArchived, select, name, notices = [], onRead }: { notices?: TaskNotice[]; onRead?: (ids: string[]) => void; workflows: ClaimWorkflow[]; archived: boolean; setArchived: (value: boolean) => void; select: (id: string) => void; name: (id: string) => string }) {
+export function WorkflowList({ workflows, archived, setArchived, select, name, notices = [] }: { notices?: TaskNotice[]; onRead?: (ids: string[]) => void; workflows: ClaimWorkflow[]; archived: boolean; setArchived: (value: boolean) => void; select: (id: string) => void; name: (id: string) => string }) {
   const unread = (id: string) => notices.filter(item => item.workflowId === id).map(item => item.id);
   const archiveUnread = workflows.filter(item => ["done", "deleted"].includes(item.status)).reduce((count, item) => count + unread(item.id).length, 0);
   const visible = workflows.filter(item => archived ? ["done", "deleted"].includes(item.status) : !["done", "deleted"].includes(item.status)).sort((a, b) => Number(b.status === "submitted") - Number(a.status === "submitted") || Number(unread(b.id).length > 0) - Number(unread(a.id).length > 0) || (archived ? b.updatedAt - a.updatedAt : b.createdAt - a.createdAt));
@@ -40,7 +40,7 @@ export function WorkflowList({ workflows, archived, setArchived, select, name, n
     <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已归档 <span>{workflows.filter(item => ["done", "deleted"].includes(item.status)).length}</span>{archiveUnread > 0 && <span className="task-notice-count" aria-label={`${archiveUnread} 条归档新记录`}>{archiveUnread}</span>}</>}</button></div>
     <div className="coop-workflow-list">
       {!visible.length && <p className="coop-empty">{archived ? "暂无归档任务" : "暂无未完成的工作流程"}</p>}
-      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} onRead={onRead} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${item.status}`}>{item.taskAnomaly ? "任务状态异常" : item.reopenPending ? "正在恢复未完成" : item.needsSubmission ? "待补充提交" : workflowStatus[item.status]}</span></button>)}
+      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${unread(item.id).length ? 'has-update' : item.status}`}>{unread(item.id).length ? "有更新" : item.taskAnomaly ? "任务状态异常" : item.reopenPending ? "正在恢复未完成" : item.needsSubmission ? "待补充提交" : workflowStatus[item.status]}</span></button>)}
     </div>
   </>;
 }
@@ -90,6 +90,6 @@ function WorkflowDetail({ workflow, identityId, name, busy, error, perform, back
     {synchronizing && <span className="workflow-sync-spinner" role="status" aria-label="正在同步任务" />}
     {workflow.status === "submitted" && !review && <p className="coop-workflow-people">等待 {name(workflow.reviewerId)} 审批</p>}
     </section>
-    <WorkflowSettings workflow={workflow} identityId={identityId} disabled={disabled} perform={perform} />
+    <WorkflowSettings workflow={workflow} identityId={identityId} disabled={disabled} perform={perform} onDeleted={back} />
   </div>;
 }

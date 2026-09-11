@@ -2,7 +2,7 @@
 
 Repository: [yuumiqwq/duo-space](https://github.com/yuumiqwq/duo-space).
 
-Project art and UI copy must follow [AGENTS.md](AGENTS.md) and the [approved classroom style](docs/classroom-flat-style-2026-09-09.md). Every new or revised asset must match the established visual style.
+Project art and UI copy must follow [AGENTS.md](AGENTS.md) and the [approved classroom style](docs/classroom-flat-style-2026-09-09.md). Every new or revised asset must match the established visual style and receive explicit user approval of its preview before publication. Unapproved art stays in `codex-generated` and must not enter automatically deployed assets or pages.
 
 Originally based on a full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and

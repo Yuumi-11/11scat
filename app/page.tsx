@@ -440,11 +440,10 @@ export default function Home() {
         boardsRef.current = next;
         return next;
       });
-      setActiveBoardId((current) => current === message.id ? "" : current);
       return true;
     }
     return false;
-  }, [updateBoards, setActiveBoardId]);
+  }, [updateBoards]);
 
   useEffect(() => {
     if (!joined) return;
@@ -1717,7 +1716,7 @@ export default function Home() {
       screenStreamRef.current = nextStream;
       setStream(nextStream);
       setActiveMediaId("self-screen");
-      setActiveBoardId(""); projection.reveal();
+      projection.reveal();
     } catch (error) {
       captured?.getTracks().forEach(track => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
       if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
@@ -1964,7 +1963,7 @@ export default function Home() {
       if (track) await roomRef.current?.localParticipant.publishTrack(track, { source: Track.Source.Camera });
       setCameraStream(nextCameraStream);
       setActiveMediaId("self-camera");
-      setActiveBoardId(""); projection.reveal();
+      projection.reveal();
     } catch (error) {
       const name = (error as DOMException).name;
       setCameraError(name === "NotAllowedError"
@@ -2213,7 +2212,7 @@ export default function Home() {
   const orderedBoards = orderClassroomBoards(boards);
   const activeBoard = orderedBoards.find((board) => board.id === activeBoardId);
   const boardIndex = activeBoard ? orderedBoards.indexOf(activeBoard) + 1 : 0;
-  const projection = useProjectionCurtain(activeMedia?.stream, !!activeBoard);
+  const projection = useProjectionCurtain(activeMedia?.stream);
 
   const stepBoard = (direction: -1 | 1) => {
     setActiveBoardId(adjacentBoardId(boards, activeBoardId, direction)); projection.fold();
@@ -2236,10 +2235,7 @@ export default function Home() {
         <section className="focus-stage panel">
           {roomError && <p className="room-error" role="alert">{roomError}</p>}
           <div className="share-canvas" ref={stageRef}><div className="stage-content">
-            <ProjectorControl open={projection.open} hasSource={!!activeMedia} disabled={shareStarting} onClick={() => {
-              if (activeBoard) { setActiveBoardId(""); projection.reveal(); return; }
-              projection.toggle();
-            }} />
+            <ProjectorControl open={projection.open} hasSource={!!activeMedia} disabled={shareStarting} onClick={projection.toggle} />
             {!projection.open && <BlackboardSurface index={boardIndex} count={orderedBoards.length + 1} onStep={stepBoard} drawing={!!activeBoard}>
             {!activeBoard && <button className={`main-fullscreen-button${projection.open ? '' : ' is-chalk'}`} type="button" onClick={() => void toggleFullscreen()} aria-label={fullscreen ? "退出主窗口全屏" : "主窗口全屏"} aria-keyshortcuts="f" ><ClassroomFullscreenIcon fullscreen={fullscreen} chalk={!projection.open} /></button>}
             {fullscreenError && <p className="main-fullscreen-error" role="alert">{fullscreenError}</p>}
@@ -2398,7 +2394,7 @@ export default function Home() {
                   aria-label="输入房间消息"
                   rows={2}
                 />
-                <button className="primary-button chat-send-button" type="submit" disabled={!chatDraft.trim() && !chatImage}>发送</button>
+                <button className="primary-button chat-send-button" type="submit" onClick={sendMessage} disabled={!chatDraft.trim() && !chatImage}>发送</button>
               </div>
               {chatUploadProgress !== null && <div className="chat-upload-progress" role="status"><span style={{ width: `${chatUploadProgress}%` }} /><small>{chatUploadProgress < 100 ? `正在上传 ${chatUploadProgress}%` : "上传完成，正在发送…"}</small></div>}
               {chatImageError && <p className="chat-image-error" role="alert">{chatImageError}</p>}
@@ -2431,7 +2427,7 @@ export default function Home() {
           const cameraPeer = peers.find(id => remoteCameras[id]);
           const screenOn = !!((self && stream) || screenPeer);
           const cameraOn = !!((self && cameraStream) || cameraPeer);
-          const view = (id: string) => { setActiveMediaId(id); setActiveBoardId(''); projection.reveal(); };
+          const view = (id: string) => { setActiveMediaId(id); projection.reveal(); };
           return <div className="classroom-desk" key={index}><DeviceCard font={classroomProfile.profile.font} kind={index === 0 ? 'tablet' : 'laptop'} name={self ? displayName : member.name} online={!!member.id && ((self && joined) || peers.length > 0)} screen={screenOn} camera={cameraOn} microphone={self ? !!microphoneStream : peers.some(id=>!!remoteMicrophones[id])} self={self} onMicrophone={self ? ()=>void toggleMicrophone() : undefined}
             onScreen={self ? () => stream ? stopShare() : screenPeer ? view(screenPeer + '-screen') : void startShare() : screenPeer ? () => view(screenPeer + '-screen') : undefined}
             onCamera={self ? () => cameraStream ? stopCamera() : cameraPeer ? view(cameraPeer + '-camera') : void toggleCamera() : cameraPeer ? () => view(cameraPeer + '-camera') : undefined}>

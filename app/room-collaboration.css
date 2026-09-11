@@ -136,6 +136,8 @@
 .coop-workflow-list small { display: block; margin-top: 6px; color: var(--muted); }
 .coop-workflow-status { flex-shrink: 0; color: var(--theme-accent-dark); background: var(--theme-soft); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 .coop-workflow-status.rejected { color: var(--danger); }
+.coop-workflow-status.has-update { color: #71531d; background: #f4dfa2; }
+.workflow-task-deletion .workflow-delete-confirm { color: #fff; background: var(--danger); border-color: var(--danger); }
 .coop-workflow-back { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; color: var(--muted); background: transparent; font-size: 12px; }
 .coop-workflow-heading { justify-content: space-between; margin: 16px 0 8px; }
 .coop-workflow-heading h4 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
@@ -346,6 +348,9 @@
 .room-collaboration-dialog .member-task .coop-claim { flex: 0 0 auto; margin: 0; min-height: 25px; padding: 3px 5px; color: #655f54; background: #fff; border: 1px solid #deddd7; border-radius: 5px; font-size: 10px; line-height: 17px; }
 .room-collaboration-dialog .member-task .coop-claim:hover:not(:disabled) { background: #f5f5f2; border-color: #aaa79e; }
 .member-task .coop-task-footer .coop-workflow-badge { margin: 4px 0 0; }
+.member-task .coop-inbox-stamp-clip { position: absolute; inset: 0 40px 0 48%; overflow: hidden; pointer-events: none; }
+.coop-inbox-stamp-scale { position: absolute; left: 50%; top: 50%; width: max-content; transform: translate(-50%, -50%) scale(var(--inbox-stamp-scale, 0)); }
+.coop-inbox-stamp-scale .coop-claim-stamp { right: auto; bottom: auto; max-width: none; padding-left: 10px; padding-right: 12px; font-size: clamp(20px, 2.2vw, 29px); white-space: nowrap; overflow-wrap: normal; transform-origin: center; }
 .buffer .coop-task-footer > .coop-stamp-clip { flex-shrink: 0; flex-basis: auto; min-width: 0; max-width: 76%; padding-left: 0; }
 .buffer .coop-claim-stamp { white-space: nowrap; overflow-wrap: normal; padding-left: 10px; padding-right: 12px; }
 @media (max-width: 640px) { .coop-surface { --coop-inset: 9px; }.coop-notebook { padding: 0; }.coop-members { gap: 0; } }

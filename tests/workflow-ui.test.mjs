@@ -32,6 +32,8 @@ test('workflow detail offers settings to every member and direct completion only
   const withNotices = renderToStaticMarkup(createElement(WorkflowList, { workflows, notices, archived: false, setArchived() {}, select() {}, name: id => id }));
   assert.ok(withNotices.indexOf('他人认领的事项') < withNotices.indexOf('我认领的事项'), 'unread workflow is temporarily first');
   assert.match(withNotices, /1 条归档新记录/); assert.match(withNotices, /task-notice-dot/);
+  assert.match(withNotices, /coop-workflow-status has-update">有更新/);
+  assert.ok(!overview(false).includes('有更新'), 'read workflow returns to its actual status');
   assert.ok(!overview(false).includes('task-notice-dot'), 'read acknowledgements remove dots and unread sorting');
   const ordered = renderToStaticMarkup(createElement(WorkflowList, { workflows: [...workflows, { ...workflow, id: 'review', title: '优先审批事项', status: 'submitted', createdAt: 1 }], notices, archived: false, setArchived() {}, select() {}, name: id => id }));
   assert.ok(ordered.indexOf('优先审批事项') < ordered.indexOf('他人认领的事项'), 'pending review outranks unread working tasks');

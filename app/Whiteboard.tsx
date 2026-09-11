@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { resizeTextGeometry, scaleTextGeometry, type ResizeHandle } from './board-text-geometry';
 import { ChalkToolIcon, ClassroomFullscreenIcon } from "./ClassroomScene";
 import { BOARD_COLOR, CHALK_COLORS, CHALK_FONT, createBoardPainter, visibleBoardColor } from "./board-painter.mjs";
+import { BOARD_TEXT_PADDING_X, BOARD_TEXT_PADDING_Y, BOARD_TEXT_LINE_HEIGHT, fitBoardText } from './board-text-layout.mjs';
 
 export type BoardPoint = { x: number; y: number };
 export type BoardStroke = { id: string; color: string; width: number; points: BoardPoint[]; createdAt: number; revision: string; tool?: "pen" | "erase"; material?: "chalk-v1" };
@@ -52,6 +53,8 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
   const [editingTextId, setEditingTextId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [measuredTexts, setMeasuredTexts] = useState<{ source: BoardText; fitted: BoardText }[]>([]);
+  const [paperScale, setPaperScale] = useState({ x: 1, y: 1 });
   const paperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,6 +69,17 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
   const dismissedPointer = useRef<number | null>(null);
 
   const visibleStrokes = useMemo(() => draft && draftEpoch === board.epoch && !board.deletedStrokeIds.includes(draft.id) ? [...board.strokes.filter((stroke) => stroke.id !== draft.id), draft] : board.strokes, [board.strokes, board.epoch, board.deletedStrokeIds, draft, draftEpoch]);
+  const visibleTexts = board.texts.map(text => measuredTexts.find(item => item.source === text)?.fitted ?? text);
+
+  useEffect(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setPaperScale({ x: entry.contentRect.width / BOARD_WIDTH, y: entry.contentRect.height / BOARD_HEIGHT });
+    });
+    observer.observe(paper);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -80,12 +94,13 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
     const paint = () => {
       const ctx = textCanvasRef.current?.getContext("2d"); if (!ctx || cancelled) return;
       painterRef.current ||= createBoardPainter(() => document.createElement("canvas"));
+      setMeasuredTexts(board.texts.map(source => ({ source, fitted: fitBoardText(ctx, source) })));
       ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
       painterRef.current.drawTexts(ctx, board.texts.filter(text => text.confirmed && text.id !== editingTextId));
     };
-    paint();
+    const frame = requestAnimationFrame(paint);
     void Promise.all([document.fonts.load('32px "Classroom Yan"', board.texts.map(text => text.text).join("")), document.fonts.load('32px "Long Cang"', board.texts.map(text => text.text).join(""))]).then(paint, () => undefined);
-    return () => { cancelled = true; };
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
   }, [board.texts, editingTextId]);
 
   useEffect(() => {
@@ -96,7 +111,9 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
       if (!text || !event.deltaY || event.ctrlKey || event.metaKey) return;
       event.preventDefault();
       event.stopPropagation();
-      onUpsertText(makeBoardTextUpdate(text, scaleTextGeometry(text, event.deltaY < 0 ? 1.08 : 1 / 1.08)), board.epoch);
+      const next = { ...text, ...scaleTextGeometry(text, event.deltaY < 0 ? 1.08 : 1 / 1.08) };
+      const ctx = textCanvasRef.current?.getContext('2d');
+      onUpsertText(makeBoardTextUpdate(text, ctx ? fitBoardText(ctx, next) : next), board.epoch);
     };
     paper.addEventListener("wheel", adjustFont, { passive: false });
     return () => paper.removeEventListener("wheel", adjustFont);
@@ -108,7 +125,8 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
       const box = (event.target as Element | null)?.closest('.board-text-box');
       if (box?.getAttribute('data-text-id') === editingTextId) return;
       const text = board.texts.find(item => item.id === editingTextId);
-      if (text) onUpsertText(makeBoardTextUpdate(text, { confirmed: true }), board.epoch);
+      const ctx = textCanvasRef.current?.getContext('2d');
+      if (text) onUpsertText(makeBoardTextUpdate(text, { ...(ctx ? fitBoardText(ctx, text) : text), confirmed: true }), board.epoch);
       dismissedPointer.current = event.target instanceof HTMLCanvasElement && paperRef.current?.contains(event.target) ? event.pointerId : null;
       setEditingTextId('');
     };
@@ -189,7 +207,11 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
     setDraft(null);
   };
 
-  const updateText = (current: BoardText, patch: Partial<BoardText>) => onUpsertText(makeBoardTextUpdate(current, patch), board.epoch);
+  const updateText = (current: BoardText, patch: Partial<BoardText>) => {
+    const ctx = textCanvasRef.current?.getContext('2d');
+    const next = { ...current, ...patch };
+    onUpsertText(makeBoardTextUpdate(current, ctx ? fitBoardText(ctx, next) : next), board.epoch);
+  };
 
   const beginTextDrag = (event: React.PointerEvent<HTMLButtonElement>, text: BoardText) => {
     event.preventDefault(); event.stopPropagation();
@@ -279,16 +301,17 @@ export function Whiteboard({ board, fullscreen, onToggleFullscreen, onDelete, on
       <div className={`whiteboard-paper tool-${tool}`} ref={paperRef}>
         <canvas className="chalk-stroke-canvas" ref={canvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} role="img" aria-label={board.name} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={finishStroke} onPointerCancel={finishStroke} onLostPointerCapture={finishStroke} />
         <canvas className="chalk-text-canvas" ref={textCanvasRef} width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-hidden="true" />
-        <div className="board-text-layer">
-          {board.texts.map((text) => {
+        <div className="board-text-layer" style={{ '--board-text-pad-x': `${BOARD_TEXT_PADDING_X}em`, '--board-text-pad-y': `${BOARD_TEXT_PADDING_Y}em`, '--board-text-line-height': BOARD_TEXT_LINE_HEIGHT } as CSSProperties}>
+          {visibleTexts.map((text) => {
             const editing = editingTextId === text.id || !text.confirmed;
+            const textStyle: CSSProperties = { width: text.width, height: text.height, fontSize: text.fontSize, transform: `scale(${paperScale.x}, ${paperScale.y})`, transformOrigin: 'top left' };
             return <div className={editing ? "board-text-box editing" : "board-text-box"} key={text.id} data-text-id={text.id} style={{ left: `${(text.x / BOARD_WIDTH) * 100}%`, top: `${(text.y / BOARD_HEIGHT) * 100}%`, width: `${(text.width / BOARD_WIDTH) * 100}%`, height: `${(text.height / BOARD_HEIGHT) * 100}%`, color: visibleBoardColor(text), fontFamily: text.material === "chalk-v1" ? CHALK_FONT : "system-ui, sans-serif", fontSize: `${text.fontSize / 12}cqw` }}>
               {editing ? <>
                 <button className="board-text-drag" type="button" aria-label="拖动文本框"  onPointerDown={(event) => beginTextDrag(event, text)} onPointerMove={(event) => moveText(event, text)} onPointerUp={finishTextDrag} onPointerCancel={finishTextDrag}><span aria-hidden="true" /></button>
-                <button className="board-text-delete" type="button" aria-label="删除文本框"  onClick={() => onDeleteText(text.id, board.epoch)}><ChalkToolIcon name="clear" /></button>
+                <button className="board-text-delete" type="button" aria-label="删除文本框"  onClick={() => onDeleteText(text.id, board.epoch)}><ChalkToolIcon name="close" /></button>
                 {(['n','s','e','w','ne','nw','se','sw'] as ResizeHandle[]).map(handle => <button key={handle} className={`text-resize-handle handle-${handle}`} type="button" aria-label={`${handle.length === 2 ? '缩放文字' : '调整文本边界'} ${handle}`} onPointerDown={event => beginResize(event, text, handle)} onPointerMove={moveResize} onPointerUp={finishResize} onPointerCancel={finishResize} />)}
-                <textarea value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
-              </> : <button className="board-text-content" type="button" onClick={() => { if (tool === "text") { setEditingTextId(text.id); updateText(text, { confirmed: false }); } }}>{text.text}</button>}
+                <textarea style={textStyle} value={text.text} autoFocus={editingTextId === text.id} aria-label="画板文本" onChange={(event) => updateText(text, { text: event.target.value })} onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); updateText(text, { confirmed: true }); setEditingTextId(""); }} />
+              </> : <button className="board-text-content" style={textStyle} type="button" onClick={() => { if (tool === "text") { setEditingTextId(text.id); updateText(text, { confirmed: false }); } }}>{text.text}</button>}
             </div>;
           })}
         </div>

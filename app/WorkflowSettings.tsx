@@ -23,7 +23,7 @@ function Choices({ label, value, options, disabled, change }: { label: string; v
   return <fieldset className="workflow-choices" disabled={disabled}><legend>{label}</legend><div>{options.map(([id, name]) => <button key={id} type="button" aria-pressed={value === id} onClick={() => change(id)}>{name}</button>)}</div></fieldset>;
 }
 
-export function WorkflowSettings({ workflow, identityId, disabled, perform }: { workflow: ClaimWorkflow; identityId: string; disabled: boolean; perform: (command: WorkflowCommand) => Promise<boolean> }) {
+export function WorkflowSettings({ workflow, identityId, disabled, perform, onDeleted }: { workflow: ClaimWorkflow; identityId: string; disabled: boolean; perform: (command: WorkflowCommand) => Promise<boolean>; onDeleted?: () => void }) {
   disabled ||= workflow.status === 'deleted' || !!workflow.ownerDeletePending;
   const [uploading, setUploading] = useState(false);
   const [draft, setDraft] = useState<{ fields: TaskFields; base: TaskFields; start: string; due: string; tags: string } | null>(null);
@@ -55,6 +55,6 @@ export function WorkflowSettings({ workflow, identityId, disabled, perform }: { 
     <Choices label="重复" value={fields.repeatFlag} options={[["", "不重复"], ...["DAILY", "WEEKLY", "MONTHLY"].map((period, index): [string, string] => [`RRULE:FREQ=${period};INTERVAL=1`, ["每天", "每周", "每月"][index]]), ...(fields.repeatFlag && !["DAILY", "WEEKLY", "MONTHLY"].some(period => fields.repeatFlag === `RRULE:FREQ=${period};INTERVAL=1`) ? [[fields.repeatFlag, "现有规则"] as [string, string]] : [])]} disabled={disabled} change={value => change({ repeatFlag: value })} />
     <Choices label="提醒" value={fields.reminders.length > 1 ? "custom" : fields.reminders[0] || ""} options={[["", "不提醒"], ["TRIGGER:PT0S", "准时"], ["TRIGGER:-PT15M", "提前15分"], ["TRIGGER:-PT1H", "提前1时"], ...((fields.reminders.length > 1 || (fields.reminders[0] && !["TRIGGER:PT0S", "TRIGGER:-PT15M", "TRIGGER:-PT1H"].includes(fields.reminders[0]))) ? [[fields.reminders.length > 1 ? "custom" : fields.reminders[0], "现有提醒"] as [string, string]] : [])]} disabled={disabled} change={value => { if (value !== "custom") change({ reminders: value ? [value] : [] }); }} />
     <label>标签<input value={tags} placeholder="用逗号分隔" disabled={disabled} onChange={event => change({}, { tags: event.target.value })} /></label>
-    <div className="workflow-settings-footer"><WorkflowTaskDeletion workflow={workflow} identityId={identityId} disabled={disabled || uploading} perform={perform} /><div className="coop-workflow-actions"><button type="submit" className="primary" disabled={disabled || uploading || !draft || !fields.title.trim() || !!rebased.conflicts.length}>保存修改</button></div></div>
+    <div className="workflow-settings-footer"><WorkflowTaskDeletion workflow={workflow} identityId={identityId} disabled={disabled || uploading} perform={perform} onDeleted={onDeleted} /><div className="coop-workflow-actions"><button type="submit" className="primary" disabled={disabled || uploading || !draft || !fields.title.trim() || !!rebased.conflicts.length}>保存修改</button></div></div>
   </form>;
 }

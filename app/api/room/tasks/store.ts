@@ -113,6 +113,10 @@ export class CollaborationStore {
       const state = JSON.parse(await readFile(this.file, "utf8"));
       if (state.version !== 1 || !state.buffer || !state.operations) throw new Error("协作记录格式异常");
       state.workflows ||= {};
+      // Archived deletion records also suppress stale public cards on reload.
+      for (const workflow of Object.values(state.workflows) as Workflow[]) {
+        if (workflow.status === 'deleted' && workflow.source.ownerId === null) delete state.buffer[workflow.source.taskId];
+      }
       for (const [id, task] of Object.entries(state.buffer) as [string, BufferTask][]) {
         task.publisherId ||= (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id)?.actorId;
       }
