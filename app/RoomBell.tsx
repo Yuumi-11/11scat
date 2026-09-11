@@ -17,7 +17,7 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
   const [now, setNow] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLElement>(null);
   const locked = useRef(false);
   const sequence = useRef(0);
@@ -26,7 +26,7 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
   const notificationLinkHandled = useRef(false);
   const close = useCallback((restoreFocus = false) => {
     setOpenFor(null);
-    if (restoreFocus) root.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    if (restoreFocus) root.current?.focus({ preventScroll: true });
   }, []);
   const refresh = useCallback(async () => {
     const id = ++sequence.current;
@@ -125,10 +125,9 @@ export function RoomBell({ triggerHost, onShowChat }: { triggerHost: HTMLElement
     return `${r.repeat ? "每3秒提醒" : "等待确认"} · ${Math.ceil((r.expiresAt - now) / 1000)}秒`;
   };
   return <>
-    {triggerHost && createPortal(<div className="room-bell" ref={root}><button className={`room-bell-trigger${incoming.length ? " has-incoming" : outgoing.length ? " is-ringing" : ""}`} type="button"  aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? "room-bell-panel" : undefined} onClick={() => open ? close() : setOpenFor(triggerHost)}>
+    {triggerHost && createPortal(<button ref={root} className={`room-bell-trigger${incoming.length ? " has-incoming" : outgoing.length ? " is-ringing" : ""}`} type="button"  aria-label={triggerLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? "room-bell-panel" : undefined} onClick={() => open ? close() : setOpenFor(triggerHost)}>
       <ClassroomProp name="bell" />{incoming.length > 0 ? <i aria-hidden="true">{incoming.length > 99 ? "99+" : incoming.length}</i> : outgoing.length > 0 && <span className="room-bell-active-dot" aria-hidden="true" />}
-    </button>
-    </div>, triggerHost)}
+    </button>, triggerHost)}
     {open && createPortal(<section ref={panel} id="room-bell-panel" className="room-bell room-bell-panel" role="dialog" aria-modal="false" aria-labelledby="room-bell-title" style={{ visibility: "hidden" }}>
       <header><strong id="room-bell-title">摇铃</strong><button type="button" aria-label="关闭摇铃面板" onClick={() => close(true)}><X size={18} /></button></header>
       {!data && <p className="room-bell-empty">正在获取成员…</p>}
