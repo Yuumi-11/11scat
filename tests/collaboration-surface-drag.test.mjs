@@ -18,11 +18,13 @@ const code = ts.transpileModule(`${handlers.join('\n')}\nreturn {${names.join(',
 function fixture(enabled = true) {
   const drag = { current: null }, ghosts = [], drops = [], task = { id: 'task' };
   class Target { constructor(interactive = false) { this.interactive = interactive; } closest() { return this.interactive ? this : null; } }
-  const handle = { captured: null, closest: () => ({ getBoundingClientRect: () => ({ left: 10, top: 20, width: 200 }) }), setPointerCapture(id) { this.captured = id; }, hasPointerCapture(id) { return this.captured === id; }, releasePointerCapture() { this.captured = null; } };
+  const listeners = new Map();
+  const window = { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
+  const handle = { addEventListener() {}, removeEventListener() {}, captured: null, closest: () => ({ getBoundingClientRect: () => ({ left: 10, top: 20, width: 200 }) }), setPointerCapture(id) { this.captured = id; }, hasPointerCapture(id) { return this.captured === id; }, releasePointerCapture() { this.captured = null; } };
   const document = { elementFromPoint: () => ({ closest: selector => selector === '[data-coop-owner]' ? { dataset: { coopOwner: 'bob' } } : null }) };
-  const api = new Function('drag', 'setKeyboardDrag', 'setGhost', 'setHoverOwner', 'membersPane', 'canDrop', 'move', 'document', 'Element', 'surfaceDraggable', 'task', code)(drag, () => {}, value => ghosts.push(value), () => {}, { current: null }, () => true, (...args) => drops.push(args), document, Target, enabled, task);
+  const api = new Function('drag', 'setKeyboardDrag', 'setGhost', 'setHoverOwner', 'membersPane', 'canDrop', 'move', 'document', 'Element', 'surfaceDraggable', 'task', 'window', code)(drag, () => {}, value => ghosts.push(value), () => {}, { current: null }, () => true, (...args) => drops.push(args), document, Target, enabled, task, window);
   const event = (extra = {}) => ({ currentTarget: handle, target: new Target(), button: 0, isPrimary: true, pointerId: 1, clientX: 30, clientY: 40, preventDefault() {}, ...extra });
-  return { api, drag, ghosts, drops, handle, event, Target };
+  return { api, drag, ghosts, drops, handle, event, Target, listeners };
 }
 test('card surface drag shares the pin threshold, offset, pointer capture and one drop', () => {
   for (const start of ['surfaceDown', 'startDrag']) {
@@ -40,12 +42,15 @@ test('interactive descendants and locked card surfaces never capture a pointer',
   const locked = fixture(false); locked.api.surfaceDown(locked.event()); assert.equal(locked.drag.current, null);
   f.api.surfaceDown(f.event({ button: 2 })); f.api.surfaceDown(f.event({ isPrimary: false })); assert.equal(f.drag.current, null);
 });
-test('bubbled events and a second finger cannot move or end an active gesture', () => {
+test('drag follows window events outside the source card, rejects another finger, and removes listeners', () => {
   const f = fixture(); f.api.surfaceDown(f.event());
-  for (const extra of [{ currentTarget: {} }, { pointerId: 2 }]) {
-    f.api.pointerMove(f.event({ ...extra, clientX: 80 })); f.api.finishDrag(f.event(extra)); f.api.lostDrag(f.event(extra));
-    assert.ok(f.drag.current); assert.equal(f.ghosts.length, 0); assert.equal(f.drops.length, 0);
-  }
+  f.api.pointerMove(f.event({ pointerId: 2, clientX: 80 })); f.api.finishDrag(f.event({ pointerId: 2 }));
+  assert.ok(f.drag.current); assert.equal(f.ghosts.length, 0);
+  assert.equal(f.listeners.size, 3);
+  f.listeners.get('pointermove')(f.event({ currentTarget: {}, clientX: 90 }));
+  assert.equal(f.ghosts.at(-1).x, 70);
+  f.listeners.get('pointerup')(f.event({ currentTarget: {} }));
+  assert.equal(f.drops.length, 1); assert.equal(f.listeners.size, 0);
 });
 test('tap, pointer cancellation and capture loss never submit a transfer', () => {
   for (const end of ['tap', 'cancel', 'lost']) {

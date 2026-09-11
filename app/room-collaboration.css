@@ -206,10 +206,6 @@
 .coop-members h3 { flex: 1; min-width: 0; padding: 0 5px 2px; border-bottom: 1px solid #a99b81; font: 25px/1.1 'School Caveat', 'Long Cang', cursive; color: #534738; }
 .coop-members h3 small { font: 11px/1.4 'Classroom Sans', sans-serif; }
 .coop-members .coop-count { font-size: 11px; color: #80755f; }
-.coop-binding { position: absolute; z-index: 2; left: calc(50% - 25px); top: 65px; bottom: 30px; width: 50px; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
-.coop-binding i { position: relative; width: 50px; height: 13px; border: 3px solid #aaa89b; border-top-color: #f4f2e8; border-bottom-color: #797d72; border-radius: 50%; background: transparent; box-shadow: 0 3px 3px #403d3745, inset 0 1px 1px #635f5240; }
-.coop-binding i::before, .coop-binding i::after { content: ''; position: absolute; z-index: -1; top: 0; width: 8px; height: 9px; border-radius: 50%; background: #625e5160; box-shadow: 0 0 0 2px #b5ad9925; }
-.coop-binding i::before { left: -3px; }.coop-binding i::after { right: -3px; }
 .coop-members .coop-member-lanes { margin: 0 9px 5px; }
 .coop-members .coop-lane + .coop-lane { border-left: 1px solid #c9bea7; }
 .coop-members .coop-lane > header { padding: 7px 9px 5px; gap: 6px; }
@@ -230,3 +226,46 @@
 .coop-task[data-surface-draggable] { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .coop-task[data-surface-draggable]:active { cursor: grabbing; }
 .coop-task[data-surface-draggable] :is(input, textarea, [contenteditable]:not([contenteditable="false"])) { cursor: text; user-select: text; -webkit-user-select: text; }
+
+/* September review: cork noticeboard, flush white sewn notebook and compact rows. */
+.coop-surface { --coop-inset: 14px; padding: var(--coop-inset); }
+.coop-column.buffer { --coop-board: #c7a071; background: url('/classroom/taskboard-cork.svg') 0 0 / 192px 192px; border: 5px solid #aa8459; border-radius: 4px; box-shadow: inset 0 1px 5px #704f3330, 0 2px 4px #53473830; }
+.coop-column.buffer > header { color: #514330; border-color: #80603e40; }
+.buffer .coop-count { color: #65513a; }
+.room-collaboration-dialog .buffer :is(.coop-refresh,.coop-close) { color: #584a35; border-color: #80603e50; background: #fff9ea35; }
+.buffer .coop-recovery-trigger { color: #584a35; border-color: #80603e50; background: #fff9ea35; }
+.buffer .coop-new-task { border-color: #785d3c80; color: #65513a; background: #fff9ea12; }
+.buffer .coop-new-task:hover:not(:disabled), .buffer .coop-new-task.editing { background: #fff9ea30; border-color: #785d3c; }
+.buffer .coop-new-task input { color: #514330; background: #fff9ea90; border-color: #80603e50; }
+.buffer .coop-task { padding-top: 22px; }
+/* Original pin geometry: 10px head, centered at 7px from the paper top. */
+.room-collaboration-dialog .buffer .coop-drag { top: 0; }
+.buffer .coop-drag::before { top: 7px; }
+.coop-notebook { padding: 0; margin: 0 calc(-1 * var(--coop-inset)) calc(-1 * var(--coop-inset)); }
+.coop-members { gap: 0; padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
+.coop-members::after { content: ''; position: absolute; z-index: 2; pointer-events: none; top: 0; bottom: 0; left: calc(50% - 9px); width: 18px; background: linear-gradient(90deg,transparent,#6d625612 43%,#786e6235 50%,#6d625612 57%,transparent); border-radius: 50%; }
+.coop-members > .coop-column, .coop-members > .coop-column:last-child { border: 0; border-radius: 0 6px 0 0; background: #fff; box-shadow: none; }
+.coop-members > .coop-column:last-child { border-radius: 6px 0 0 0; }
+.coop-members > .coop-column > header { margin: 0 12px; }
+.coop-members h3 { flex: 0 1 180px; width: 30%; max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: 'School Caveat','Classroom Yan','Long Cang',cursive; }
+.coop-members .coop-member-lanes { margin: 0 4px 4px; }
+.coop-members .coop-lane .coop-task-list { padding: 6px 5px; }
+.coop-members .coop-lane > header { padding: 7px 6px 5px; }
+.member-task { --panel: #fff; --soft: #f6f6f4; --line: #deddd7; --ink: #504c43; --muted: #827b6e; background: #fff; border-color: #deddd7; }
+.coop-lane .member-task { padding: 7px 7px 7px 9px; }
+.member-task.priority-5 { --priority-bar: #ed3f3f; }.member-task.priority-3 { --priority-bar: #ffa600; }.member-task.priority-1 { --priority-bar: #4c6fff; }
+.member-task:not(.priority-0)::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 2px 2px 0; background: var(--priority-bar); pointer-events: none; }
+/* Keep the existing keyboard drag control accessible without a visible pin. */
+.room-collaboration-dialog .member-task .coop-drag { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.member-task .coop-drag::before { content: none; }
+.member-task:has(.coop-drag:focus-visible) { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
+.member-task .coop-task-top { align-items: center; gap: 5px; }
+.member-task .coop-task-title { flex: 1 1 0; min-width: 0; margin-left: -2px; margin-right: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; overflow-wrap: normal; }
+/* The annotated 49px reserve belongs to the date, not empty title margin. */
+.coop-task-date { flex: 0 0 auto; min-width: 49px; text-align: right; white-space: nowrap; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.room-collaboration-dialog .member-task .coop-claim { flex: 0 0 auto; margin: 0; min-height: 25px; padding: 3px 5px; color: #655f54; background: #fff; border: 1px solid #deddd7; border-radius: 5px; font-size: 10px; line-height: 17px; }
+.room-collaboration-dialog .member-task .coop-claim:hover:not(:disabled) { background: #f5f5f2; border-color: #aaa79e; }
+.member-task .coop-task-footer .coop-workflow-badge { margin: 4px 0 0; }
+.buffer .coop-task-footer > .coop-stamp-clip { flex-shrink: 0; flex-basis: auto; min-width: 0; max-width: 76%; padding-left: 0; }
+.buffer .coop-claim-stamp { white-space: nowrap; overflow-wrap: normal; padding-left: 10px; padding-right: 12px; }
+@media (max-width: 640px) { .coop-surface { --coop-inset: 9px; }.coop-notebook { padding: 0; }.coop-members { gap: 0; } }

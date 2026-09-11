@@ -36,7 +36,7 @@ test('relative dates prioritize four days before Monday-based this/next-week lab
   const { collaborationDateLabel: label } = await import('../app/collaboration-view.ts');
   const now = new Date('2026-09-11T12:00:00+0800');
   const task = day => ({ dueDate: `${day}T00:00:00+0800`, startDate: null, isAllDay: true });
-  for (const [date, expected] of [['2026-09-11','今天'],['2026-09-12','明天'],['2026-09-13','后天'],['2026-09-14','大后天'],['2026-09-10','这周四'],['2026-09-15','下周二'],['2026-09-20','下周日'],['2026-09-21','2026/9/21'],['2026-09-06','2026/9/6']]) assert.equal(label(task(date), now),expected);
+  for (const [date, expected] of [['2026-09-11','今天'],['2026-09-12','明天'],['2026-09-13','后天'],['2026-09-14','大后天'],['2026-09-10','这周四'],['2026-09-15','下周二'],['2026-09-20','下周日'],['2026-09-21','9/21'],['2026-09-06','9/6']]) assert.equal(label(task(date), now),expected);
 });
 
 test('relative dates use Shanghai midnight, preserve time, and handle year boundaries and start-only tasks', async () => {
