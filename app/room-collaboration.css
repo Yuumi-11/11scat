@@ -202,7 +202,7 @@
 .coop-members > .coop-column { position: relative; z-index: 1; border: 1px solid #e0d7c6; border-radius: 2px 2px 4px 3px; background: linear-gradient(90deg,#fffdf6 88%,#eae4d5); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8, 2px 3px 4px #50463520; }
 .coop-members > .coop-column:last-child { background: linear-gradient(90deg,#eae4d5,#fffdf6 12%); box-shadow: 0 2px 0 #ddd5c4, 0 4px 0 #f8f4e8,-2px 3px 4px #50463520; }
 .coop-members > .coop-column > header { margin: 0 14px; padding: 11px 0 7px; gap: 8px; border: 0; }
-.coop-notebook-title { align-self: end; padding-bottom: 4px; color: #7a705e; font: 17px/1 'School Caveat', cursive; }
+.coop-notebook-title { align-self: end; padding-bottom: 4px; color: #7a705e; font: 400 14px/1 Arial, sans-serif; }
 .coop-members h3 { flex: 1; min-width: 0; padding: 0 5px 2px; border-bottom: 1px solid #a99b81; font: 25px/1.1 'School Caveat', 'Long Cang', cursive; color: #534738; }
 .coop-members h3 small { font: 11px/1.4 'Classroom Sans', sans-serif; }
 .coop-members .coop-count { font-size: 11px; color: #80755f; }
@@ -230,18 +230,24 @@
 /* September review: cork noticeboard, flush white sewn notebook and compact rows. */
 .coop-surface { --coop-inset: 14px; padding: var(--coop-inset); border: 0; border-radius: 8px; background: var(--panel); }
 /* Cork comes from the earlier photo; only the frame comes from the later reference. */
-.coop-column.buffer { --coop-board: #b48052; background: url('/classroom/taskboard-cork-reference.webp') 0 0 / 400px 400px padding-box; border: 18px solid #d6ad73; border-image: url('/classroom/taskboard-frame-reference.webp') 15 / 18px / 0 stretch; border-radius: 0; box-shadow: inset 1px 2px 6px #57391955, 0 2px 4px #53473830; }
-.coop-column.buffer > header { color: #514330; border-color: #80603e40; }
-.buffer .coop-count { color: #65513a; }
-.room-collaboration-dialog .buffer :is(.coop-refresh,.coop-close) { color: #584a35; border-color: #80603e50; background: #fff9ea35; }
-.buffer .coop-recovery-trigger { color: #584a35; border-color: #80603e50; background: #fff9ea35; }
-.buffer .coop-new-task { border-color: #785d3c80; color: #65513a; background: #fff9ea12; }
-.buffer .coop-new-task:hover:not(:disabled), .buffer .coop-new-task.editing { background: #fff9ea30; border-color: #785d3c; }
+.coop-column.buffer { --coop-board: #b48052; position: relative; container: coop-board / inline-size; background: url('/classroom/taskboard-cork-reference.webp') 0 0 / 400px 400px padding-box; border: 18px solid #d6ad73; border-image: url('/classroom/taskboard-frame-reference.webp') 15 / 18px / 0 stretch; border-radius: 0; box-shadow: inset 1px 2px 6px #57391955, 0 2px 4px #53473830; }
+.coop-column.buffer > header { color: #fff; border: 0; }
+.buffer .coop-count { color: #fff; }
+.room-collaboration-dialog .buffer :is(.coop-refresh,.coop-close) { color: #fff; border-color: #ffffff80; background: #ffffff14; }
+.buffer .coop-recovery-trigger { color: #fff; border-color: #ffffff80; background: #ffffff14; }
+.buffer .coop-new-task { border-color: #fff; color: #fff; background: #ffffff08; }
+.buffer .coop-new-task:hover:not(:disabled), .buffer .coop-new-task.editing { background: #ffffff20; border-color: #fff; }
 .buffer .coop-new-task input { color: #514330; background: #fff9ea90; border-color: #80603e50; }
 .buffer .coop-task { padding-top: 22px; }
 /* Original pin geometry: 10px head, centered at 7px from the paper top. */
 .room-collaboration-dialog .buffer .coop-drag { top: 0; }
-.buffer .coop-drag::before { top: 7px; }
+.buffer .coop-drag::before { top: 7px; background: radial-gradient(circle at 32% 26%, #ffffffc0, #ffffff00 48%), var(--coop-pin-color, var(--theme-accent)); }
+/* Reserve the final first-row cell for tools and creation so notes start at the top left. */
+@container coop-board (min-width: 460px) {
+  .coop-column.buffer > header { position: absolute; z-index: 2; right: 16px; top: 12px; padding: 0; }
+  .coop-column.buffer .coop-task-list { padding-top: 12px; }
+  .buffer .coop-new-task { grid-column: -2 / -1; grid-row: 1; margin-top: 42px; }
+}
 .coop-notebook { padding: 0; margin: 0 calc(-1 * var(--coop-inset)) calc(-1 * var(--coop-inset)); }
 .coop-members { gap: 0; padding: 0; border: 0; border-radius: 0; background: #fff; box-shadow: none; }
 .coop-members::after { content: ''; position: absolute; z-index: 2; pointer-events: none; top: 0; bottom: 0; left: calc(50% - 9px); width: 18px; background: linear-gradient(90deg,transparent,#6d625612 43%,#786e6235 50%,#6d625612 57%,transparent); border-radius: 50%; }
@@ -264,8 +270,9 @@
 .member-task:has(.coop-drag:focus-visible) { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .member-task .coop-task-top { align-items: center; gap: 5px; }
 .member-task .coop-task-title { flex: 1 1 0; min-width: 0; margin-left: -2px; margin-right: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; overflow-wrap: normal; }
-/* The annotated 49px reserve belongs to the date, not empty title margin. */
+/* Undated cards retain the same date slot as a noninteractive drag area. */
 .coop-task-date { flex: 0 0 auto; min-width: 49px; text-align: right; white-space: nowrap; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.coop-date-space { align-self: stretch; }
 .room-collaboration-dialog .member-task .coop-claim { flex: 0 0 auto; margin: 0; min-height: 25px; padding: 3px 5px; color: #655f54; background: #fff; border: 1px solid #deddd7; border-radius: 5px; font-size: 10px; line-height: 17px; }
 .room-collaboration-dialog .member-task .coop-claim:hover:not(:disabled) { background: #f5f5f2; border-color: #aaa79e; }
 .member-task .coop-task-footer .coop-workflow-badge { margin: 4px 0 0; }

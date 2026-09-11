@@ -1,5 +1,13 @@
 type DatedTask = { dueDate: string | null; startDate: string | null };
 
+const pinColors = ['#b96359', '#bf984c', '#587d9e', '#739486', '#9582a6'] as const;
+/** Task IDs are random at creation; deriving the color from the ID keeps it stable across viewers and reloads. */
+export function collaborationPinColor(id: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  return pinColors[(hash >>> 0) % pinColors.length];
+}
+
 /** Move the displayed date onto the preceding task's Shanghai day, retaining times and duration. */
 export function collaborationDateAfter(task: DatedTask, previous: DatedTask): Partial<DatedTask> {
   const preceding = collaborationDate(previous);
