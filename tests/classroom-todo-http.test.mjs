@@ -18,7 +18,9 @@ test('todo routes preserve checked tasks for both devices and save only the auth
   await writeFile(path.join(dir,'identities.json'),JSON.stringify({version:1,users}));
   const window=classroomTodoWindow(), date=new Date(window.end-3600000).toISOString();
   const t=(id,title,status=0)=>({id,title,projectId:'inbox-alice',dueDate:date,status});
-  await writeFile(path.join(dir,'fake-dida.json'),JSON.stringify({alice:{one:t('one','待勾选'),history:t('history','已在滴答完成',2),future:{...t('future','未来任务'),dueDate:new Date(window.next+86400000).toISOString()}},bob:{}}));
+  const oldDate=new Date(window.start-3600000).toISOString();
+  const oldHistory=Object.fromEntries(Array.from({length:200},(_,i)=>[`old-${i}`,{...t(`old-${i}`,'窗口外的完成历史',2),dueDate:oldDate}]));
+  await writeFile(path.join(dir,'fake-dida.json'),JSON.stringify({alice:{...oldHistory,overdue:{...t('overdue','窗口外逾期'),dueDate:oldDate},one:t('one','待勾选'),history:t('history','已在滴答完成',2),future:{...t('future','未来任务'),dueDate:new Date(window.next+86400000).toISOString()}},bob:{}}));
   const socket=createServer();await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));
   const child=spawn(process.execPath,['--import','./tests/helpers/dida-fixture.mjs','node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,DATA_DIR:dir,AUTH_SESSION_SECRET:secret,TICKTICK_STORAGE_SECRET:secret},stdio:'ignore',windowsHide:true});
   const origin=`http://127.0.0.1:${port}`;
@@ -29,6 +31,7 @@ test('todo routes preserve checked tasks for both devices and save only the auth
     const tasksUrl='/api/ticktick/tasks?view=today&classroom=1';
     let response=await call('alice',tasksUrl);assert.equal(response.status,200);let data=await response.json();
     assert.deepEqual(data.tasks.map(t=>t.id).sort(),['history','one']);assert.equal(data.tasks.find(t=>t.id==='history').done,true);
+    assert.equal(data.inboxError,undefined,'historical record count must not warn or expand the current task window');
     assert.equal((await call('alice','/api/ticktick/complete',{projectId:'inbox-alice',taskId:'one',ownerId:'bob'})).status,403);
     assert.equal((await call('alice','/api/ticktick/complete',{projectId:'inbox-alice',taskId:'one'})).status,204);
     // Remove the external history: a fresh device must still read our saved check.

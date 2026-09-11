@@ -101,8 +101,8 @@
 .classroom-scene .object-button, .classroom-scene .settings-button, .classroom-scene .room-collaboration-trigger, .classroom-scene .desk-calendar, .classroom-scene .room-bell-trigger { mix-blend-mode: normal; }
 .classroom-scene .projector-control { max-width: 150px; mix-blend-mode: normal; }
 .classroom-scene .share-canvas > .main-fullscreen-button { position: absolute; top: auto; bottom: 21px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 3px; padding: 0; border: 0; color: #fbf6df; background: #2b4d4040; }
-.classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: -4px; }
-.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 14px, #b74c5066 14px 15px, transparent 15px), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
+.classroom-scene .chat-view { flex: 1; min-height: 0; padding: 0; gap: 0; margin-top: 0; }
+.classroom-scene .message-list { min-height: 0; flex: 1; gap: 5px; padding: 14px 6px 14px 0; background-image: linear-gradient(to right, transparent 25%, #b74c5066 25% calc(25% + 1px), transparent calc(25% + 1px)), repeating-linear-gradient(transparent 0 33px, #a99c7526 33px 34px); background-attachment: local; }
 .classroom-scene .message { margin: 0; max-width: 94%; flex-shrink: 0; }
 .classroom-scene .message > span { font-size: 11px; color: #897c65; margin: 0 6px 3px; }
 .classroom-scene .message:not(.own) > span { margin-left: 0; }
