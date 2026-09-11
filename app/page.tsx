@@ -26,6 +26,7 @@ import { BlackboardSurface, ClassroomFullscreenIcon, ClassroomProp, EmergencyExi
 import { ActivityInput, ClassroomSettings, DeviceCard } from './ClassroomDevices';
 import { fixedClassroomSeats, memberDevices } from './classroom-members';
 import { useClassroomProfile } from './use-classroom-profile';
+import { requestScreenShare } from './screen-share';
 import { type PublicTaskPreview } from "./classroom-view";
 import { useClassroomBoards } from "./use-classroom-boards";
 import { adjacentBoardId, orderClassroomBoards } from "./classroom-boards";
@@ -195,10 +196,7 @@ export default function Home() {
   const todoNow = useClassroomTodoClock();
   const today = todoNow ? classroomTodoWindow(todoNow).day : "";
   const [publicTasks, setPublicTasks] = useState<PublicTaskPreview[]>([]);
-  const [shareMode, setShareMode] = useState<"detail" | "motion">("detail");
-  const [shareModeOpen, setShareModeOpen] = useState(false);
-  const [shareDialogAction, setShareDialogAction] = useState<"start" | "quality">("start");
-  const [shareComputerAudio, setShareComputerAudio] = useState(false);
+  const shareStartingRef = useRef(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [shareStarting, setShareStarting] = useState(false);
   const [remoteScreenMuted, setRemoteScreenMuted] = useState(false);
@@ -1665,32 +1663,21 @@ export default function Home() {
     setSyncOpen(false);
   };
 
-  const startShare = async (mode: "detail" | "motion", withComputerAudio: boolean) => {
-    if (shareStarting) return;
+  const startShare = async () => {
+    if (shareStartingRef.current || screenStreamRef.current) return;
     setShareError("");
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setShareError("当前浏览器不支持屏幕共享，请使用最新版 Chrome、Edge 或 Safari。");
       return;
     }
+    shareStartingRef.current = true;
     setShareStarting(true);
+    let captured: MediaStream | null = null;
     try {
-      const detailMode = mode === "detail";
-      const displayOptions = {
-        video: {
-          displaySurface: "window",
-          width: { ideal: detailMode ? 2560 : 1920 },
-          height: { ideal: detailMode ? 1440 : 1080 },
-          frameRate: { ideal: detailMode ? 15 : 30, max: detailMode ? 20 : 60 },
-        },
-        audio: withComputerAudio,
-        systemAudio: withComputerAudio ? "include" : "exclude",
-        windowAudio: withComputerAudio ? "system" : "exclude",
-        surfaceSwitching: "include",
-      } as DisplayMediaStreamOptions;
-      const nextStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
+      const nextStream = await requestScreenShare();
+      captured = nextStream;
       const track = nextStream.getVideoTracks()[0];
       if (!track || track.readyState !== "live") throw new Error("No live screen track");
-      track.contentHint = detailMode ? "detail" : "motion";
       track.addEventListener("ended", () => {
         nextStream.getTracks().forEach((item) => { void roomRef.current?.localParticipant.unpublishTrack(item); item.stop(); });
         if (screenStreamRef.current === nextStream) {
@@ -1706,40 +1693,15 @@ export default function Home() {
           await roomRef.current.localParticipant.publishTrack(audioTrack, { source: Track.Source.ScreenShareAudio });
         }
       }
-      stream?.getTracks().forEach((item) => item.stop());
+      if (track.readyState !== 'live' || intentionalLeaveRef.current) throw new Error('Screen sharing ended');
       screenStreamRef.current = nextStream;
       setStream(nextStream);
-      setShareMode(mode);
       setActiveMediaId("self-screen");
       setActiveBoardId(""); projection.reveal();
-      setActiveBoardId("");
-      if (withComputerAudio && nextStream.getAudioTracks().length === 0) {
-        setShareError("画面已开始共享，但当前浏览器或所选窗口没有提供电脑音频。可改选支持音频的标签页或整个屏幕。");
-      }
     } catch (error) {
+      captured?.getTracks().forEach(track => { void roomRef.current?.localParticipant.unpublishTrack(track); track.stop(); });
       if ((error as DOMException).name !== "NotAllowedError") setShareError("没有成功开始共享，请重新选择窗口或屏幕。");
-    } finally { setShareStarting(false); }
-  };
-
-  const chooseShareMode = async (mode: "detail" | "motion") => {
-    setShareMode(mode);
-    setShareModeOpen(false);
-    const track = stream?.getVideoTracks()[0];
-    if (shareDialogAction === "start" || !track) {
-      await startShare(mode, shareComputerAudio);
-      return;
-    }
-    const detailMode = mode === "detail";
-    track.contentHint = detailMode ? "detail" : "motion";
-    try {
-      await track.applyConstraints({
-        width: { ideal: detailMode ? 2560 : 1920 },
-        height: { ideal: detailMode ? 1440 : 1080 },
-        frameRate: { ideal: detailMode ? 15 : 30, max: detailMode ? 20 : 60 },
-      });
-    } catch {
-      setShareError("共享模式已切换，但当前浏览器保留了原始画面参数。");
-    }
+    } finally { shareStartingRef.current = false; setShareStarting(false); }
   };
 
   const stopShare = () => {
@@ -1754,7 +1716,7 @@ export default function Home() {
     const video = document.querySelector<HTMLVideoElement>("video.main-media.screen.remote");
     const hasAudio = Boolean(video?.srcObject && (video.srcObject as MediaStream).getAudioTracks().some((track) => track.readyState === "live"));
     if (!video || !hasAudio) {
-      setShareError("对方当前的共享流没有电脑音频，请让对方重新共享并勾选“同时共享电脑音频”。");
+      setShareError("对方当前的共享没有音频。如需声音，请对方重新投屏，并在浏览器的共享窗口中选择共享音频。");
       return;
     }
     const enableAudio = remoteScreenMuted || remoteAudioBlocked;
@@ -1763,11 +1725,6 @@ export default function Home() {
     setRemoteScreenMuted(!enableAudio);
     setRemoteAudioBlocked(false);
     if (enableAudio) void video.play().catch(() => setShareError("浏览器仍阻止声音播放，请点击页面后再试一次。"));
-  };
-
-  const openShareDialog = (action: "start" | "quality") => {
-    setShareDialogAction(action);
-    setShareModeOpen(true);
   };
 
   const togglePictureInPicture = async () => {
@@ -2272,16 +2229,15 @@ export default function Home() {
               </>}
               <div className="media-caption">{activeMedia.label}<span>{mediaItems.findIndex((item) => item.id === activeMedia.id) + 1} / {mediaItems.length}</span></div>
               {activeMedia.kind === "screen" && <div className="media-window-actions">
-                {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
+                {!stream && <button type="button" disabled={shareStarting} onClick={() => void startShare()}>共享屏幕</button>}
                 {activeMedia.id === "self-screen" && <button type="button" onClick={stopShare}><Square size={14} aria-hidden="true" />结束共享</button>}
-                {activeMedia.id === "self-screen" && <button className="share-mode-switch" type="button" onClick={() => openShareDialog("quality")} aria-label="切换共享画面模式">{shareMode === "detail" ? "文字 / 代码" : "动态画面"}</button>}
                 {activeMedia.id === "self-screen" && <span className={activeMedia.stream.getAudioTracks().length ? "share-audio-status active" : "share-audio-status"}>{activeMedia.stream.getAudioTracks().length ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{activeMedia.stream.getAudioTracks().length ? "正在共享电脑音频" : "未共享电脑音频"}</span>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length > 0 && <button className="remote-audio-button" type="button" onClick={toggleRemoteScreenAudio} aria-label={remoteScreenMuted || remoteAudioBlocked ? "播放共享声音" : "静音共享声音"}>{remoteScreenMuted || remoteAudioBlocked ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}{remoteScreenMuted || remoteAudioBlocked ? "播放声音" : "静音"}</button>}
                 {activeMedia.remote && activeMedia.stream.getAudioTracks().length === 0 && <span className="share-audio-status"><VolumeX aria-hidden="true" />未共享电脑音频</span>}
                 <button className={pictureInPicture ? "picture-in-picture-button active" : "picture-in-picture-button"} type="button" onClick={() => void togglePictureInPicture()} aria-label={pictureInPicture ? "关闭小窗" : "开启小窗"}><PictureInPicture2 size={18} aria-hidden="true" />{pictureInPicture ? "关闭小窗" : "小窗"}</button>
               </div>}
               {activeMedia.kind === "camera" && <div className="media-window-actions">
-                {!stream && <button type="button" disabled={shareStarting} onClick={() => openShareDialog("start")}>共享屏幕</button>}
+                {!stream && <button type="button" disabled={shareStarting} onClick={() => void startShare()}>共享屏幕</button>}
                 {activeMedia.id === "self-camera" && <button type="button" onClick={() => void toggleCamera()}><Camera size={16} aria-hidden="true" />关闭摄像头</button>}
               </div>}
 
@@ -2445,14 +2401,14 @@ export default function Home() {
           const cameraOn = !!((self && cameraStream) || cameraPeer);
           const view = (id: string) => { setActiveMediaId(id); setActiveBoardId(''); projection.reveal(); };
           return <div className="classroom-desk" key={index}><DeviceCard font={classroomProfile.profile.font} kind={index === 0 ? 'tablet' : 'laptop'} name={self ? displayName : member.name} online={!!member.id && ((self && joined) || peers.length > 0)} screen={screenOn} camera={cameraOn} microphone={self ? !!microphoneStream : peers.some(id=>!!remoteMicrophones[id])} self={self} onMicrophone={self ? ()=>void toggleMicrophone() : undefined}
-            onScreen={self ? () => stream ? stopShare() : screenPeer ? view(screenPeer + '-screen') : openShareDialog('start') : screenPeer ? () => view(screenPeer + '-screen') : undefined}
+            onScreen={self ? () => stream ? stopShare() : screenPeer ? view(screenPeer + '-screen') : void startShare() : screenPeer ? () => view(screenPeer + '-screen') : undefined}
             onCamera={self ? () => cameraStream ? stopCamera() : cameraPeer ? view(cameraPeer + '-camera') : void toggleCamera() : cameraPeer ? () => view(cameraPeer + '-camera') : undefined}>
             {self ? <form className="activity-box" onSubmit={submitActivity}><ActivityInput value={activity} readOnly={activitySaveStatus === '正在保存…'} onChange={value => { setActivity(value); setActivitySaveStatus(''); }} />{activitySaveStatus && <small role="status">{activitySaveStatus}</small>}</form> : <p>{peers.map(id => memberActivities[id]).find(value => value !== undefined) ?? member.activity}</p>}
           </DeviceCard></div>;
         })}
         <div className="classroom-desk desk-media">
           <button className="object-button" type="button" onClick={createBoard} aria-label="画板"  aria-pressed={!!activeBoard}><ClassroomProp name="chalk-cup" /></button>
-          <button className="object-button calendar-entry-button" type="button" onClick={() => setBoardNotice("双人日历将在后续开放")} aria-label="双人日历" ><ClassroomProp name="calendar-entry" /></button>
+          <button className="object-button calendar-entry-button" type="button" aria-label="双人日历" ><ClassroomProp name="calendar-entry" /></button>
           <RoomCollaboration key={identityId} identityId={identityId} onChanged={loadTasks} onNotice={playNotificationSound} onPublicTasks={setPublicTasks} triggerContent={<ClassroomProp name="taskboard" />} />
 
           {stream && <button className="desk-stop-share" type="button" onClick={stopShare}><Square size={14} />结束共享</button>}
@@ -2468,30 +2424,6 @@ export default function Home() {
       {microphoneError && <p className="room-microphone-error" role="alert">{microphoneError}</p>}
       <RoomBell triggerHost={bellHost} onShowChat={showBellChat} />
       {profileReady && !joined && <p className="error-message" role="alert">{joinError || "正在进入自习室…"}</p>}
-
-      {shareModeOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setShareModeOpen(false)}>
-          <section className="share-mode-modal" role="dialog" aria-modal="true" aria-labelledby="share-mode-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShareModeOpen(false)} aria-label="关闭" ><X size={18} aria-hidden="true" /></button>
-            <h2 id="share-mode-title">{shareDialogAction === "start" ? "选择共享模式" : "切换画面模式"}</h2>
-            {shareDialogAction === "start" && <p className="share-picker-note">选择模式后，浏览器会让你指定要共享的屏幕、窗口或标签页。</p>}
-            {shareDialogAction === "start" && <label className="share-audio-option">
-              <input type="checkbox" checked={shareComputerAudio} onChange={(event) => setShareComputerAudio(event.target.checked)} />
-              <span><Volume2 aria-hidden="true" /><strong>同时共享电脑音频</strong><small>是否可用取决于浏览器和你选择的共享来源</small></span>
-            </label>}
-            <div className="share-mode-options">
-              <button type="button" onClick={() => void chooseShareMode("detail")}>
-                <strong>文字 / 代码</strong>
-                <span>字迹清晰，适合阅读和讲题</span>
-              </button>
-              <button type="button" onClick={() => void chooseShareMode("motion")}>
-                <strong>动态画面</strong>
-                <span>帧率更高，适合视频和演示</span>
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
 
       {cloudOpen && <CloudDrive onClose={() => setCloudOpen(false)} onStatusChange={setCloudStatus} onImage={openChatImage} />}
 

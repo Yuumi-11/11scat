@@ -26,7 +26,7 @@ const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}$
 const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
-export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTasks, triggerContent, previewSnapshot }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void; onPublicTasks?: (tasks: PublicTaskPreview[]) => void; triggerContent?: ReactNode; previewSnapshot?: CollaborationSnapshot }) {
+export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTasks, triggerContent, previewSnapshot, previewAutoOpen = true }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void; onPublicTasks?: (tasks: PublicTaskPreview[]) => void; triggerContent?: ReactNode; previewSnapshot?: CollaborationSnapshot; previewAutoOpen?: boolean }) {
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(previewSnapshot || null);
   const [taskNotices, setTaskNotices] = useState<TaskNotice[]>([]);
@@ -78,12 +78,15 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   }, [acceptNotices]);
   const markViewed = useCallback((ids: string[]) => { void markRead(ids).catch(() => undefined); }, [markRead]);
   useEffect(() => {
-    if (previewSnapshot) { const timer = setTimeout(() => setOpen(true), 0); return () => clearTimeout(timer); }
+    if (previewSnapshot) {
+      if (!previewAutoOpen) return;
+      const timer = setTimeout(() => setOpen(true), 0); return () => clearTimeout(timer);
+    }
     const params = new URLSearchParams(window.location.search);
     if (params.get("taskboard") !== "1") return;
     const timer = setTimeout(() => { setOpen(true); const id = params.get("workflow"); if (id && /^[a-f0-9-]{36}$/i.test(id)) { setWorkflowId(id); setWorkflowOpen(true); } }, 0);
     return () => clearTimeout(timer);
-  }, [previewSnapshot]);
+  }, [previewSnapshot, previewAutoOpen]);
 
   const load = useCallback(async (force = false) => {
     if (previewSnapshot) return previewSnapshot;

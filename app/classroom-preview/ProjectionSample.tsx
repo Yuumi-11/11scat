@@ -1,12 +1,17 @@
 "use client";
 import { useEffect, useRef } from 'react';
 
-// An offline video source for the appearance preview; no camera or screen permission.
-export function ProjectionSample({ source = 'self-screen' }: { source?: string }) {
+// Local captures use the real stream; simulated peers keep the offline sample.
+export function ProjectionSample({ source = 'self-screen', stream: capture }: { source?: string; stream?: MediaStream | null }) {
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const element = video.current;
     if (!element) return;
+    if (capture) {
+      element.srcObject = capture;
+      void element.play().catch(() => undefined);
+      return () => { element.srcObject = null; };
+    }
     const canvas = document.createElement('canvas');
     canvas.width = 1280; canvas.height = 800;
     const context = canvas.getContext('2d');
@@ -45,6 +50,6 @@ export function ProjectionSample({ source = 'self-screen' }: { source?: string }
     void element.play().catch(() => undefined);
     const timer = window.setInterval(draw, 1000 / 12);
     return () => { clearInterval(timer); element.srcObject = null; stream.getTracks().forEach(track => track.stop()); };
-  }, [source]);
-  return <video ref={video} className="main-media preview-media" autoPlay muted playsInline aria-label="本地投影演示画面" />;
+  }, [source, capture]);
+  return <video ref={video} className="main-media preview-media" autoPlay muted playsInline aria-label={capture ? '本地投影画面' : '本地投影演示画面'} />;
 }
