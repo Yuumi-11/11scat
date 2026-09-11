@@ -4,7 +4,7 @@
 
 固定配色参考：[原始材质参照](../../../../docs/assets/classroom-approved-material-reference-2026-09-09.png)；配色值来自上一级粉笔素材说明。以下提示词使用文字描述这些要求，生成时没有把旧 SVG 作为编辑目标。
 
-生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，当前第十一版猫咪在用户选定的无红晕高挑坐姿图上，局部合入生图工具补画的腹部弧线，本次选区以外像素保持一致，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
+生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，当前第十二版猫咪在无红晕、腹线已闭合的高挑坐姿图上，局部调整嘴部、胡须和腿部起笔，使轮廓笔画粗细接近，本次六个选区以外像素保持一致，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
 
 ## 第一版完整提示词
 
@@ -38,7 +38,7 @@ Subject: ONE very cute simple sitting kitten, front-facing, with a slightly tilt
 
 ## 第二版：气球绳线与猫咪手绘感
 
-2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第十一版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
+2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第十二版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
 
 ### balloons：第二版记录
 
@@ -256,4 +256,26 @@ Make ONE tiny localized correction: add the missing lower BELLY contour between 
 The new line must have the SAME thickness, warm ivory color, continuous granular dry-chalk texture and mild pressure variation as the nearby leg outlines. It is one simple economical freehand stroke.
 Keep EVERYTHING ELSE exactly unchanged: same cat, slender sitting proportions, front feet, haunch, curled tail, ring eyes, face with NO cheek blush, pink nose and inner ears, yellow forehead and haunch, all existing strokes and their positions. No redraw or reinterpretation.
 Keep the exact same framing and the flat solid grey-green background #426e63 everywhere outside the chalk. No checkerboard and no added marks or annotation. Return only the image with this short belly bridge added.
+```
+
+## 第十二版：嘴部、胡须与轮廓笔画粗细
+
+2026-09-11，用户要求轮廓笔画粗细接近，指出嘴线太细，涂抹区域则可保留宽窄与浓淡变化。本次以内置 imagegen 编辑第十一版预览，生成结果为 `exec-bc32521a-011c-417f-8d07-b7532e1e7cb2.png`。仅提取嘴部、两侧胡须和三处腿部起笔的调整，移除局部灰绿底后合入原透明素材；保留原有鼻子和涂色，避免整图替换导致其他细节变化。
+
+来源 PNG SHA256：`fb9c31c79946e8acc9ab8de81705b022793b6a1871e613e03f1cebae60859880`。最终 PNG SHA256：`cda41232c1dd6c48fe4b0cd19a3e1283da3ee70415864884821074044d135743`。本次共改变 23,062 个局部像素，六处选区外以及受保护像素的变化均为 0。原尺寸固定截面的可见线宽采样：身体与前腿约 16 像素，嘴部由 8 增至 17 像素，胡须由 6 增至 18 像素；这些采样用于核对接近的视觉粗细，不代表每一处笔画均为固定宽度。区域及采样记录见项目 `codex-generated/chalk-handdrawn-2026-09-10/revision-12/stroke-width-checks.json`。
+
+嘴部与胡须采用生成结果的局部粉笔纹理，腿部起笔通过局部渐变接合原轮廓。圈眼与无红晕脸部保留，腹线和尾巴未更改，WebP 继续使用 512 × 512 透明无损编码。气球等其他素材保持已确认版本。
+
+### cat：统一笔画粗细的实际提示词
+
+```text
+Use case: precise-object-edit.
+Input image 1 is the exact approved tall sitting chalk cat. Edit ONLY the thickness of line strokes that are too thin, preserving the entire drawing, location and anatomy.
+PRIMARY CHANGE: the mouth and its short nose-to-mouth stem are too thin. Increase the entire little W-shaped smile and the short vertical stem to approximately the SAME chalk stroke width as the cheek/body outline: about 7 pixels on this 650px reference, or 13-15 pixels on a 1254px output. Do not enlarge the mouth's centerline shape or move it. The two smile arcs remain distinct and cute.
+Also thicken the FOUR WHISKERS (two each cheek) to the same approximate 7px line weight. They must be readable chalk strokes, no thin pencil hairlines. Preserve their exact original directions and lengths; softly rounded or irregular chalk ends, no long needle-like tapers.
+The upper starts of the two front-leg divider strokes, the upper start of the inner hind-leg curve, and any thin face contour joins should also use the same approximate chalk thickness, without the long extremely tapered ends in the current image. Keep every existing centerline in place. Body and tail contours already have the right thickness; preserve them.
+ALL drawn outline/detail strokes should have a consistent visual weight. The allowed variations are the microscopic chalk grain and gently irregular edges; do NOT make wide pressure changes or dramatically thick-and-thin calligraphic strokes. Filled/rubbed color areas may retain their existing variable stroke widths and density.
+MATERIAL: exact same warm ivory dry chalk, with clearly visible granular pigment and tiny pores, natural hand-drawn irregularities in the stroke paths. Avoid mechanically smooth vector lines or solid opaque smooth white tubes.
+INVARIANTS: same head tilt, natural ears, exact ring eyes, pink nose shape, NO cheek blush, original pink ear and yellow forehead/haunch rubbing, slender body, front feet, bent hind leg, long curled tail, and the already completed short BELLY BRIDGE between the front leg and hind leg. No new decorations. Preserve all framing and placements.
+Keep the flat grey-green preview background #426e63. No annotation, no text, no checkerboard. Deliver the same cat with unified stroke weights, especially the stronger mouth.
 ```
