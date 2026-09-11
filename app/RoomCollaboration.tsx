@@ -26,9 +26,9 @@ const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}$
 const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
-export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTasks, triggerContent }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void; onPublicTasks?: (tasks: PublicTaskPreview[]) => void; triggerContent?: ReactNode }) {
+export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTasks, triggerContent, previewSnapshot }: { identityId: string; onChanged: () => Promise<boolean>; onNotice?: (id: string) => void; onPublicTasks?: (tasks: PublicTaskPreview[]) => void; triggerContent?: ReactNode; previewSnapshot?: CollaborationSnapshot }) {
   const [open, setOpen] = useState(false);
-  const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<CollaborationSnapshot | null>(previewSnapshot || null);
   const [taskNotices, setTaskNotices] = useState<TaskNotice[]>([]);
   const [nudge, setNudge] = useState<TaskNotice | null>(null);
   const readIds = useRef(new Set<string>()), sounded = useRef(new Set<string>());
@@ -76,13 +76,15 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   }, [acceptNotices]);
   const markViewed = useCallback((ids: string[]) => { void markRead(ids).catch(() => undefined); }, [markRead]);
   useEffect(() => {
+    if (previewSnapshot) { const timer = setTimeout(() => setOpen(true), 0); return () => clearTimeout(timer); }
     const params = new URLSearchParams(window.location.search);
     if (params.get("taskboard") !== "1") return;
     const timer = setTimeout(() => { setOpen(true); const id = params.get("workflow"); if (id && /^[a-f0-9-]{36}$/i.test(id)) { setWorkflowId(id); setWorkflowOpen(true); } }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [previewSnapshot]);
 
   const load = useCallback(async (force = false) => {
+    if (previewSnapshot) return previewSnapshot;
     if (fetching.current && !force) return null;
     if (force) loadController.current?.abort();
     const controller = new AbortController(); loadController.current = controller;
@@ -100,10 +102,10 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       return data as CollaborationSnapshot;
     } catch (cause) { if (id === generation.current) setError(cause instanceof Error ? cause.message : "协作区暂时无法读取"); return null; }
     finally { if (id === generation.current) { fetching.current = false; setLoading(false); } }
-  }, [acceptNotices, onPublicTasks]);
+  }, [acceptNotices, onPublicTasks, previewSnapshot]);
 
   useEffect(() => {
-    if (!identityId) return;
+    if (!identityId || previewSnapshot) return;
     let stopped = false, polling = false;
     const poll = async () => {
       if (stopped || polling || document.hidden || locked.current) return;
@@ -126,11 +128,12 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const visible = () => { if (!document.hidden) { void poll(); if (open && !locked.current && !drag.current) void load(); } };
     window.addEventListener("focus", focus); window.addEventListener("online", focus); document.addEventListener("visibilitychange", visible);
     return () => { stopped = true; clearTimeout(first); clearInterval(timer); window.removeEventListener("focus", focus); window.removeEventListener("online", focus); document.removeEventListener("visibilitychange", visible); };
-  }, [identityId, open, onChanged, load, acceptNotices, onPublicTasks]);
+  }, [identityId, open, onChanged, load, acceptNotices, onPublicTasks, previewSnapshot]);
   useEffect(() => {
     if (!open) return;
     const element = dialog.current, button = trigger.current;
     element?.showModal();
+    if (previewSnapshot) return () => { element?.close(); button?.focus({ preventScroll: true }); };
     const first = setTimeout(() => {
       locked.current = true; setBusy(true);
       void fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "legacy-reset" }), signal: AbortSignal.timeout(90000) })
@@ -141,9 +144,35 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const timer = setInterval(() => { if (!document.hidden && !locked.current && !drag.current) void load(); }, 15000);
     const invalidate = () => { generation.current++; fetching.current = false; loadController.current?.abort(); };
     return () => { clearTimeout(first); clearInterval(timer); invalidate(); element?.close(); button?.focus({ preventScroll: true }); };
-  }, [open, load]);
+  }, [open, load, previewSnapshot]);
 
   async function perform(command: RequestCommand): Promise<boolean> {
+    if (previewSnapshot) {
+      setSnapshot(current => {
+        if (!current) return current;
+        const next = structuredClone(current);
+        const source = "source" in command ? command.source : undefined;
+        const list = source?.ownerId ? next.members.find(member => member.id === source.ownerId)?.tasks : next.buffer;
+        const task = list?.find(item => item.id === source?.taskId);
+        if (task && command.action === "update") Object.assign(task, command.fields);
+        if (task && ["claim", "move", "complete", "delete"].includes(command.action)) {
+          list!.splice(list!.indexOf(task), 1);
+          if ("destination" in command && command.destination) {
+            task.ownerId = command.destination;
+            next.members.find(member => member.id === command.destination)?.tasks.push(task);
+          }
+        }
+        if (command.action === "create") next.buffer.push({ ...previewSnapshot.buffer[0], ...command.fields, id: command.id, ownerId: null, workflowId: undefined });
+        if (command.action === "update-workflow") {
+          const workflow = next.workflows.find(item => item.id === command.workflowId);
+          if (workflow) { Object.assign(workflow.fields, command.fields); workflow.title = workflow.fields.title; }
+          for (const item of [...next.buffer, ...next.members.flatMap(member => member.tasks)]) if (item.workflowId === command.workflowId) Object.assign(item, command.fields);
+        }
+        return next;
+      });
+      if (command.action === "create") setDraftId(null);
+      return true;
+    }
     if (locked.current) return false;
     locked.current = true; setBusy(true); setError(""); setNotice(""); setUncertain(command);
     let operation: OperationView | undefined, workflow: ClaimWorkflow | undefined;
