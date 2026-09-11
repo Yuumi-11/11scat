@@ -4,7 +4,7 @@
 
 固定配色参考：[原始材质参照](../../../../docs/assets/classroom-approved-material-reference-2026-09-09.png)；配色值来自上一级粉笔素材说明。以下提示词使用文字描述这些要求，生成时没有把旧 SVG 作为编辑目标。
 
-生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，当前第十版猫咪采用用户选定的高挑坐姿生成原图，仅局部去除双颊红晕，两个区域以外像素保持一致，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
+生成图保留真实透明通道。爱心、星星与气球的 PNG 为生成原图，当前第十一版猫咪在用户选定的无红晕高挑坐姿图上，局部合入生图工具补画的腹部弧线，本次选区以外像素保持一致，具体处理见文末记录。WebP 为保持透明度的 512 × 512 网页缩放版本，仅等比缩小与无损编码。每款对应文件和推荐用法见 [README](README.md)。
 
 ## 第一版完整提示词
 
@@ -38,7 +38,7 @@ Subject: ONE very cute simple sitting kitten, front-facing, with a slightly tilt
 
 ## 第二版：气球绳线与猫咪手绘感
 
-2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第十版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
+2026-09-10，根据用户对气球绳线缺少粉笔感、猫咪过于精致的反馈更新。以下两段是第二版气球和猫咪采用的提示词。第二版气球的粉笔质感获用户认可，后续追加了自然倾角和遮挡关系要求；气球当前采用第八版，猫咪采用第十一版，见文末记录。爱心和星星沿用第一版。使用内置 imagegen 分别重新生成透明素材，保留原调用地址；前两次图像编辑返回了带棋盘格的非透明文件，未采用。
 
 ### balloons：第二版记录
 
@@ -239,4 +239,21 @@ COLOR: retain mostly empty transparent face, torso, legs and tail. Add one modes
 
 ```text
 Use case: precise-object-edit. Edit the supplied exact transparent chalk cat image. ONLY remove the TWO dusty-pink blush marks on its cheeks: the small pink patch under the left eye at approximately x=29%, y=32.5%, and the small pink patch under the right eye at approximately x=44.5%, y=37.5%. Erase these two cheek blush patches back to completely transparent empty space. Leave the nearby ivory eye rings, ivory face outlines, whiskers, mouth and small pink NOSE unchanged. Preserve the pink inner ears and the pale-yellow forehead and haunch coloring. Every other aspect of the supplied image must stay identical: the slender tall seated pose, long front legs, head tilt, ear shapes, round haunch, curved tail, natural continuous ivory chalk lines and their exact texture. Do not redraw or reinterpret the cat. No changes to proportions, placement, colors, grain, expression or ring-shaped eyes. Retain square canvas, original framing and size. Output an actual RGBA PNG with real transparent alpha background and transparent unfilled interiors. No checkerboard, no white or dark backing, no new background. This is an extremely localized erasure of two pink cheek marks, no other edit.
+```
+
+## 第十一版：腹部轮廓闭合
+
+2026-09-11，用户指出前腿与后腿之间缺少腹部轮廓。本次以内置 imagegen 编辑第十版的灰绿底预览，生成结果为 `exec-a790cb3b-96cf-41d7-97c5-0e11049c5a24.png`。从结果中仅选取新增短腹线，去除该局部的绿色预览背景，再合入第十版透明原图；保留原有粉笔颗粒与笔画颜色，未用完整生成图替换猫咪。
+
+第十版来源 PNG SHA256：`e8d40947a4a2e2457e9eca2cb572ae642f9fbf30dc1f71e3b2b21f064dbaca77`。第十一版最终 PNG SHA256：`fb9c31c79946e8acc9ab8de81705b022793b6a1871e613e03f1cebae60859880`。共改变 1,740 个局部像素，腹线多边形选区以外变化为 0；两端连接前腿与后腿，脸部、原有坐姿和涂色保持原样。选区与验证记录保存在项目 `codex-generated/chalk-handdrawn-2026-09-10/revision-11/belly-edit-checks.json`。网页 WebP 继续采用 512 × 512 透明无损编码，气球及其他两款素材保持已确认版本。
+
+### cat：补画腹线的实际提示词
+
+```text
+Use case: precise-object-edit.
+Input image 1 is the EXACT edit target: the approved tall sitting chalk cat on a flat grey-green board.
+Make ONE tiny localized correction: add the missing lower BELLY contour between the right edge of the right FRONT LEG and the inner curve of the bent HIND LEG. The gap is around x=47.1%, y=83.8% of the square canvas, immediately above the feet. Add ONE short, shallow, naturally hand-drawn warm ivory chalk arc that joins the two existing contours with no gap, closing the lower body silhouette. On the 650x650 reference, approximately connect the front-leg contour near (282,535) to the bent hind-leg contour near (319,548), with a soft modest downward belly curve. Integrate both endpoints cleanly into the existing lines. Do not add a large round belly or a new leg.
+The new line must have the SAME thickness, warm ivory color, continuous granular dry-chalk texture and mild pressure variation as the nearby leg outlines. It is one simple economical freehand stroke.
+Keep EVERYTHING ELSE exactly unchanged: same cat, slender sitting proportions, front feet, haunch, curled tail, ring eyes, face with NO cheek blush, pink nose and inner ears, yellow forehead and haunch, all existing strokes and their positions. No redraw or reinterpretation.
+Keep the exact same framing and the flat solid grey-green background #426e63 everywhere outside the chalk. No checkerboard and no added marks or annotation. Return only the image with this short belly bridge added.
 ```
