@@ -2,6 +2,8 @@
 
 Repository: [yuumiqwq/duo-space](https://github.com/yuumiqwq/duo-space).
 
+当前功能及维护交接请阅读 [当前功能说明](docs/current-functionality.md)。该文档随功能规则更新，简短改动记录写在 Git 提交中；本项目当前生产环境使用 Next.js 与服务器容器部署，以下保留的 Vinext、D1 和 ChatGPT 登录内容属于初始模板资料。
+
 Project art and UI copy must follow [AGENTS.md](AGENTS.md) and the [approved classroom style](docs/classroom-flat-style-2026-09-09.md). Every new or revised asset must match the established visual style and receive explicit user approval of its preview before publication. Unapproved art stays in `codex-generated` and must not enter automatically deployed assets or pages.
 
 Originally based on a full-stack starter running on
