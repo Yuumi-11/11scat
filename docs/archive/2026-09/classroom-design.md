@@ -2,7 +2,7 @@
 
 本页汇总2026年9月9日至11日的教室美术研究、逐轮批注与发布许可，用于查找设计由来和素材来源。记录依据整理前提交 `5714334a50c80adbe2d89a1b280cc5adff602c9c` 中的对应文档；原文件可从该提交追溯。此处描述各轮当时的选择，不表示网站目前仍使用每项历史尺寸或候选。
 
-长期美术要求见[固定参照](../../classroom-flat-style-2026-09-09.md)，完整生成提示词见[素材清单](../../classroom-asset-prompts-2026-09-09.md)，文件版权和字体许可见[素材署名](../../../public/classroom/ATTRIBUTION.md)。功能现状另见[当前功能说明](../../current-functionality.md)，未完成与暂缓项目只在[需求表](../../remaining-priority-requirements.md)维护。
+当前美术要求见[现行参照](../../classroom-art-reference.md)，完整生成提示词见[素材清单](../../classroom-asset-prompts-2026-09-09.md)，文件版权和字体许可见[素材署名](../../../public/classroom/ATTRIBUTION.md)。功能现状另见[当前功能说明](../../current-functionality.md)，未完成与暂缓项目只在[需求表](../../remaining-priority-requirements.md)维护。
 
 ## 批准范围与设计演进
 
@@ -18,7 +18,7 @@
 
 ## 固定参照与制作来源
 
-整体材质使用[用户指定原图](../../assets/classroom-approved-material-reference-2026-09-09.png)，聊天纸面另参考[暖纸与横线原图](../../assets/classroom-chat-paper-reference-2026-09-09.png)，后者只用于纸底、横线和页边线。图中的人物、示例消息和布局并不属于需要重新加入的内容。
+早期整体材质使用[用户指定原图](../../assets/classroom-approved-material-reference-2026-09-09.png)，聊天纸面另参考[暖纸与横线原图](../../assets/classroom-chat-paper-reference-2026-09-09.png)，后者只用于纸底、横线和页边线。两图用于追溯当时的制作来源，当前制作以已批准的成品为准；图中的人物、示例消息和布局并不属于需要重新加入的内容。
 
 物件及材质图集的原图、网页切片和遮罩仍保存在 `public/classroom`。第一次物件图集把棋盘格画入RGB，第二次背景编辑改为纯白，再由独立遮罩去除与单元格边缘相连的白底，保留物件内部浅色纸面；原始请求及背景修正提示词完整保存在素材清单。后续右桌物件和台历改为原生SVG，源图集仍保留，不能用现行切片代替制作源图。
 

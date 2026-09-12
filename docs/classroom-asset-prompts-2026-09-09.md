@@ -1,10 +1,10 @@
 # 教室主题独立素材与生成提示词
 
-2026-09-09 的素材生成记录。本文保留原始图集、完整提示词与授权来源；其中的台历和早期物件描述用于追溯制作过程，不能直接当作当前页面要求。后续批准与替换关系见[教室设计历史](archive/2026-09/classroom-design.md)，新的素材修改仍按 [AGENTS.md](../AGENTS.md)取得具体版本同意后发布。
+2026-09-09 的素材生成记录。本文保留原始图集、完整提示词与授权来源；其中的台历和早期物件描述用于追溯制作过程，不能直接当作当前页面要求。后续制作使用[教室现行美术参照](classroom-art-reference.md)，批准与替换关系见[教室设计历史](archive/2026-09/classroom-design.md)，新的素材修改仍按 [AGENTS.md](../AGENTS.md)取得具体版本同意后发布。
 
 ## 参照与文件
 
-每次生成时附上[固定颜色与材质参照](assets/classroom-approved-material-reference-2026-09-09.png)，只继承颜色和干燥哑光的插画质感。图里的旧人物和旧文字不属于当前要求。
+当时生成时附上[早期颜色与材质效果图](assets/classroom-approved-material-reference-2026-09-09.png)，用于继承颜色和干燥哑光的插画质感。图里的旧人物和旧文字未纳入要求；这张图如今只作为历史输入保存，后续生成应对照已确认的成品素材。
 
 | 用途 | 项目文件 |
 | --- | --- |
@@ -18,7 +18,7 @@
 
 ## 物件图集提示词
 
-以下是第一次请求的完整提示词。网页版生成时，同样上传固定参照图作为图像 1；若没有返回真实透明通道，可以接着使用下方的背景修正提示词。
+以下是第一次请求的完整提示词，按原文保留，所指图像 1 为当时的早期参照图。下方背景修正提示词记录了棋盘格问题的处理方式；再次制作时应按现行参照调整输入，不能直接沿用旧配色和物件要求。
 
 ```text
 Use case: stylized-concept. Asset type: ONE production-ready transparent sprite atlas for a hand-painted classroom web interface. Input image 1 is STRICT reference for color, light and dry matte gouache/paper grain only; do not copy its people, text, arrangement or UI. Create a square 3 by 3 sprite atlas, all 9 cells equal sized, each prop isolated with ample transparent margin in its own cell. No grid lines, no cell backgrounds, no text, no labels, no numbers, no people. True transparent background.
@@ -48,4 +48,4 @@ Use case: stylized-concept. Asset type: ONE square production texture atlas, 2 b
 
 ## 2026-09-09 浏览器批注后的素材更新
 
-右桌三个物件、墙铃和台历当前采用项目原生 SVG，原生成图集继续保留作为制作源图。黑板与聊天纸面改用有明确授权的现成细纹素材，来源及保留许可见[素材署名](../public/classroom/ATTRIBUTION.md)；新素材没有调用生图服务。当日显示方案和按钮印刷字体的选择见[历史材质调整原文](https://github.com/yuumiqwq/duo-space/blob/5714334a50c80adbe2d89a1b280cc5adff602c9c/docs/classroom-material-refinement-2026-09-09.md)；当时的本地调试状态不代表后续发布状态。
+当日右桌三个物件、墙铃和台历改用项目原生 SVG，原生成图集继续保留作为制作源图。黑板与聊天纸面改用有明确授权的现成细纹素材，来源及保留许可见[素材署名](../public/classroom/ATTRIBUTION.md)；该次新素材没有调用生图服务。当日显示方案和按钮印刷字体的选择见[历史材质调整原文](https://github.com/yuumiqwq/duo-space/blob/5714334a50c80adbe2d89a1b280cc5adff602c9c/docs/classroom-material-refinement-2026-09-09.md)；当时的本地调试状态不代表后续发布状态。

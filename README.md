@@ -17,7 +17,7 @@ npm run dev
 
 ## 美术与素材
 
-修改遵循 [AGENTS.md](AGENTS.md) 和[教室固定美术参照](docs/classroom-flat-style-2026-09-09.md)。新增或重绘素材须先展示具体版本并取得同意，待确认素材放在 `codex-generated`，批准后才能接入可部署路径。
+修改遵循 [AGENTS.md](AGENTS.md) 和[教室现行美术参照](docs/classroom-art-reference.md)，以最新已确认的成品页面与正式素材为依据。新增或重绘素材须先展示具体版本并取得同意，待确认素材放在 `codex-generated`，批准后才能接入可部署路径。
 
 生成源图及提示词见[素材记录](docs/classroom-asset-prompts-2026-09-09.md)，字体和纹理的来源见[素材署名](public/classroom/ATTRIBUTION.md)。许可文件随对应素材保留，归档中的候选图不代表正式设计。
 
