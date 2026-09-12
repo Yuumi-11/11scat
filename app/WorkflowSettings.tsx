@@ -1,5 +1,6 @@
 "use client";
 
+import { dateInput, apiDate } from "./task-date-input";
 import { useRef, useState } from "react";
 import { TaskDescriptionEditor } from "./TaskDescription";
 import { WorkflowTaskDeletion } from "./WorkflowTaskDeletion";
@@ -7,8 +8,6 @@ import { CalendarDays, X } from "lucide-react";
 import { rebaseWorkflowDraft } from './workflow-draft';
 import type { ClaimWorkflow, TaskFields, WorkflowCommand } from "./collaboration-types";
 
-const dateInput = (date: string | null, allDay: boolean) => date ? new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0, allDay ? 10 : 16) : "";
-const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}${allDay ? end ? "T23:59:00" : "T00:00:00" : ":00"}+0800` : null;
 
 function CalendarField({ label, value, allDay, disabled, change }: { label: string; value: string; allDay: boolean; disabled: boolean; change: (value: string) => void }) {
   const input = useRef<HTMLInputElement>(null);

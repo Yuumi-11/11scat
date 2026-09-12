@@ -8,7 +8,7 @@ import { RoomLoadingScreen } from './RoomLoadingScreen';
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Camera, ChevronLeft, ChevronRight, Volume2, VolumeX, X, Paperclip, File, Download, Undo2, Quote, Copy, Check, PictureInPicture2, MessageCircle, ListTodo } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
-import { createMediaRecovery, mediaCallReusable } from "./media-recovery";
+import { createMediaRecovery, mediaCallReusable, type MediaSource } from "./media-recovery";
 import type { DataConnection, MediaConnection, Peer as PeerClient, PeerOptions } from "peerjs";
 import { BoardStroke, BoardText, RoomBoard, Whiteboard } from "./Whiteboard";
 import { INITIAL_BOARD_EPOCH, normalizeBoardStroke, normalizeBoardText, normalizeBoard, sortBoardStrokes, mergeBoard } from "./board-state";
@@ -21,6 +21,7 @@ import { RoomCollaboration } from "./RoomCollaboration";
 import { TickTickDiagnostics } from "./TickTickDiagnostics";
 import { RoomBell } from "./RoomBell";
 import { CloudDrive } from "./CloudDrive";
+import type { CloudStatus } from "./cloud-drive-actions";
 import { useMainFullscreen } from "./use-main-fullscreen";
 import "./main-fullscreen.css";
 import "./classroom.css";
@@ -53,7 +54,6 @@ type ChatAttachment = { id: string; url: string; name: string; size: number; mim
 type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean; delivery?: "sending" | "failed"; error?: string };
 type OutgoingChat = { message: ChatMessage; file?: File; attachment?: ChatAttachment };
 type SharedTask = Pick<Task, "id" | "title" | "project" | "startDate" | "dueDate" | "done" | "isAllDay" | "completedDay">;
-type MediaSource = "camera" | "screen" | "microphone";
 type MediaItem = {
   id: string;
   label: string;
@@ -61,7 +61,6 @@ type MediaItem = {
   kind: MediaSource;
   remote: boolean;
 };
-type CloudStatus = { usedBytes: number; limitBytes: number; warningBytes: number; warning: boolean; percent: number };
 
 const USE_LIVEKIT = false;
 const MAX_REMOTE_DEVICES = 7;
@@ -224,7 +223,7 @@ export default function Home() {
   const [remoteCameras, setRemoteCameras] = useState<Record<string, MediaStream>>({});
   const [remoteScreens, setRemoteScreens] = useState<Record<string, MediaStream>>({});
   const [activeMediaId, setActiveMediaId] = useState("");
-  const [roomStatus, setRoomStatus] = useState<"connecting" | "ready" | "error">("connecting");
+  const [, setRoomStatus] = useState<"connecting" | "ready" | "error">("connecting");
   const [roomError, setRoomError] = useState("");
   const [syncOpen, setSyncOpen] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -256,7 +255,7 @@ export default function Home() {
   const [memberActivities, setMemberActivities] = useState<Record<string, string>>({});
   const [peerIdentityIds, setPeerIdentityIds] = useState<Record<string, string>>({});
   const [cloudOpen, setCloudOpen] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null);
+  const [, setCloudStatus] = useState<CloudStatus | null>(null);
   const [chatCloudUploads, setChatCloudUploads] = useState<Record<string, CloudSaveState>>({});
   const { boards, setBoards, activeBoardId, setActiveBoardId, createAndSelect } = useClassroomBoards();
   const [boardNotice, setBoardNotice] = useState("");
@@ -354,7 +353,6 @@ export default function Home() {
           merged.set(board.id, existing ? mergeBoard(existing, board) : board);
         });
         const next = [...merged.values()].sort((left, right) => left.createdAt - right.createdAt).slice(0, 12);
-        boardsRef.current = next;
         return next;
       });
       return true;
@@ -366,7 +364,6 @@ export default function Home() {
         const next = current.some((item) => item.id === board.id)
           ? current.map((item) => item.id === board.id ? mergeBoard(item, board) : item)
           : [...current, board].slice(0, 12);
-        boardsRef.current = next;
         return next;
       });
       return true;
@@ -377,7 +374,6 @@ export default function Home() {
           const next = current.map((board) => board.id === message.boardId && message.epoch! > board.epoch
             ? { ...board, epoch: message.epoch as string, strokes: [], texts: [], deletedStrokeIds: [], deletedTextIds: [] }
             : board);
-          boardsRef.current = next;
           return next;
         });
         return true;
@@ -392,7 +388,6 @@ export default function Home() {
             if (previous && previous.revision >= stroke.revision) return board;
             return { ...board, strokes: sortBoardStrokes(previous ? board.strokes.map((item) => item.id === stroke.id ? stroke : item) : [...board.strokes, stroke]) };
           });
-          boardsRef.current = next;
           return next;
         });
         return true;
@@ -402,7 +397,6 @@ export default function Home() {
           const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
             ? { ...board, strokes: board.strokes.filter((stroke) => stroke.id !== message.strokeId), deletedStrokeIds: [...new Set([...board.deletedStrokeIds, message.strokeId as string])] }
             : board);
-          boardsRef.current = next;
           return next;
         });
         return true;
@@ -417,7 +411,6 @@ export default function Home() {
             if (previous && previous.revision >= text.revision) return board;
             return { ...board, texts: previous ? board.texts.map((item) => item.id === text.id ? text : item) : [...board.texts, text].slice(-200) };
           });
-          boardsRef.current = next;
           return next;
         });
         return true;
@@ -427,7 +420,6 @@ export default function Home() {
           const next = current.map((board) => board.id === message.boardId && board.epoch === message.epoch
             ? { ...board, texts: board.texts.filter((text) => text.id !== message.textId), deletedTextIds: [...new Set([...board.deletedTextIds, message.textId as string])] }
             : board);
-          boardsRef.current = next;
           return next;
         });
         return true;
@@ -437,7 +429,6 @@ export default function Home() {
       deletedBoardIdsRef.current.add(message.id);
       updateBoards((current) => {
         const next = current.filter((item) => item.id !== message.id);
-        boardsRef.current = next;
         return next;
       });
       return true;
@@ -1917,10 +1908,10 @@ export default function Home() {
       if (cancelled()) { release(); return; }
       const track=capture.getAudioTracks()[0];
       if (!track) throw new Error('没有可用音轨');
-      if(track)await owner?.localParticipant.publishTrack(track,{source:Track.Source.Microphone});
+      await owner?.localParticipant.publishTrack(track,{source:Track.Source.Microphone});
       if (cancelled() || (USE_LIVEKIT && owner !== roomRef.current)) { release(); return; }
       microphoneStreamRef.current=capture;setMicrophoneStream(capture);
-      track?.addEventListener('ended',()=>{if(microphoneStreamRef.current===capture){if(track)void roomRef.current?.localParticipant.unpublishTrack(track);microphoneStreamRef.current=null;setMicrophoneStream(null);}});
+      track.addEventListener('ended',()=>{if(microphoneStreamRef.current===capture){void roomRef.current?.localParticipant.unpublishTrack(track);microphoneStreamRef.current=null;setMicrophoneStream(null);}});
     }catch {release();if (!cancelled()) setMicrophoneError('麦克风暂时无法开启，请检查浏览器权限与设备占用');}
     finally{if (request === microphoneRequest.current) microphoneBusy.current=false;}
   };

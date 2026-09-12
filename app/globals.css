@@ -839,7 +839,6 @@ body { overflow: hidden; }
 .appearance-modal { width: min(440px, 100%); position: relative; padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 30px 100px rgba(28,37,61,.22); }
 .appearance-modal h2 { margin: 0 0 8px; font-size: 23px; }
 .appearance-modal > p { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.theme-options { display: flex; gap: 12px; margin-bottom: 20px; }
 .background-actions { display: flex; align-items: center; gap: 10px; }
 .background-actions > button:not(.primary-button) { padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #fff; cursor: pointer; }
 

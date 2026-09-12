@@ -179,22 +179,6 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .share-audio-option small, .oauth-link { color: var(--muted); }
 .background-actions { gap: 8px; }
 .background-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.theme-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px 0; margin-bottom: 12px; }
-.theme-preset { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel); font-size: 13px; }
-.theme-preset.active { color: var(--theme-accent-dark); border-color: var(--theme-accent-dark); background: var(--theme-soft); }
-.theme-preset > svg { margin-left: auto; }
-.theme-color-dot { flex: 0 0 20px; height: 20px; border: 1px solid rgb(var(--shadow-rgb) / 18%); border-radius: 50%; }
-.custom-theme-form { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
-.custom-theme-form.active { border-color: var(--theme-accent-dark); }
-.custom-theme-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
-.custom-theme-heading label { color: var(--ink); font-size: 13px; font-weight: 650; }
-.custom-theme-heading small { color: var(--muted); font-size: 11px; }
-.custom-theme-fields { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-.custom-theme-fields input { width: 100%; min-width: 0; height: 44px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--panel); }
-.custom-theme-fields input[type="color"] { padding: 3px; cursor: pointer; }
-.custom-theme-hex { padding: 8px; font: 13px var(--font-geist-mono), monospace; }
-.custom-theme-fields .primary-button { min-height: 44px; padding: 8px 12px; }
-.theme-color-help { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 /* Controls and surrounding surfaces share the palette. Media and whiteboard
    content retain their original colors; success/error states stay semantic. */
 .custom-background::after { background: color-mix(in srgb, var(--page) 65%, transparent); }
@@ -208,7 +192,6 @@ button svg, a svg { flex-shrink: 0; vertical-align: middle; stroke-width: 1.8; }
 .whiteboard-tools > button.active, .whiteboard-tools > button:hover, .board-text-drag, .member-avatar, .chat-file-preview > span { color: var(--on-accent); }
 .room-controls .camera-on, .room-controls .share-on { color: var(--on-accent) !important; border-color: var(--theme-accent) !important; background: var(--theme-accent) !important; }
 .primary-button:hover:not(:disabled), .app-shell .primary-button:hover:not(:disabled) { color: var(--on-accent); background: var(--theme-accent-hover); }
-.theme-preset:hover, .custom-theme-fields input:focus { border-color: var(--theme-accent-dark); }
 .app-shell button:focus-visible, .access-card button:focus-visible { outline: 2px solid var(--theme-accent-dark); outline-offset: 3px; }
 .cloud-meter { font-size: 12px; }
 .cloud-meter > span { background: var(--soft); }

@@ -96,8 +96,6 @@
 .coop-recovery small { display: block; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 .coop-recovery button { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--theme-accent-dark); padding: 5px 8px; white-space: nowrap; }
 .coop-recovery-actions { display: flex; gap: 6px; }
-.coop-transfer-check { width: 100%; }
-.coop-transfer-check p { margin: 7px 0 0; line-height: 1.7; overflow-wrap: anywhere; }
 .coop-toast { position: absolute; z-index: 3; left: 50%; bottom: 18px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); max-height: 90px; overflow: auto; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--theme-accent-dark); box-shadow: 0 3px 18px rgb(var(--shadow-rgb) / 15%); font-size: 12px; }
 .coop-toast.error { color: var(--danger); }
 .coop-toast > span { min-width: 0; overflow-wrap: anywhere; }

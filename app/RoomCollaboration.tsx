@@ -1,5 +1,6 @@
 "use client";
 
+import { dateInput, apiDate } from "./task-date-input";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { PublicTaskPreview } from "./classroom-view";
 import { createPortal } from "react-dom";
@@ -29,8 +30,6 @@ type RequestCommand = WorkflowCommand | { id: string; action: "legacy-reset" } |
 type Editor = { workflow?: ClaimWorkflow; task: RoomTask; title: string; content: string; priority: TaskFields["priority"]; start: string; due: string; allDay: boolean; tags: string; repeat: string; reminders: string[] };
 const taskKey = (task: RoomTask) => `${task.ownerId || "buffer"}:${task.id}`;
 const taskSource = (task: RoomTask) => ({ ownerId: task.ownerId, taskId: task.id, version: task.version });
-const dateInput = (date: string | null, allDay: boolean) => date ? new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0, allDay ? 10 : 16) : "";
-const apiDate = (text: string, allDay: boolean, end = false) => text ? `${text}${allDay ? end ? "T23:59:00" : "T00:00:00" : ":00"}+0800` : null;
 const priorities = { 0: "无优先级", 1: "低", 3: "中", 5: "高" };
 const operationTime = (value: number) => new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
 
