@@ -35,6 +35,15 @@ test('workflow detail offers settings to every member and direct completion only
   assert.match(withNotices, /coop-workflow-status has-update">有更新/);
   assert.ok(!overview(false).includes('有更新'), 'read workflow returns to its actual status');
   assert.ok(!overview(false).includes('task-notice-dot'), 'read acknowledgements remove dots and unread sorting');
+  for (const status of ['creating', 'working', 'submitted', 'rejected', 'approving']) {
+    for (const flags of [{}, { taskAnomaly: true }, { reopenPending: true }, { needsSubmission: true }]) {
+      for (const updated of [false, true]) {
+        const html = renderToStaticMarkup(createElement(WorkflowList, { workflows: [{ ...workflow, ...flags, status }], notices: updated ? [{ id: 'update', workflowId: workflow.id }] : [], archived: false, setArchived() {}, select() {}, name: id => id }));
+        const label = html.match(/coop-workflow-status [^"]+">([^<]+)<\/span>/)?.[1];
+        assert.equal(label, updated ? '有更新' : status === 'submitted' ? '待审批' : '进行中');
+      }
+    }
+  }
   const ordered = renderToStaticMarkup(createElement(WorkflowList, { workflows: [...workflows, { ...workflow, id: 'review', title: '优先审批事项', status: 'submitted', createdAt: 1 }], notices, archived: false, setArchived() {}, select() {}, name: id => id }));
   assert.ok(ordered.indexOf('优先审批事项') < ordered.indexOf('他人认领的事项'), 'pending review outranks unread working tasks');
   workflow.events = ['claimed', 'submit', 'approve', 'completed'].map((type, index) => ({ id: String(index), actorId: 'bob', type, at: 1700000000000, comment: type === 'completed' ? '不可显示的后台完成说明' : '', files: [] }));

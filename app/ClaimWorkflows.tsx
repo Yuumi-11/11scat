@@ -44,7 +44,10 @@ export function WorkflowList({ workflows, archived, setArchived, select, name, n
     <div className="coop-workflow-navigation"><button type="button" className="coop-workflow-back" onClick={() => setArchived(!archived)}>{archived ? <><ArrowLeft size={15} />未完成流程</> : <><Archive size={15} />已归档 <span>{workflows.filter(item => ["done", "deleted"].includes(item.status)).length}</span>{archiveUnread > 0 && <span className="task-notice-count" aria-label={`${archiveUnread} 条归档新记录`}>{archiveUnread}</span>}</>}</button></div>
     <div className="coop-workflow-list">
       {!visible.length && <p className="coop-empty">{archived ? "暂无归档任务" : "暂无未完成的工作流程"}</p>}
-      {visible.map(item => <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${unread(item.id).length ? 'has-update' : item.status}`}>{unread(item.id).length ? "有更新" : item.taskAnomaly ? "任务状态异常" : item.reopenPending ? "正在恢复未完成" : item.needsSubmission ? "待补充提交" : workflowStatus[item.status]}</span></button>)}
+      {visible.map(item => {
+        const status = unread(item.id).length ? 'has-update' : archived ? item.status : item.status === 'submitted' ? 'submitted' : 'working';
+        return <button type="button" key={item.id} onClick={() => select(item.id)}><span><strong><TaskNoticeDot ids={unread(item.id)} />{item.title}</strong><small>{name(item.claimantId)} 认领 · {name(item.reviewerId)} 审批</small></span><span className={`coop-workflow-status ${status}`}>{status === 'has-update' ? "有更新" : workflowStatus[status]}</span></button>;
+      })}
     </div>
   </>;
 }

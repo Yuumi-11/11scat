@@ -285,7 +285,6 @@ export default function Home() {
   const longPressOriginRef = useRef({ x: 0, y: 0 });
   const longPressTriggeredRef = useRef(false);
   const chatAtBottomRef = useRef(true);
-  const scrollAfterSendRef = useRef(false);
   const chatSavedScrollTopRef = useRef(0);
   const chatImageViewerOpenRef = useRef(false);
   const pendingHistoryScrollRef = useRef<{ height: number; top: number } | null>(null);
@@ -527,12 +526,12 @@ export default function Home() {
     return () => document.removeEventListener("pointerdown", closeMenu);
   }, [messageMenuId]);
 
-  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
     if (chatImageViewerOpenRef.current) return;
     const list = messageListRef.current;
     if (list) {
       list.scrollTo({ top: list.scrollHeight, behavior });
-      chatSavedScrollTopRef.current = list.scrollHeight;
+      chatSavedScrollTopRef.current = list.scrollTop;
       chatAtBottomRef.current = true;
     }
   }, []);
@@ -553,7 +552,7 @@ export default function Home() {
     const list = messageListRef.current;
     if (list) {
       list.scrollTo({ top: chatSavedScrollTopRef.current, behavior: "instant" });
-      chatAtBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 24;
+      chatAtBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
     }
     chatImageViewerOpenRef.current = false;
     setViewedChatImage(null);
@@ -563,12 +562,6 @@ export default function Home() {
     if (sideView !== "chat") return;
     const list = messageListRef.current;
     if (!list) return;
-    if (scrollAfterSendRef.current) {
-      scrollAfterSendRef.current = false;
-      pendingHistoryScrollRef.current = null;
-      scrollChatToBottom("auto");
-      return;
-    }
     const pending = pendingHistoryScrollRef.current;
     if (pending) {
       list.scrollTop = pending.top + (list.scrollHeight - pending.height);
@@ -660,8 +653,6 @@ export default function Home() {
 
   const loadOlderChatMessages = async () => {
     if (chatHistoryLoading || !chatHistoryCursor) return;
-    const list = messageListRef.current;
-    if (list) pendingHistoryScrollRef.current = { height: list.scrollHeight, top: list.scrollTop };
     setChatHistoryLoading(true);
     try {
       const response = await fetch(`/api/chat/messages?limit=30&before=${encodeURIComponent(chatHistoryCursor)}`, { cache: "no-store" });
@@ -670,6 +661,10 @@ export default function Home() {
       const incoming = Array.isArray(data.messages)
         ? data.messages.map((item) => normalizeIncomingMessage(item, identityIdRef.current)).filter((item): item is ChatMessage => Boolean(item))
         : [];
+      // Capture immediately before prepending, so messages received while the
+      // request was pending cannot consume the history position adjustment.
+      const list = messageListRef.current;
+      if (list) pendingHistoryScrollRef.current = { height: list.scrollHeight, top: list.scrollTop };
       setMessages((current) => mergeChatMessages(incoming, current));
       setChatHistoryCursor(typeof data.nextCursor === "string" ? data.nextCursor : null);
     } catch (error) {
@@ -684,7 +679,7 @@ export default function Home() {
     const list = messageListRef.current;
     if (!list) return;
     chatSavedScrollTopRef.current = list.scrollTop;
-    chatAtBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 24;
+    chatAtBottomRef.current = list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
     if (list.scrollTop <= 20 && chatHistoryCursor && !chatHistoryLoading) void loadOlderChatMessages();
   };
 
@@ -707,7 +702,6 @@ export default function Home() {
           ? data.messages.map((item) => normalizeIncomingMessage(item, identityIdRef.current)).filter((item): item is ChatMessage => Boolean(item))
           : [];
         chatSyncCursorRef.current = incoming.reduce((latest, message) => Math.max(latest, message.createdAt || 0), chatSyncCursorRef.current);
-        chatAtBottomRef.current = true;
         setMessages((current) => mergeChatMessages(incoming, current));
         setChatHistoryCursor(typeof data.nextCursor === "string" ? data.nextCursor : null);
       } catch (error) {
@@ -2153,7 +2147,7 @@ export default function Home() {
     };
     const item: OutgoingChat = { message, file };
     outgoingChatRef.current.set(message.id, item);
-    setChatQuote(null); setChatImageError(""); scrollAfterSendRef.current = true;
+    setChatQuote(null); setChatImageError("");
     setMessages(current => mergeChatMessages([message], current));
     void deliverChat(item);
   };
@@ -2174,7 +2168,6 @@ export default function Home() {
     setChatQuote(null);
     clearChatImage();
     setChatImageError("");
-    scrollAfterSendRef.current = true;
     setMessages((current) => mergeChatMessages([message], current));
     void deliverChat(item);
   };

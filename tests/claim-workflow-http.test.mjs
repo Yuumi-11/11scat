@@ -46,6 +46,15 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     const before = await (await call('alice')).json(), sourceTask = before.members.find(member => member.id === 'alice').tasks[0];
     const claim = { id: randomUUID(), action: 'claim', source: { ownerId: 'alice', taskId: sourceTask.id, version: sourceTask.version }, destination: 'bob' };
     let response = await call('bob', '/api/room/tasks', claim); assert.equal(response.status, 200); let w = (await response.json()).workflow; assert.equal(w.status, 'working');
+    const diagnosticUrl = `/api/room/tasks?diagnoseWorkflow=${w.id}`;
+    const anonymousDiagnostic = await fetch(origin + diagnosticUrl, { redirect: 'manual' });
+    assert.equal(anonymousDiagnostic.status, 307); assert.match(anonymousDiagnostic.headers.get('location'), /\/access\?/);
+    assert.equal((await call('legacy', diagnosticUrl)).status, 403);
+    const savedWorkflow = await readFile(path.join(dir, 'room-collaboration.json'), 'utf8');
+    response = await call('alice', diagnosticUrl); assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'private, no-store');
+    const diagnosis = await response.json(); assert.equal(diagnosis.lookup, 'found'); assert.equal(diagnosis.target.id, w.targetId);
+    assert.equal(await readFile(path.join(dir, 'room-collaboration.json'), 'utf8'), savedWorkflow);
     const act = async (actor, action, extra = {}) => call(actor, '/api/room/tasks', { id: randomUUID(), workflowId: w.id, version: w.version, action, ...extra });
     assert.equal((await act('bob', 'nudge')).status, 403);
     response = await act('alice', 'nudge'); assert.equal(response.status, 200); w = (await response.json()).workflow;

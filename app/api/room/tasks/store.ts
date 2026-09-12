@@ -70,7 +70,7 @@ function comparableFields(task: Partial<TaskFields>) {
 export const sameFields = (a: Partial<TaskFields>, b: Partial<TaskFields>) => fingerprint(comparableFields(a)) === fingerprint(comparableFields(b));
 const fieldLabels: Record<keyof TaskFields, string> = { title: "标题", content: "说明", priority: "优先级", startDate: "开始时间", dueDate: "截止时间", isAllDay: "全天设置", timeZone: "时区", tags: "标签", reminders: "提醒", repeatFlag: "重复规则", repeatFrom: "重复计算方式", desc: "检查项说明", kind: "任务类型", items: "检查项" };
 export function fieldDifferences(a: Partial<TaskFields>, b: Partial<TaskFields>): string[] {
-  const left = taskFields(a), right = taskFields(b);
+  const left = comparableFields(a), right = comparableFields(b);
   return (Object.keys(fieldLabels) as (keyof TaskFields)[]).filter(key => fingerprint(left[key]) !== fingerprint(right[key])).map(key => fieldLabels[key]);
 }
 export function verificationIssue(task: RemoteTask | null, fields: TaskFields): string {
@@ -252,6 +252,37 @@ export class CollaborationStore {
       const sourceMessage = !source ? "本次未读到原任务。" : sourceUnchanged ? "原任务仍在原处，内容与转移开始时一致。" : "原任务仍在原处，但已发生变化。";
       const targetMessage = !target ? "本次未读到接收方副本，尚不能确认是否创建成功。" : destinationCompleted ? "接收方副本已完成或状态改变。" : differences.length ? `接收方副本与转移记录不一致的项目：${differences.join("、")}。` : "接收方副本已读到，任务内容核对一致。";
       return { status: op.status, phase: op.phase, sourceExists: !!source, sourceUnchanged, destinationExists: !!target, destinationCompleted, differences, candidates: candidates.map(task => ({ id: task.id, version: remoteVersion(task) })), message: `${sourceMessage}${targetMessage}${candidates.length ? `接收方另有 ${candidates.length} 项完整内容一致的任务，旧记录无法仅凭内容确定这些任务的来源。` : ""}本次核对只读取状态，没有继续或取消转移。` };
+    });
+  }
+  inspectWorkflow(actorId: string, id: string) {
+    return this.serial(async () => {
+      await this.requireMember(actorId);
+      if (!/^[a-f0-9-]{36}$/i.test(id)) throw new CollaborationError("流程编号无效", 400);
+      const state = await this.read(), workflow = state.workflows[id];
+      if (!workflow) throw new CollaborationError("流程不存在", 404);
+      if (![workflow.reviewerId, workflow.claimantId].includes(actorId)) throw new CollaborationError("无权查看此流程", 403);
+      const result = {
+        id, title: workflow.title, status: workflow.status, version: workflow.version,
+        error: workflow.error, creation: workflow.targetCreation.state,
+        claimantId: workflow.claimantId, targetId: workflow.targetId,
+        expectedProjectId: workflow.projects?.target ?? null, expected: workflow.fields,
+      };
+      try {
+        // Diagnostics must not use linkedTask/snapshot: those persist repairs or
+        // restore completed tasks. Read only this participant's exact target ID.
+        const inbox = await this.gateway.inbox(workflow.claimantId);
+        const task = this.gateway.locate
+          ? await this.gateway.locate(workflow.claimantId, workflow.targetId, workflow.projects?.target)
+          : await this.gateway.get(workflow.claimantId, workflow.targetId, workflow.projects?.target);
+        return {
+          ...result, lookup: task ? "found" : "not-found", inboxProjectId: inbox.projectId,
+          inInbox: inbox.tasks.some(item => item.id === workflow.targetId),
+          target: task ? { id: task.id, projectId: task.projectId, status: task.status ?? 0, fields: taskFields(task) } : null,
+          differences: task ? fieldDifferences(task, workflow.fields) : [],
+        };
+      } catch (error) {
+        return { ...result, lookup: "unavailable", lookupError: error instanceof Error ? error.message : "任务读取失败", diagnostic: error instanceof CollaborationError ? error.diagnostic : undefined };
+      }
     });
   }
   async snapshot(identityId: string): Promise<CollaborationSnapshot> {
@@ -468,7 +499,11 @@ export class CollaborationStore {
     const owner = reviewer ? workflow.reviewerId : workflow.claimantId;
     const creation = reviewer ? workflow.reviewerCreation! : workflow.targetCreation;
     const id = reviewer ? workflow.reviewerTaskId! : workflow.targetId;
-    let task = await this.gateway.get(owner, id);
+    const side = reviewer ? "source" : "target";
+    const readTarget = (targetId: string) => creation.state === "received" && this.gateway.locate
+      ? this.gateway.locate(owner, targetId, workflow.projects?.[side])
+      : this.gateway.get(owner, targetId, workflow.projects?.[side]);
+    let task = await readTarget(id);
     const remember = async (actualId: string) => {
       if (creation.beforeIds?.includes(actualId)) throw new CollaborationError("创建响应指向原有任务，暂不能建立认领");
       if (reviewer) workflow.reviewerTaskId = actualId; else workflow.targetId = actualId;
@@ -478,21 +513,22 @@ export class CollaborationStore {
       creation.beforeIds = (await this.gateway.inbox(owner)).tasks.map(item => item.id);
       creation.state = "sent"; await this.saveWorkflow(state, workflow);
       await this.gateway.create(owner, id, workflow.fields, remember);
-      task = await this.gateway.get(owner, reviewer ? workflow.reviewerTaskId! : workflow.targetId);
+      task = await readTarget(reviewer ? workflow.reviewerTaskId! : workflow.targetId);
     } else if (!task && creation.state === "sent") {
       const matches = (await this.gateway.inbox(owner)).tasks.filter(item => !creation.beforeIds?.includes(item.id) && !item.status && sameFields(item, workflow.fields) && !this.taskWorkflow(state, owner, item.id));
       if (matches.length !== 1) throw new CollaborationError("创建结果暂未确定，已停止重复创建，请稍后重试");
-      await remember(matches[0].id); task = await this.gateway.get(owner, matches[0].id);
+      await remember(matches[0].id); task = await readTarget(matches[0].id);
     }
-    if (!task || task.status || !sameFields(task, workflow.fields)) throw new CollaborationError("尚未核实认领任务，原任务仍保留");
-    workflow.projects ||= {}; workflow.projects[reviewer ? "source" : "target"] = task.projectId;
+    if (!task || (task.status && (task.status !== 2 || creation.state === "new")) || !sameFields(task, workflow.fields)) throw new CollaborationError(verificationIssue(task, workflow.fields));
+    workflow.projects ||= {}; workflow.projects[side] = task.projectId;
+    return task;
   }
   private async startWorkflow(state: State, workflow: Workflow) {
     if (workflow.ownerDeletion) return this.publicWorkflow(workflow);
     try {
       // Public claims create only the claimant's task. Existing publisher links
       // remain readable, but never create a publisher task just for synchronization.
-      await this.ensureWorkflowTask(state, workflow);
+      const target = await this.ensureWorkflowTask(state, workflow);
       if (workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId) workflow.reviewerTaskId = workflow.targetId;
       if (isPersonalCollection(workflow) && !workflow.edit) {
         // This receipt only makes creation retryable; no approval or completion occurs.
@@ -500,6 +536,13 @@ export class CollaborationStore {
         workflow.status = "done";
       } else workflow.status = "working";
       workflow.error = "";
+      // A confirmed creation can be moved or checked before verification returns.
+      // Keep that same task and apply the existing approval rules after linking.
+      if (target.status === 2 && !isPersonalCollection(workflow)) {
+        await this.saveWorkflow(state, workflow);
+        try { await this.syncExternalCompletion(state, workflow, await this.linkedTask(state, workflow, "source"), target); }
+        catch (error) { workflow.syncError = error instanceof Error ? error.message : "任务状态暂时无法读取，请重试"; }
+      }
     } catch (error) { workflow.error = error instanceof Error ? error.message : "认领任务暂未建立，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
   }
@@ -548,7 +591,7 @@ export class CollaborationStore {
         workflow.edit = { id: editId, fields };
         workflow.events.push({ id: editId, actorId: actor, type: "updating", at: now, comment: "", files: [] });
       }
-      if (current.remote) workflow.projects = { source: current.remote.projectId };
+      workflow.projects = { target: targetInbox.projectId, ...(current.remote ? { source: current.remote.projectId } : {}) };
       state.workflows[workflow.id] = workflow; await this.saveWorkflow(state, workflow);
       if (isPersonalCollection(workflow)) return this.finishCollection(state, workflow);
       if (workflow.edit) return this.finishWorkflowEdit(state, workflow);

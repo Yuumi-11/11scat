@@ -257,7 +257,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Micros
 .side-tabs { order: 1; margin-top: 14px; padding: 4px; border: 0; border-radius: 10px; }
 .side-tabs button { border-radius: 7px; }
 .chat-notice { order: 2; margin: 14px 0; border: 0; border-radius: 10px; }
-.message-list { order: 3; padding: 3px 2px; }
+.message-list { order: 3; padding: 3px 2px; overflow-anchor: none; }
 .message p { border: 0; border-radius: 13px 13px 4px 13px; }
 .chat-form { order: 4; grid-template-columns: 1fr; align-items: initial; margin: 14px 0 0; padding: 14px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .chat-form textarea { min-height: 74px; height: auto; border: 1px solid var(--line); border-radius: 10px; }
