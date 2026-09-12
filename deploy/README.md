@@ -71,3 +71,13 @@ The rollback target is tested on port 3101 before the production container is
 recreated. The same environment file, persistent data mount, log limits, and
 health checks are used. The current and previous image references are then
 swapped, so the operation can be reversed once more if required.
+
+## Voice transcription configuration
+
+This optional setup procedure is preserved from the 2026-09-08 transcription notes. It describes how to configure a deployment; it does not assert that an account is currently missing configuration or that a device test has passed.
+
+1. Confirm that the selected Cloudflare account uses the Workers AI Free plan. Create a dedicated API token restricted to that account with Workers AI Read and Workers AI Edit permissions.
+2. Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_WORKERS_AI_TOKEN` in `/opt/11scat-web/identity.env`. Set `CLOUDFLARE_AI_FREE_PLAN_CONFIRMED=true` only after checking the account plan; variable names are also listed in [identity.env.example](identity.env.example). Keep real credentials on the server.
+3. Use the existing deployment procedure to recreate the application container so it reads the environment file. With an authorized short Chinese recording, check the first transcription and subsequent cached result; use the relevant phone for device-specific verification.
+
+The server calls the Workers AI REST API without deploying an additional Worker. Historical plan comparisons and licensing evidence are in [the voice research archive](../docs/archive/research/voice-and-browser.md); current behavior remains in [the functionality document](../docs/current-functionality.md). This application does not upgrade the account plan or fall back to a paid service.

@@ -1,104 +1,24 @@
 # duo-space
 
-Repository: [yuumiqwq/duo-space](https://github.com/yuumiqwq/duo-space).
+双人在线自习网站，仓库为 [yuumiqwq/duo-space](https://github.com/yuumiqwq/duo-space)。功能交接从[当前功能说明](docs/current-functionality.md)开始阅读，全部资料入口见[文档导航](docs/README.md)。
 
-当前功能及维护交接请阅读 [当前功能说明](docs/current-functionality.md)。该文档随功能规则更新，简短改动记录写在 Git 提交中；本项目当前生产环境使用 Next.js 与服务器容器部署，以下保留的 Vinext、D1 和 ChatGPT 登录内容属于初始模板资料。
+## 开发与维护
 
-Project art and UI copy must follow [AGENTS.md](AGENTS.md) and the [approved classroom style](docs/classroom-flat-style-2026-09-09.md). Every new or revised asset must match the established visual style and receive explicit user approval of its preview before publication. Unapproved art stays in `codex-generated` and must not enter automatically deployed assets or pages.
+项目要求 Node.js >=22.13.0，当前使用 Next.js。安装依赖后运行本地开发服务：
 
-Originally based on a full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
-
-## Prerequisites
-
-- Node.js `>=22.13.0`
-
-## Quick Start
-
-```bash
+```sh
 npm install
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+`npm run build` 生成生产构建，`npm test` 先构建再执行测试；音频集成检查需要 FFmpeg 与 FFprobe。部署沿用 GitHub Actions 构建镜像后发布到现有服务器的方式，数据目录和回滚操作见[部署说明](deploy/README.md)。
 
-## Included Shape
+功能规则变化时更新同一份功能说明，简短更新描述保留在 Git 提交中。当前待办以[剩余需求执行表](docs/remaining-priority-requirements.md)为准，历史方案与早期测试记录通过[归档目录](docs/archive/README.md)查阅。
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## 美术与素材
 
-## Workspace Auth Headers
+修改遵循 [AGENTS.md](AGENTS.md) 和[教室固定美术参照](docs/classroom-flat-style-2026-09-09.md)。新增或重绘素材须先展示具体版本并取得同意，待确认素材放在 `codex-generated`，批准后才能接入可部署路径。
 
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
+生成源图及提示词见[素材记录](docs/classroom-asset-prompts-2026-09-09.md)，字体和纹理的来源见[素材署名](public/classroom/ATTRIBUTION.md)。许可文件随对应素材保留，归档中的候选图不代表正式设计。
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+仓库保留的可选 Vinext、D1 与 ChatGPT 登录辅助代码源自初始模板，相关旧说明已移至[模板归档](docs/archive/starter-template.md)。它们不作为当前网站的认证或部署配置说明。

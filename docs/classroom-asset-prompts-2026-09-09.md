@@ -1,6 +1,6 @@
 # 教室主题独立素材与生成提示词
 
-2026-09-09。本轮使用内置 imagegen 生成物件与材质图集，未使用付费 API。外观改造仅本地调试，未经用户再次明确许可不推送、不部署。用户已取消重新制作整页效果图的要求。
+2026-09-09 的素材生成记录。本文保留原始图集、完整提示词与授权来源；其中的台历和早期物件描述用于追溯制作过程，不能直接当作当前页面要求。后续批准与替换关系见[教室设计历史](archive/2026-09/classroom-design.md)，新的素材修改仍按 [AGENTS.md](../AGENTS.md)取得具体版本同意后发布。
 
 ## 参照与文件
 
@@ -48,4 +48,4 @@ Use case: stylized-concept. Asset type: ONE square production texture atlas, 2 b
 
 ## 2026-09-09 浏览器批注后的素材更新
 
-右桌三个物件、墙铃和台历当前采用项目原生 SVG，原生成图集继续保留作为制作源图。黑板与聊天纸面改用有明确授权的现成细纹素材，来源及保留许可见[素材署名](../public/classroom/ATTRIBUTION.md)；新素材没有调用生图服务。当前显示方案和按钮印刷字体的选择见[材质调整说明](classroom-material-refinement-2026-09-09.md)，本地调试限制继续有效。
+右桌三个物件、墙铃和台历当前采用项目原生 SVG，原生成图集继续保留作为制作源图。黑板与聊天纸面改用有明确授权的现成细纹素材，来源及保留许可见[素材署名](../public/classroom/ATTRIBUTION.md)；新素材没有调用生图服务。当日显示方案和按钮印刷字体的选择见[历史材质调整原文](https://github.com/yuumiqwq/duo-space/blob/5714334a50c80adbe2d89a1b280cc5adff602c9c/docs/classroom-material-refinement-2026-09-09.md)；当时的本地调试状态不代表后续发布状态。
