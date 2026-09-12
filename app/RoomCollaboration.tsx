@@ -317,7 +317,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
   function card(task: RoomTask, preview = false) {
     const description = task.ownerId === null ? taskDescriptionPreview(descriptionAttachments(task.content || task.desc || "").text) : "";
     const workflow = snapshot?.workflows.find(item => item.id === task.workflowId);
-    const stampedClaimant = inboxClaimant(task, workflow, identityId);
+    const stampedClaimant = inboxClaimant(task, workflow);
     const showWorkflow = () => { setWorkflowId(task.workflowId || null); setWorkflowOpen(true); setError(""); };
     const pending = !!task.pending, isEditing = inlineTask && taskKey(inlineTask) === taskKey(task);
     const controlsLocked = unavailable || pending || !!inlineTask || !!draftId;
@@ -361,7 +361,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
       <div className="coop-task-footer">{((task.ownerId === null && collaborationDate(task)) || task.repeatFlag || (!compactClaim && !!claimButton)) && <div className="coop-task-meta">{task.ownerId === null && collaborationDate(task) && <span >{collaborationDateLabel(task)}</span>}{task.repeatFlag && <span>重复</span>}
         {!compactClaim && claimButton}
       </div>}
-      {workflow && !stampedClaimant && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" data-fonts-ready={stampFontsReady} aria-label={`认领者：${ownerName(workflow.claimantId)}`}><span className="coop-claim-stamp-name">{ownerName(workflow.claimantId)}</span></span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}</div>
+      {workflow && task.ownerId === null && (canComplete ? <div className="coop-stamp-clip"><span className="coop-claim-stamp" data-fonts-ready={stampFontsReady} aria-label={`认领者：${ownerName(workflow.claimantId)}`}><span className="coop-claim-stamp-name">{ownerName(workflow.claimantId)}</span></span></div> : <span className={`coop-workflow-badge ${workflow.status}`}>{workflowStatus[workflow.status]} · {ownerName(workflow.claimantId)} 认领</span>)}</div>
       {stampedClaimant && <InboxClaimStamp name={ownerName(stampedClaimant)} fontsReady={stampFontsReady} />}
       {!workflow && task.transferBlocked && <small className="coop-transfer-note">{task.transferBlocked}</small>}
       {pending && <button type="button" className="coop-pending-label" onClick={() => setRecoveryOpen(true)}><CircleAlert size={12} aria-hidden="true" />查看待处理操作</button>}

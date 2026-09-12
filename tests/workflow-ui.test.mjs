@@ -61,6 +61,17 @@ test('workflow detail offers settings to every member and direct completion only
   assert.ok(!images.includes('每个 20 MB'));
   const description = images.match(/<div class="task-description">[\s\S]*?<\/div>/)[0];
   assert.ok(description.includes('[图1.png]')); assert.ok(!description.includes('<img'));
+  for (const claimantId of ['alice', 'bob']) for (const actorId of ['alice', 'bob']) {
+    workflow.claimantId = claimantId;
+    workflow.events = [{ id: 'existing-claim', actorId, type: 'claimed', at: 1700000000000, comment: '', files: [] }];
+    for (const viewer of ['alice', 'bob']) {
+      const expected = actorId === claimantId ? `${claimantId} · 认领` : `${actorId} · 安排 ${claimantId} 认领`;
+      const html = render(viewer);
+      assert.ok(html.includes(expected), 'historical claim events distinguish assignment from self-claim for both viewers');
+      if (actorId !== claimantId) assert.ok(!html.includes(`${actorId} · 认领`), 'the arranger is never presented as the claimant');
+    }
+  }
+  workflow.claimantId = 'bob';
   workflow.fields.content = '';
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {

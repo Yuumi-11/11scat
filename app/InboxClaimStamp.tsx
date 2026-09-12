@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef } from 'react';
-import { inboxStampScale } from './inbox-claim-stamp';
+import { inboxStampLayout } from './inbox-claim-stamp';
 
 export function InboxClaimStamp({ name, fontsReady }: { name: string; fontsReady: boolean }) {
   const clipRef = useRef<HTMLDivElement>(null);
@@ -10,7 +10,9 @@ export function InboxClaimStamp({ name, fontsReady }: { name: string; fontsReady
     const clip = clipRef.current, stamp = stampRef.current;
     if (!clip || !stamp) return;
     const fit = () => {
-      clip.style.setProperty('--inbox-stamp-scale', String(inboxStampScale(stamp.offsetWidth, stamp.offsetHeight, clip.clientWidth, clip.clientHeight)));
+      const { scale, centerX } = inboxStampLayout(stamp.offsetWidth, stamp.offsetHeight, clip.clientWidth, clip.clientHeight);
+      clip.style.setProperty('--inbox-stamp-scale', String(scale));
+      clip.style.setProperty('--inbox-stamp-center-x', `${centerX}px`);
     };
     fit();
     const observer = new ResizeObserver(fit);
