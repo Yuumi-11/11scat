@@ -756,7 +756,11 @@ export class CollaborationStore {
       if (!workflow) throw new CollaborationError("流程不存在", 404);
       if (isPersonalCollection(workflow)) throw new CollaborationError("自己的任务直接放入收集箱，不使用审批流程", 409);
       const signature = fingerprint({ actor, command }), prior = workflow.events.find(event => event.id === command.id);
-      if (workflow.completionRequest?.id === command.id && workflow.completionRequest.signature !== signature) throw new CollaborationError("操作编号已使用");
+      if (workflow.completionRequest?.id === command.id) {
+        if (workflow.completionRequest.signature !== signature) throw new CollaborationError("操作编号已使用");
+        if (workflow.ownerDeletion || workflow.status === 'deleted') return this.publicWorkflow(workflow);
+        return this.completeByOwner(state, workflow, actor, command.id, signature);
+      }
       if (prior) {
         if (prior.signature !== signature) throw new CollaborationError("操作编号已使用");
         if (workflow.status === 'deleted') return this.publicWorkflow(workflow);

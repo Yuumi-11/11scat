@@ -199,6 +199,8 @@ test('approval intent and comment survive a read failure without prematurely cha
   w = await f.store.workflowCommand('alice', command);
   assert.equal(w.status, 'submitted'); assert.match(w.error, /approval lookup/);
   assert.ok(!w.events.some(event => event.type === 'approve'));
+  w = await f.store.workflowCommand('alice', command);
+  assert.equal(w.status, 'submitted'); assert.match(w.error, /approval lookup/, 'replaying the same persisted decision resumes lookup despite its old version');
   await assert.rejects(f.store.workflowCommand('alice', { ...command, action: 'reject' }), /编号已使用/);
   f.gateway.get = get;
   f.accounts.alice.get(task.id).status = 2; f.accounts.bob.get(w.targetId).status = 2;
