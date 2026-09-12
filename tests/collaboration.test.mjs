@@ -142,7 +142,74 @@ test('collaboration includes the captured redacted diagnostic for the member who
 
 const claim = (f, task, actor = 'bob', destination = actor) => f.store.claim(actor, { id: randomUUID(), action: 'claim', source: source(task), destination });
 const act = (f, workflow, actor, action, extra = {}) => f.store.workflowCommand(actor, { id: randomUUID(), workflowId: workflow.id, version: workflow.version, action, ...extra });
-const refreshed = async (f, id) => (await f.store.snapshot('alice')).workflows.find(workflow => workflow.id === id);
+const refreshed = async (f, id) => { await f.store.checkWorkflows(); return (await f.store.snapshot('alice')).workflows.find(workflow => workflow.id === id); };
+
+test('board reads and settled migration bypass a stalled workflow search, and background polls share one job', { timeout: 3000 }, async () => {
+  const f = await fixture(), task = await f.create('仍可打开的任务板');
+  const w = await claim(f, task); await f.store.resetLegacy('alice');
+  f.accounts.bob.delete(w.targetId);
+  let release, entered, calls = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  f.gateway.locate = async () => { calls++; entered(); await gate; return null; };
+  const job = f.store.maintainWorkflows();
+  let timer;
+  try {
+    await started;
+    for (let index = 0; index < 20; index++) assert.equal(f.store.maintainWorkflows(), job);
+    const [snapshot, revision, migration] = await Promise.race([
+      Promise.all([f.store.snapshot('alice'), f.store.revision('alice'), f.store.resetLegacy('alice')]),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('display waited for background lookup')), 500); }),
+    ]);
+    assert.ok(snapshot.buffer.some(item => item.id === task.id));
+    assert.equal(snapshot.workflows[0].status, 'working'); assert.ok(!snapshot.workflows[0].taskAnomaly);
+    assert.ok(revision.bufferIds.includes(task.id)); assert.equal(migration.removed, 0); assert.equal(calls, 1);
+  } finally { clearTimeout(timer); release(); await job; }
+  assert.ok((await f.store.snapshot('alice')).workflows[0].taskAnomaly);
+  await f.store.maintainWorkflows(); assert.equal(calls, 1, 'finished maintenance is throttled across revision polls');
+});
+
+test('an explicit completion before claim verification survives a failed lookup and server restart', async () => {
+  const f = await fixture(), task = await f.create('保留已点击的直接完成');
+  f.gateway.create = async (owner, id, fields, receipt) => {
+    f.counts.creates++; f.accounts[owner].set('actual', { ...fields, id: 'actual', projectId: 'inbox-' + owner, status: 2 });
+    await receipt('actual'); throw new Error('verification response lost');
+  };
+  let w = await claim(f, task); assert.equal(w.status, 'creating');
+  f.gateway.locate = async () => { throw new Error('lookup unavailable'); };
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'creating'); assert.match(w.error, /lookup unavailable/);
+  const state = JSON.parse(await readFile(path.join(f.dir, 'room-collaboration.json'), 'utf8'));
+  assert.equal(state.workflows[w.id].completionRequest.actor, 'alice');
+  f.gateway.locate = f.gateway.get;
+  f.gateway.reopen = async () => assert.fail('explicit completion must not reopen a completed task');
+  f.gateway.complete = async () => assert.fail('already completed task needs no repeat completion');
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  await f.store.recoverPendingWorkflows();
+  w = (await f.store.snapshot('alice')).workflows.find(item => item.id === w.id);
+  assert.equal(w.status, 'done'); assert.equal(w.error, ''); assert.equal(f.counts.creates, 1);
+  assert.equal(w.events.filter(event => event.type === 'owner-complete').length, 1);
+});
+
+test('approval intent and comment survive a read failure without prematurely changing the pending stage', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '已提交成果' });
+  const get = f.gateway.get;
+  f.gateway.get = async () => { throw new Error('approval lookup unavailable'); };
+  const command = { id: randomUUID(), action: 'approve', workflowId: w.id, version: w.version, comment: '同意通过' };
+  w = await f.store.workflowCommand('alice', command);
+  assert.equal(w.status, 'submitted'); assert.match(w.error, /approval lookup/);
+  assert.ok(!w.events.some(event => event.type === 'approve'));
+  await assert.rejects(f.store.workflowCommand('alice', { ...command, action: 'reject' }), /编号已使用/);
+  f.gateway.get = get;
+  f.accounts.alice.get(task.id).status = 2; f.accounts.bob.get(w.targetId).status = 2;
+  f.gateway.reopen = async () => assert.fail('saved approval must not reopen completed tasks');
+  f.gateway.complete = async () => assert.fail('saved approval skips already completed tasks');
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  await f.store.checkWorkflows(); await f.store.recoverPendingWorkflows();
+  w = (await f.store.snapshot('alice')).workflows[0];
+  assert.equal(w.status, 'done'); assert.equal(w.events.find(event => event.type === 'approve').comment, '同意通过');
+  assert.equal(w.events.find(event => event.type === 'submit').comment, '已提交成果');
+});
 
 test('either participant deletes exact linked tasks and archives every stage with original history', async () => {
   for (const status of ['creating','working','submitted','rejected','approving','done']) for(const actor of ['alice','bob']) {
@@ -298,7 +365,8 @@ test('deleting a previously linked original task preserves the website stage and
     f.accounts.alice.delete(task.id);
     w = await refreshed(f, w.id); assert.ok(w.taskAnomaly);
     const prior = w.status;
-    await assert.rejects(act(f, w, deletionTime === 'before-submit' ? 'bob' : 'alice', deletionTime === 'direct' ? 'owner-complete' : deletionTime === 'before-submit' ? 'submit' : 'approve'), /该任务已被删除/);
+    if (deletionTime === 'direct') assert.match((await act(f, w, 'alice', 'owner-complete')).error, /该任务已被删除/);
+    else await assert.rejects(act(f, w, deletionTime === 'before-submit' ? 'bob' : 'alice', deletionTime === 'before-submit' ? 'submit' : 'approve'), /该任务已被删除/);
     w = await refreshed(f, w.id); assert.equal(w.status, prior); assert.equal(f.accounts.alice.size, 0);
     assert.ok(!f.accounts.bob.get(w.targetId).status); assert.equal(f.counts.creates, 1);
   }
@@ -309,7 +377,7 @@ test('missing publisher lookup failures pause approval without inventing absence
   w = await act(f, w, 'bob', 'submit');
   const get = f.gateway.get;
   f.gateway.get = async (owner, id) => { if (owner === 'alice') throw new Error('network unavailable'); return get(owner, id); };
-  await assert.rejects(act(f, w, 'alice', 'approve'), /network unavailable/);
+  w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'submitted'); assert.match(w.error, /network unavailable/);
   assert.ok(!f.accounts.bob.get(w.targetId).status); assert.equal(f.counts.creates, 1);
 });
 
@@ -884,6 +952,7 @@ test('external owner completion silently restores the website working state with
     f.accounts.alice.get(sourceId).status = 2;
     let writes = 0; const complete = f.gateway.complete;
     f.gateway.complete = async (...args) => { writes++; await complete(...args); };
+    await f.store.checkWorkflows();
     const snapshot = await f.store.snapshot('bob'); w = snapshot.workflows.find(item => item.id === w.id);
     assert.equal(w.status, 'working'); assert.equal(writes, 0); assert.ok(!f.accounts.bob.get(w.targetId).status);
     assert.equal(f.accounts.alice.get(sourceId).status, 0);

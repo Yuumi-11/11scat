@@ -71,14 +71,16 @@ export const gateway: Gateway = {
       if (!Array.isArray(data) || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId) || task.status)) throw new CollaborationError("滴答状态查询返回的数据不完整，请稍后重试", 502);
       return data as RemoteTask[];
     });
-    const candidate = (await account.search).find(task => task.id === id);
+    const unfinished = await account.search;
+    const candidate = unfinished.find(task => task.id === id);
     if (candidate) {
       const detail = await gateway.get(owner, id, candidate.projectId);
       if (detail && !detail.status) return detail;
       if (detail?.status === 2) completed = detail;
     }
-    // A capped filter is not exhaustive. On the uncommon missing-ID path,
-    // check the same ID in each accessible project before offering recovery.
+    // An uncapped account-wide result exhausts unfinished tasks. Only a full
+    // page needs per-project fallback before querying completed history.
+    if (unfinished.length < 200) return completed || await completedTask(owner, account, id, completedAfter);
     account.projects ||= request(owner, "/project").then(data => {
       if (!Array.isArray(data) || data.some(project => !project || typeof project.id !== "string" || !validId(project.id))) throw new CollaborationError("滴答清单列表不完整，请稍后重试", 502);
       return [...new Set([account.projectId, ...data.map(project => project.id as string)])];

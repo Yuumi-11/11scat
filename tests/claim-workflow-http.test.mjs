@@ -65,8 +65,7 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(edited));
     const externallyChecked = await (await call('bob')).json(); w = externallyChecked.workflows.find(item => item.id === w.id);
     assert.ok(!w.needsSubmission); assert.ok(!w.reopenPending);
-    assert.ok(externallyChecked.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
-    assert.equal((JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'))).bob[w.targetId].status, 0);
+    assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly, 'display does not infer deletion while completion synchronization is deferred');
     const upload = (actor, body, headers = {}) => fetch(`${origin}/api/room/tasks/files?workflow=${w.id}&name=${encodeURIComponent('评语.txt')}`, { method: 'POST', body, headers: { Cookie: cookie(actor), Origin: origin, ...headers }, redirect: 'manual' });
     assert.equal((await upload('alice', 'draft')).status, 403);
     assert.equal((await upload('bob', 'draft', { Origin: 'https://foreign.example' })).status, 403);
@@ -85,6 +84,7 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     assert.match((await call('bob', imageFile.url)).headers.get('content-disposition'), /^attachment;/);
     assert.match((await call('bob', file.url + '?preview=1')).headers.get('content-disposition'), /^attachment;/, 'non-image files retain download behavior');
     response = await act('bob', 'submit', { attachments: [file.id, imageFile.id], comment: '已完成 [图1.png]' }); assert.equal(response.status, 200); w = (await response.json()).workflow;
+    assert.equal((JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'))).bob[w.targetId].status, 0, 'dependent commands still verify and restore status before advancing');
     assert.equal((await call('alice', imageFile.url + '?preview=1')).status, 200, 'submitted images become visible to the reviewer');
     response = await act('alice', 'update-workflow', { fields: { content: '提交后补充任务说明和附件链接' } });
     assert.equal(response.status, 200); w = (await response.json()).workflow;

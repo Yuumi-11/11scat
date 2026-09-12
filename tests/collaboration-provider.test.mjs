@@ -119,7 +119,7 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
       assert.equal(init.headers.Authorization, 'Bearer token-alice');
       const route = new URL(url).pathname.replace('/open/v1', '');
       if (route === '/project/inbox/data') return Response.json({ project: { id: 'inbox-alice' }, tasks: [], columns: [] });
-      if (route === '/task/filter') { searchCount++; if (failure) return failure(); return Response.json([task]); }
+      if (route === '/task/filter') { searchCount++; if (failure) return failure(); return Response.json([task, ...Array.from({ length: 199 }, (_, index) => ({ id: `other-${index}`, projectId: 'other-list', status: 0 }))]); }
       if (route === '/project') return Response.json([{ id: 'other-list' }, { id: 'outside-filter' }]);
       if (route === '/task/completed') return Response.json([{ id: 'history-only', projectId: 'inbox-alice', status: 2, title: '历史完成' }]);
       if (route === '/project/outside-filter/task/older-moved') return Response.json({ ...task, id: 'older-moved', projectId: 'outside-filter' });
@@ -194,7 +194,8 @@ test('lookup searches open tasks first, limits completion history to publication
     assert.equal(await gateway.locate('alice', 'deleted', undefined, publication), null);
     assert.equal(requests.filter(item => item.route === '/task/completed').length, 1, 'same account and boundary share one completed read');
     const firstCompleted = requests.findIndex(item => item.route === '/task/completed');
-    assert.ok(firstCompleted > requests.findIndex(item => item.route === '/project'));
+    assert.ok(firstCompleted >= 0);
+    assert.ok(!requests.some(item => item.route === '/project'), 'an uncapped unfinished search must not enumerate every project');
     const restored = await gateway.reopen('alice', old, publication);
     assert.equal(restored.status, 0);
     assert.equal(requests.filter(item => item.route === '/task/completed').length, 1, 'reopen fallback retains publication boundary and cached exact-ID evidence');

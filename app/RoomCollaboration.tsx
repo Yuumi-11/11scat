@@ -158,13 +158,7 @@ export function RoomCollaboration({ identityId, onChanged, onNotice, onPublicTas
     const element = dialog.current, button = trigger.current;
     element?.showModal();
     if (previewSnapshot) return () => { element?.close(); button?.focus({ preventScroll: true }); };
-    const first = setTimeout(() => {
-      locked.current = true; setBusy(true);
-      void fetch("/api/room/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "legacy-reset" }), signal: AbortSignal.timeout(90000) })
-        .then(response => readTaskResponse(response, '旧记录清理暂未完成'))
-        .catch(cause => setError(taskErrorMessage(cause, '旧记录清理暂未完成')))
-        .finally(async () => { await load(true); locked.current = false; setBusy(false); });
-    }, 0);
+    const first = setTimeout(() => { void load(true); }, 0);
     const timer = setInterval(() => { if (!document.hidden && !locked.current && !drag.current) void load(); }, 15000);
     const invalidate = () => { generation.current++; fetching.current = false; loadController.current?.abort(); };
     return () => { clearTimeout(first); clearInterval(timer); invalidate(); element?.close(); button?.focus({ preventScroll: true }); };
