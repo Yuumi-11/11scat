@@ -23,13 +23,12 @@ async function request(owner: string, route: string, init?: RequestInit, missing
   const account = await context(owner);
   if (account.projectId === "inbox") throw new CollaborationError("收集箱为空且滴答未返回具体编号，暂不能分配任务；请先在滴答收集箱添加一项后刷新", 422);
   const response = await tickFetch(route.replaceAll("{inbox}", encodeURIComponent(account.projectId)), account.token, init);
-  const diagnostic = JSON.stringify({ endpoint: route, method: init?.method || "GET", status: response.status });
   if (missing && response.status === 404) return null;
-  if (!response.ok) throw new CollaborationError(response.status === 429 ? "滴答请求较频繁，请稍后重试" : response.status === 401 || response.status === 403 ? "滴答授权不足或已失效，请该成员重新连接" : "滴答操作暂未完成，请稍后继续处理", response.status >= 500 ? 502 : 422, diagnostic);
+  if (!response.ok) throw new CollaborationError(response.status === 429 ? "滴答请求较频繁，请稍后重试" : response.status === 401 || response.status === 403 ? "滴答授权不足或已失效，请该成员重新连接" : "滴答操作暂未完成，请稍后继续处理", response.status >= 500 ? 502 : 422);
   if (response.status === 204) return {};
   const text = await response.text();
   if (!text && init?.method && init.method !== "GET") return {};
-  try { return JSON.parse(text); } catch { throw new CollaborationError("滴答返回的数据不完整，请稍后重试", 502, diagnostic); }
+  try { return JSON.parse(text); } catch { throw new CollaborationError("滴答返回的数据不完整，请稍后重试", 502); }
 }
 const validId = (id: string) => /^[A-Za-z0-9_-]{1,100}$/.test(id);
 const payload = (fields: TaskFields) => ({ ...fields, startDate: fields.startDate?.replace(/\.\d{3}Z$/, "+0000") ?? null, dueDate: fields.dueDate?.replace(/\.\d{3}Z$/, "+0000") ?? null });

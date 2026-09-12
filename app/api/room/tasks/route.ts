@@ -11,8 +11,6 @@ export async function GET(request: NextRequest) {
   const id = await identity();
   if (!id) return json({ error: "请先登录自习室" }, 401);
   try {
-    const workflowDiagnostic = request.nextUrl.searchParams.get("diagnoseWorkflow");
-    if (workflowDiagnostic !== null) return json(await store.inspectWorkflow(id, workflowDiagnostic));
     // Migrate when the active server receives member traffic. Deployment candidates
     // share the data mount, so startup/health checks must never mutate this store.
     await store.resetLegacy(id);
