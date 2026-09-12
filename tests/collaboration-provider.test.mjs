@@ -152,3 +152,64 @@ test('workflow lookup repairs exact moved IDs, bounds account searches and rejec
     if (previousSecret === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previousSecret;
   }
 });
+
+test('lookup searches open tasks first, limits completion history to publication and 200 records, and preserves unknown results', async () => {
+  await mkdir('codex-generated/test-data', { recursive: true });
+  const dir = await mkdtemp(path.resolve('codex-generated/test-data/workflow-search-'));
+  const previousDir = process.env.DATA_DIR, previousSecret = process.env.TICKTICK_STORAGE_SECRET, originalFetch = globalThis.fetch;
+  process.env.DATA_DIR = dir; process.env.TICKTICK_STORAGE_SECRET = 'synthetic-test-key';
+  try {
+    await writeFile(path.join(dir, 'identities.json'), JSON.stringify({ version: 1, users: { alice: { nickname: 'Alice', ticktickToken: encryptToken('token-alice') } } }));
+    const output = path.join(dir, 'provider.mjs');
+    await build({ entryPoints: ['app/api/room/tasks/provider.ts'], bundle: true, platform: 'node', format: 'esm', outfile: output, logLevel: 'silent' });
+    const { gateway } = await import(pathToFileURL(output).href);
+    const base = Date.now() - 100000;
+    const history = Array.from({ length: 401 }, (_, index) => ({ id: `history-${index}`, projectId: 'inbox-alice', title: '完成记录', status: 2, completedTime: new Date(base + index * 100).toISOString() }));
+    let requests = [], ignoreRange = false, failHistory = false, reopened = null;
+    globalThis.fetch = async (url, init) => {
+      assert.equal(init.headers.Authorization, 'Bearer token-alice');
+      const route = new URL(url).pathname.replace('/open/v1', ''), body = init.body ? JSON.parse(init.body) : null;
+      requests.push({ route, body });
+      if (route === '/project/inbox/data') return Response.json({ project: { id: 'inbox-alice' }, tasks: [] });
+      if (route === '/project/inbox-alice/task/history-400' && reopened) return Response.json(reopened);
+      if (route === '/task/batch') { reopened = body.update[0]; return Response.json({ id2etag: { [reopened.id]: 'restored' } }); }
+      if (route === '/task/filter') { assert.deepEqual(body.status, [0]); return Response.json([{ id: 'moved', projectId: 'other', title: '当前未完成', status: 0 }]); }
+      if (route === '/project') return Response.json([{ id: 'other' }]);
+      if (route === '/project/inbox-alice/task/moved') return Response.json({ id: 'moved', projectId: 'inbox-alice', title: '历史完成', status: 2 });
+      if (route === '/project/other/task/moved') return Response.json({ id: 'moved', projectId: 'other', title: '当前未完成', status: 0 });
+      if (route === '/task/completed') {
+        if (failHistory) return new Response(null, { status: 503 });
+        return Response.json(history.filter(task => ignoreRange || ((!body.startDate || Date.parse(task.completedTime) >= Date.parse(body.startDate)) && (!body.endDate || Date.parse(task.completedTime) <= Date.parse(body.endDate)))).slice(0, 200));
+      }
+      return new Response(null, { status: 404 });
+    };
+    const open = await gateway.locate('alice', 'moved'); assert.equal(open.status, 0); assert.equal(open.projectId, 'other');
+    assert.ok(!requests.some(item => item.route === '/task/completed'), 'open exact ID wins over a completed candidate');
+    requests = [];
+    const publication = base + 30000;
+    const old = await gateway.locate('alice', 'history-400', undefined, publication); assert.equal(old.id, 'history-400'); assert.equal(old.status, 2);
+    assert.deepEqual(requests.filter(item => item.route === '/task/completed').map(item => item.body), [{ startDate: new Date(publication).toISOString() }]);
+    assert.equal((await gateway.locate('alice', 'history-300', undefined, publication)).id, 'history-300', 'publication boundary is inclusive');
+    assert.equal(await gateway.locate('alice', 'history-299', undefined, publication), null, 'never searches records earlier than publication');
+    assert.equal(await gateway.locate('alice', 'deleted', undefined, publication), null);
+    assert.equal(requests.filter(item => item.route === '/task/completed').length, 1, 'same account and boundary share one completed read');
+    const firstCompleted = requests.findIndex(item => item.route === '/task/completed');
+    assert.ok(firstCompleted > requests.findIndex(item => item.route === '/project'));
+    const restored = await gateway.reopen('alice', old, publication);
+    assert.equal(restored.status, 0);
+    assert.equal(requests.filter(item => item.route === '/task/completed').length, 1, 'reopen fallback retains publication boundary and cached exact-ID evidence');
+    await gateway.inbox('alice'); requests = [];
+    await assert.rejects(gateway.locate('alice', 'history-300', undefined, base), error => error.status === 502);
+    assert.equal(requests.filter(item => item.route === '/task/completed').length, 1, 'an old publication still permits at most 200 records, without pagination');
+    assert.equal((await gateway.locate('alice', 'history-199', undefined, base)).id, 'history-199', 'exact match within a capped page remains usable');
+    await assert.rejects(gateway.locate('alice', 'deleted', undefined, base), error => error.status === 502);
+    for (const failure of ['ignored-range', 'unavailable']) {
+      await gateway.inbox('alice'); ignoreRange = failure === 'ignored-range'; failHistory = failure === 'unavailable';
+      await assert.rejects(gateway.locate('alice', 'deleted', undefined, publication), error => error.status === 502);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = previousDir;
+    if (previousSecret === undefined) delete process.env.TICKTICK_STORAGE_SECRET; else process.env.TICKTICK_STORAGE_SECRET = previousSecret;
+  }
+});

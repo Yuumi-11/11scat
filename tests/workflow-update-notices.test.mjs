@@ -19,3 +19,14 @@ test('workflow edits and replies increase unread counts without requiring pendin
   workflow.status = 'deleted'; add('delete', 'task-deleted', 'alice');
   assert.equal(unreadTaskNotices(source, 'bob').length, 2, 'archived updates remain unread until viewed');
 });
+
+test('automatic status repair and missing-task markers create no unread records, including old stored alerts', () => {
+  const workflow = { id: 'work', title: '任务', status: 'submitted', source: { ownerId: 'alice' }, reviewerId: 'alice', claimantId: 'bob', events: [] };
+  const source = { buffer: {}, workflows: { work: workflow } };
+  initializeTaskNotices(source);
+  const silent = ['external-claimant-check', 'external-task-reopened', 'task-relocated', 'task-anomaly'];
+  workflow.events.push(...silent.map(type => ({ id: type, type, actorId: '', at: 1, comment: '历史自动提示', files: [] })));
+  collectTaskNotices(source); assert.equal(source.notifications.entries.length, 0);
+  source.notifications.entries.push(...silent.map(eventType => ({ id: eventType, eventType, kind: 'workflow', actorId: '', recipients: ['alice', 'bob'] })));
+  assert.deepEqual(unreadTaskNotices(source, 'alice'), []); assert.deepEqual(unreadTaskNotices(source, 'bob'), []);
+});

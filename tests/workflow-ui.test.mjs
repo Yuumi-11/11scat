@@ -82,11 +82,21 @@ test('workflow detail offers settings to every member and direct completion only
   }
   workflow.claimantId = 'bob';
   workflow.fields.content = '';
+  workflow.reopenPending = true; workflow.needsSubmission = true;
+  workflow.events.push({ id: 'old-auto', type: 'external-task-reopened', actorId: '', at: 1700000000000, comment: '历史自动恢复提示', files: [] });
+  const silentRepair = render('bob', 'submitted');
+  assert.ok(!silentRepair.includes('历史自动恢复提示'));
+  assert.ok(!silentRepair.includes('正在恢复未完成')); assert.ok(!silentRepair.includes('待补充提交'));
+  assert.ok(!silentRepair.includes('workflow-sync-spinner'));
+  delete workflow.reopenPending; delete workflow.needsSubmission;
   workflow.taskAnomaly = true;
   for (const member of ['alice', 'bob', 'charlie']) {
     const html = render(member, 'submitted');
-    assert.equal(html.includes('恢复任务</button>'), member !== 'charlie');
-    assert.ok(html.includes('保留当前待审批进度和已提交材料'));
+    assert.ok(!html.includes('恢复任务</button>'));
+    assert.ok(html.includes('>待审批</span>'));
+    assert.match(html, /<\/ol><p class="coop-feedback error" role="alert"><small>该任务已被删除<\/small><\/p>/);
+    assert.equal(html.match(/该任务已被删除/g).length, 1);
+    assert.ok(!html.match(/<ol[\s\S]*该任务已被删除[\s\S]*<\/ol>/));
     assert.ok(!html.includes('>通过</button>')); assert.ok(!html.includes('>提交完成</button>'));
   }
 });

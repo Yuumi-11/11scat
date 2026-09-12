@@ -64,7 +64,7 @@ test('claim workflow HTTP covers actual routes, sidebar guard, file streaming, r
     edited.bob[w.targetId].status = 2;
     await writeFile(path.join(dir, 'fake-dida.json'), JSON.stringify(edited));
     const externallyChecked = await (await call('bob')).json(); w = externallyChecked.workflows.find(item => item.id === w.id);
-    assert.ok(w.needsSubmission); assert.ok(!w.reopenPending);
+    assert.ok(!w.needsSubmission); assert.ok(!w.reopenPending);
     assert.ok(externallyChecked.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
     assert.equal((JSON.parse(await readFile(path.join(dir, 'fake-dida.json'), 'utf8'))).bob[w.targetId].status, 0);
     const upload = (actor, body, headers = {}) => fetch(`${origin}/api/room/tasks/files?workflow=${w.id}&name=${encodeURIComponent('评语.txt')}`, { method: 'POST', body, headers: { Cookie: cookie(actor), Origin: origin, ...headers }, redirect: 'manual' });

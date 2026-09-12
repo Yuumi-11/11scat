@@ -13,8 +13,14 @@ globalThis.fetch = async (input, init = {}) => {
   const route = url.pathname.replace('/open/v1', ''), method = init.method || 'GET';
   const save = () => fs.writeFileSync(file, JSON.stringify(state));
   if (route === '/project') return Response.json([]);
-  if (route === '/task/filter') return Response.json(Object.values(tasks));
-  if (route === '/task/completed') return Response.json(Object.values(tasks).filter(task => task.status === 2));
+  if (route === '/task/filter') {
+    const body = JSON.parse(init.body || '{}');
+    return Response.json(Object.values(tasks).filter(task => !body.status || body.status.includes(task.status || 0)));
+  }
+  if (route === '/task/completed') {
+    const body = JSON.parse(init.body || '{}');
+    return Response.json(Object.values(tasks).filter(task => task.status === 2 && (!body.startDate || Date.parse(task.completedTime) >= Date.parse(body.startDate))).slice(0, 200));
+  }
   if (route === '/project/inbox') return Response.json({ id: `inbox-${owner}` });
   if (route === '/project/inbox/data') return Response.json({ tasks: Object.values(tasks).filter(task => !task.status), columns: [] });
   if (route === '/task/batch') {
@@ -34,7 +40,7 @@ globalThis.fetch = async (input, init = {}) => {
     const id = match[2];
     if (!tasks[id]) return new Response(null, { status: 404 });
     if (method === 'DELETE') { delete tasks[id]; save(); return new Response(null, { status: 204 }); }
-    if (match[3] && method === 'POST') { tasks[id].status = 2; save(); return new Response(null, { status: 204 }); }
+    if (match[3] && method === 'POST') { tasks[id].status = 2; tasks[id].completedTime = new Date().toISOString(); save(); return new Response(null, { status: 204 }); }
     return Response.json(tasks[id]);
   }
   return new Response(null, { status: 404 });

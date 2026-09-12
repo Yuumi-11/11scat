@@ -4,7 +4,7 @@ import path from "node:path";
 import { workflowSettingChanges } from "../../../workflow-setting-changes.ts";
 import { collaborationDate, collaborationDateAfter } from "../../../collaboration-view.ts";
 import { clearLegacyRecords } from "../../../legacy-record-cleanup.ts";
-import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
+import { collectTaskNotices, initializeTaskNotices, receivesTaskNotice, silentWorkflowEvent, unreadTaskNotices, type TaskNotice, type TaskNoticeState } from "../../../collaboration-notifications.ts";
 import type { ClaimWorkflow, WorkflowCommand, WorkflowFile, CollaborationCommand, CollaborationSnapshot, OperationView, RoomTask, TaskFields, TaskSource } from "../../../collaboration-types";
 import { descriptionAttachments } from "../../../task-description-attachments.ts";
 
@@ -13,23 +13,23 @@ export type Gateway = {
   members(): Promise<{ id: string; name: string; connected: boolean }[]>;
   inbox(owner: string): Promise<{ projectId: string; tasks: RemoteTask[] }>;
   get(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
-  locate?(owner: string, id: string, projectId?: string): Promise<RemoteTask | null>;
+  locate?(owner: string, id: string, projectId?: string, completedAfter?: number): Promise<RemoteTask | null>;
   notify?(notice: TaskNotice): Promise<void>;
   taskAttachments?: { publish(actor: string, before: string, after: string): Promise<void>; remove(files: string[]): Promise<void> };
   create(owner: string, id: string, fields: TaskFields, receipt?: (actualId: string) => Promise<void>): Promise<void>;
   update(owner: string, id: string, fields: TaskFields, version: string, projectId?: string): Promise<void>;
   remove(owner: string, id: string, projectId?: string): Promise<void>;
   complete(owner: string, id: string, projectId?: string): Promise<void>;
-  reopen(owner: string, before: RemoteTask): Promise<RemoteTask>;
+  reopen(owner: string, before: RemoteTask, completedAfter?: number): Promise<RemoteTask>;
   checkTransfer(owner: string, task: RemoteTask): Promise<void>;
 };
-type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; completedAt?: number };
+type BufferTask = { fields: TaskFields; version: number; stagedBy?: string; publisherId?: string; publishedAt?: number; completedAt?: number };
 type Creation = { state: "new" | "sent" | "received"; beforeIds?: string[] };
 type AttachmentChange = { actor: string; before: string; after: string; publishBefore?: string };
 type WorkflowEdit = { id: string; fields: TaskFields; attachments?: AttachmentChange; summary?: string; targets?: { owner: string; id: string; before: string; done: boolean }[] };
 type WorkflowSide = "source" | "target";
 type TaskRecovery = { id: string; creation: Creation; done?: boolean };
-type Workflow = ClaimWorkflow & { ownerDeletion?: { id: string; done?: WorkflowSide[] }; syncRetryAt?: number; syncAttempts?: number; reopenReceipt?: { before: RemoteTask; retryAt: number }; submittedFields?: { source: TaskFields; target: TaskFields }; projects?: Partial<Record<WorkflowSide, string>>; recovery?: Partial<Record<WorkflowSide, TaskRecovery>>; signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean; repeating?: boolean }; submitted?: { source: string; target: string }; edit?: WorkflowEdit };
+type Workflow = ClaimWorkflow & { publishedAt?: number; missingGeneration?: number; restoration?: { id: string; generation: number }; ownerDeletion?: { id: string; done?: WorkflowSide[] }; syncRetryAt?: number; syncAttempts?: number; reopenReceipt?: { before: RemoteTask; retryAt: number }; sourceReopenReceipt?: { before: RemoteTask; retryAt: number }; submittedFields?: { source: TaskFields; target: TaskFields }; projects?: Partial<Record<WorkflowSide, string>>; recovery?: Partial<Record<WorkflowSide, TaskRecovery>>; signature: string; targetCreation: Creation; reviewerCreation?: Creation; approval?: { targetDone: boolean; sourceDone: boolean; sourceSent?: boolean; targetSent?: boolean; repeating?: boolean }; submitted?: { source: string; target: string }; edit?: WorkflowEdit };
 type Operation = OperationView & {
   signature: string; source?: TaskSource; fields: TaskFields; targetId: string;
   attachments?: AttachmentChange;
@@ -121,7 +121,9 @@ export class CollaborationStore {
         if ((workflow.status === 'deleted' || deleting) && workflow.source.ownerId === null) delete state.buffer[workflow.source.taskId];
       }
       for (const [id, task] of Object.entries(state.buffer) as [string, BufferTask][]) {
-        task.publisherId ||= (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id)?.actorId;
+        const publication = (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id);
+        task.publisherId ||= publication?.actorId;
+        task.publishedAt ??= publication?.createdAt;
       }
       initializeTaskNotices(state); return state;
     } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, revision: 0, buffer: {}, operations: {}, workflows: {}, notifications: { known: [], entries: [], read: {}, attempted: [] } }; throw error; }
@@ -189,7 +191,7 @@ export class CollaborationStore {
     return this.serial(async () => {
       const state = await this.read();
       const pending = Object.values(state.workflows).filter(workflow => workflow.status !== 'deleted' &&
-        (workflow.ownerDeletion || workflow.edit || ['creating', 'approving'].includes(workflow.status) || workflow.reopenReceipt) &&
+        (workflow.ownerDeletion || workflow.edit || ['creating', 'approving'].includes(workflow.status) || workflow.reopenReceipt || workflow.sourceReopenReceipt) &&
         (workflow.syncRetryAt || 0) <= Date.now()).slice(0, 3);
       for (const workflow of pending) {
         // Persist backoff before network requests. Reloads and two open browsers
@@ -202,11 +204,11 @@ export class CollaborationStore {
           else if (workflow.edit) await this.finishWorkflowEdit(state, workflow);
           else if (workflow.status === 'creating') await this.startWorkflow(state, workflow);
           else if (workflow.status === 'approving') await this.finishApproval(state, workflow);
-          else if (workflow.reopenReceipt) {
+          else if (workflow.reopenReceipt || workflow.sourceReopenReceipt) {
             const sides = await this.workflowSides(state, workflow);
             await this.syncExternalCompletion(state, workflow, sides.source, sides.target);
           }
-          if (!workflow.ownerDeletion && !workflow.edit && !['creating', 'approving'].includes(workflow.status) && !workflow.reopenReceipt) {
+          if (!workflow.ownerDeletion && !workflow.edit && !['creating', 'approving'].includes(workflow.status) && !workflow.reopenReceipt && !workflow.sourceReopenReceipt) {
             delete workflow.syncAttempts; delete workflow.syncRetryAt; await this.write(state);
           }
         } catch { /* A later authenticated poll retries using the persisted schedule. */ }
@@ -227,7 +229,7 @@ export class CollaborationStore {
     if (!this.gateway.notify) return;
     const items = await this.serial(async () => {
       const state = await this.read(), notices = initializeTaskNotices(state), sent = new Set(notices.attempted);
-      const pending = notices.entries.filter(item => !sent.has(item.id)).slice(0, 40);
+      const pending = notices.entries.filter(item => !sent.has(item.id) && !silentWorkflowEvent(item.eventType)).slice(0, 40);
       if (pending.length) { notices.attempted.push(...pending.map(item => item.id)); await this.write(state); }
       return pending;
     });
@@ -298,15 +300,21 @@ export class CollaborationStore {
     const { owner, id } = this.sideReference(workflow, side);
     if (!id) return null;
     const task = inbox?.find(item => item.id === id) ?? await (this.gateway.locate
-      ? this.gateway.locate(owner, id, workflow.projects?.[side])
+      ? this.gateway.locate(owner, id, workflow.projects?.[side], this.completedAfter(state, workflow))
       : this.gateway.get(owner, id, workflow.projects?.[side]));
     if (task && workflow.projects?.[side] !== task.projectId) {
-      const previous = workflow.projects?.[side];
       workflow.projects ||= {}; workflow.projects[side] = task.projectId;
-      if (previous) workflow.events.push({ id: randomUUID(), actorId: "", type: "task-relocated", at: Date.now(), comment: "已找到移动后的关联任务，流程继续使用原任务", files: [] });
       await this.saveWorkflow(state, workflow);
     }
     return task;
+  }
+  private completedAfter(state: State, workflow: Workflow) {
+    workflow.publishedAt ??= (workflow.source.ownerId === null
+      ? state.buffer[workflow.source.taskId]?.publishedAt ?? Object.values(state.operations).find(op => op.action === "create" && op.targetId === workflow.source.taskId)?.createdAt
+      : undefined) ?? workflow.createdAt;
+    // Publication is a website date, independent of the task's planned dates.
+    const day = 86400000, shanghaiOffset = 8 * 3600000;
+    return Math.floor((workflow.publishedAt + shanghaiOffset) / day) * day - shanghaiOffset;
   }
   private async checkWorkflowTasks(state: State, inboxes: Map<string, RemoteTask[]>, inboxProjects: Map<string, string>) {
     for (const workflow of Object.values(state.workflows)) {
@@ -318,14 +326,10 @@ export class CollaborationStore {
         if ((this.sideReference(workflow, "source").id && !inboxes.has(workflow.reviewerId)) || !inboxes.has(workflow.claimantId)) throw new CollaborationError("关联账户暂时无法读取，请重试或重新连接滴答");
         const source = await this.linkedTask(state, workflow, "source", inboxes.get(workflow.reviewerId));
         const target = await this.linkedTask(state, workflow, "target", inboxes.get(workflow.claimantId));
-        if (!target && !workflow.taskAnomaly) {
-          workflow.taskAnomaly = true;
-          workflow.events.push({ id: randomUUID(), actorId: "", type: "task-anomaly", at: Date.now(), comment: "任务状态异常：未找到关联任务，可恢复缺失任务；原审批进度和提交材料保留", files: [] });
-          await this.saveWorkflow(state, workflow);
-        }
-        if (target) {
-          if (workflow.taskAnomaly && !workflow.recovery) { workflow.taskAnomaly = false; await this.saveWorkflow(state, workflow); }
+        if (!target || (workflow.source.ownerId && !source)) await this.markMissingWorkflowTask(state, workflow);
+        else {
           const synced = await this.syncExternalCompletion(state, workflow, source, target);
+          if (workflow.taskAnomaly && !workflow.recovery) { workflow.taskAnomaly = false; workflow.error = ""; await this.saveWorkflow(state, workflow); }
           // Reflect this refresh's writes without another full inbox request.
           for (const side of ["source", "target"] as const) {
             const task = synced[side], owner = this.sideReference(workflow, side).owner;
@@ -341,48 +345,41 @@ export class CollaborationStore {
       if (before !== workflow.syncError) await this.saveWorkflow(state, workflow);
     }
   }
-  private async syncExternalCompletion(state: State, workflow: Workflow, source: RemoteTask | null, target: RemoteTask, force = false) {
-    if (workflow.edit || workflow.recovery || workflow.status === "done") return { source, target };
+  private async markMissingWorkflowTask(state: State, workflow: Workflow) {
+    if (!workflow.taskAnomaly) { workflow.taskAnomaly = true; workflow.missingGeneration = (workflow.missingGeneration || 0) + 1; await this.saveWorkflow(state, workflow); }
+  }
+  private async syncExternalCompletion(state: State, workflow: Workflow, source: RemoteTask | null, target: RemoteTask, force = false, completing = false) {
+    if (workflow.recovery || workflow.status === "done" || workflow.status === "approving" || completing) return { source, target };
     // Never rewind or complete a later occurrence based on an older workflow.
     if (workflow.fields.repeatFlag && [source, target].some(task => task && (taskFields(task).startDate !== workflow.fields.startDate || taskFields(task).dueDate !== workflow.fields.dueDate))) throw new CollaborationError("重复任务日期已变化，暂不自动操作下一次任务，请在滴答检查本次完成记录");
-    if (workflow.status === "approving") {
-      // Existing approval receipts retain responsibility for partial writes.
-      return { source, target };
-    }
-    if (source?.status === 2) {
-      if (target.status && target.status !== 2) throw new CollaborationError("认领任务状态暂不支持完成，请检查滴答");
-      workflow.submitted = { source: remoteVersion(source), target: remoteVersion(target) };
-      workflow.approval = { sourceDone: true, targetDone: target.status === 2 };
-      workflow.status = "approving"; workflow.error = "";
-      delete workflow.reopenReceipt; workflow.reopenPending = false; workflow.needsSubmission = false;
-      workflow.events.push({ id: randomUUID(), actorId: "", type: "external-owner-complete", at: Date.now(), comment: "原任务方已在滴答完成任务，正在同步认领任务，无需继续审批", files: [] });
-      await this.saveWorkflow(state, workflow);
-      await this.finishApproval(state, workflow);
-      return { source, target: workflow.approval.targetDone ? { ...target, status: 2 } : target };
-    }
-    if (source?.status) throw new CollaborationError("原任务状态暂不支持同步，请检查滴答");
-    if (target.status === 2 || workflow.reopenReceipt) {
-      if (!workflow.reopenReceipt) {
-        workflow.reopenReceipt = { before: target, retryAt: 0 }; workflow.reopenPending = true;
-        workflow.events.push({ id: randomUUID(), actorId: "", type: "external-claimant-check", at: Date.now(), comment: workflow.status === "submitted" ? "认领任务在滴答被提前勾选，正在恢复未完成；已有提交材料及待审批状态保留" : "认领任务在滴答被提前勾选，正在恢复未完成；请在此流程补充完成说明或附件后提交审批", files: [] });
-        if (workflow.status !== "submitted") workflow.needsSubmission = true;
+    const tasks = { source, target };
+    for (const side of ["source", "target"] as const) {
+      const task = tasks[side], key = side === "source" ? "sourceReopenReceipt" : "reopenReceipt";
+      if (!task || !task.status) {
+        if (workflow[key]) { delete workflow[key]; workflow.reopenPending = !!(workflow.reopenReceipt || workflow.sourceReopenReceipt); await this.saveWorkflow(state, workflow); }
+        continue;
+      }
+      if (task.status !== 2) throw new CollaborationError("关联任务状态暂不支持同步，请检查滴答");
+      // The website remains authoritative for both sides. Preserve the current
+      // task fields, submission and stage; status repairs create no user events.
+      if (!workflow[key] || remoteVersion(workflow[key]!.before) !== remoteVersion(task)) {
+        workflow[key] = { before: task, retryAt: 0 }; workflow.reopenPending = true;
         await this.saveWorkflow(state, workflow);
       }
-      const receipt = workflow.reopenReceipt;
-      if (!force && receipt.retryAt > Date.now()) throw new CollaborationError("恢复未完成状态暂未确认，将稍后重试，也可点击重试同步");
+      const receipt = workflow[key]!;
+      if (!force && receipt.retryAt > Date.now()) throw new CollaborationError("恢复未完成状态暂未确认，将稍后重试");
       receipt.retryAt = Date.now() + 60000; await this.saveWorkflow(state, workflow);
-      const restored = await this.gateway.reopen(workflow.claimantId, receipt.before);
-      if (restored.id !== target.id || restored.projectId !== receipt.before.projectId || restored.status || !sameFields(restored, receipt.before)) throw new CollaborationError("恢复结果与关联任务不符，请检查滴答后重试");
-      // Refresh the receipt when only the checkbox changed. Content changes
-      // remain subject to the reviewer's decision, not submission-version checks.
-      if (workflow.submitted && sameFields(restored, workflow.submittedFields?.target || workflow.fields)) workflow.submitted.target = remoteVersion(restored);
-      delete workflow.reopenReceipt; workflow.reopenPending = false; workflow.syncError = undefined;
-      workflow.events.push({ id: randomUUID(), actorId: "", type: "external-task-reopened", at: Date.now(), comment: workflow.status === "submitted" ? "已恢复未完成，继续等待原审批，提交材料保留" : "已恢复未完成，等待认领者补充成果并提交", files: [] });
+      const restored = await this.gateway.reopen(this.sideReference(workflow, side).owner, receipt.before, this.completedAfter(state, workflow));
+      if (restored.id !== task.id || restored.projectId !== receipt.before.projectId || restored.status || !sameFields(restored, receipt.before)) throw new CollaborationError("恢复结果与关联任务不符，请检查滴答后重试");
+      if (workflow.submitted && sameFields(restored, workflow.submittedFields?.[side] || workflow.fields)) workflow.submitted[side] = remoteVersion(restored);
+      tasks[side] = restored; delete workflow[key];
+      workflow.reopenPending = !!(workflow.reopenReceipt || workflow.sourceReopenReceipt);
+      workflow.syncError = undefined; workflow.needsSubmission = false;
       await this.saveWorkflow(state, workflow);
-      return { source, target: restored };
     }
-    if (target.status) throw new CollaborationError("认领任务状态暂不支持同步，请检查滴答");
-    return { source, target };
+    if (workflow.needsSubmission) { workflow.needsSubmission = false; await this.saveWorkflow(state, workflow); }
+    if (workflow.syncError) { workflow.syncError = undefined; await this.saveWorkflow(state, workflow); }
+    return tasks;
   }
   private async restoreWorkflow(state: State, workflow: Workflow) {
     try {
@@ -394,7 +391,7 @@ export class CollaborationStore {
       workflow.recovery ||= {};
       for (const side of ["source", "target"] as const) {
         // An absent publisher task is optional, including during explicit recovery.
-        if (side === "source" && !tasks.source) continue;
+        if (side === "source" && !tasks.source && !workflow.source.ownerId) continue;
         const { owner } = this.sideReference(workflow, side);
         let recovery = workflow.recovery[side];
         if (tasks[side] && !recovery) continue;
@@ -464,11 +461,15 @@ export class CollaborationStore {
     if (!members.some(member => member.id === actor)) throw new CollaborationError("成员不存在", 403);
     return members;
   }
-  private async ensureWorkflowTask(state: State, workflow: Workflow, reviewer = false) {
+  private async ensureWorkflowTask(state: State, workflow: Workflow, reviewer = false, completing = false) {
     const owner = reviewer ? workflow.reviewerId : workflow.claimantId;
     const creation = reviewer ? workflow.reviewerCreation! : workflow.targetCreation;
     const id = reviewer ? workflow.reviewerTaskId! : workflow.targetId;
-    let task = await this.gateway.get(owner, id);
+    const side = reviewer ? "source" : "target";
+    const read = (taskId: string) => creation.state !== "new" && this.gateway.locate
+      ? this.gateway.locate(owner, taskId, workflow.projects?.[side], this.completedAfter(state, workflow))
+      : this.gateway.get(owner, taskId, workflow.projects?.[side]);
+    let task = await read(id);
     const remember = async (actualId: string) => {
       if (creation.beforeIds?.includes(actualId)) throw new CollaborationError("创建响应指向原有任务，暂不能建立认领");
       if (reviewer) workflow.reviewerTaskId = actualId; else workflow.targetId = actualId;
@@ -478,21 +479,24 @@ export class CollaborationStore {
       creation.beforeIds = (await this.gateway.inbox(owner)).tasks.map(item => item.id);
       creation.state = "sent"; await this.saveWorkflow(state, workflow);
       await this.gateway.create(owner, id, workflow.fields, remember);
-      task = await this.gateway.get(owner, reviewer ? workflow.reviewerTaskId! : workflow.targetId);
+      task = await read(reviewer ? workflow.reviewerTaskId! : workflow.targetId);
     } else if (!task && creation.state === "sent") {
       const matches = (await this.gateway.inbox(owner)).tasks.filter(item => !creation.beforeIds?.includes(item.id) && !item.status && sameFields(item, workflow.fields) && !this.taskWorkflow(state, owner, item.id));
       if (matches.length !== 1) throw new CollaborationError("创建结果暂未确定，已停止重复创建，请稍后重试");
-      await remember(matches[0].id); task = await this.gateway.get(owner, matches[0].id);
+      await remember(matches[0].id); task = await read(matches[0].id);
     }
-    if (!task || task.status || !sameFields(task, workflow.fields)) throw new CollaborationError("尚未核实认领任务，原任务仍保留");
-    workflow.projects ||= {}; workflow.projects[reviewer ? "source" : "target"] = task.projectId;
+    if (!task && creation.state === "received") { await this.markMissingWorkflowTask(state, workflow); throw new CollaborationError("该任务已被删除"); }
+    if (!task || (task.status && task.status !== 2) || !sameFields(task, workflow.fields)) throw new CollaborationError(verificationIssue(task, workflow.fields));
+    workflow.projects ||= {}; workflow.projects[side] = task.projectId;
+    if (!reviewer && task.status === 2 && !completing && !isPersonalCollection(workflow)) await this.syncExternalCompletion(state, workflow, null, task, true);
+    workflow.taskAnomaly = false;
   }
-  private async startWorkflow(state: State, workflow: Workflow) {
+  private async startWorkflow(state: State, workflow: Workflow, completing = false) {
     if (workflow.ownerDeletion) return this.publicWorkflow(workflow);
     try {
       // Public claims create only the claimant's task. Existing publisher links
       // remain readable, but never create a publisher task just for synchronization.
-      await this.ensureWorkflowTask(state, workflow);
+      await this.ensureWorkflowTask(state, workflow, false, completing);
       if (workflow.source.ownerId === null && workflow.reviewerId === workflow.claimantId) workflow.reviewerTaskId = workflow.targetId;
       if (isPersonalCollection(workflow) && !workflow.edit) {
         // This receipt only makes creation retryable; no approval or completion occurs.
@@ -548,7 +552,8 @@ export class CollaborationStore {
         workflow.edit = { id: editId, fields };
         workflow.events.push({ id: editId, actorId: actor, type: "updating", at: now, comment: "", files: [] });
       }
-      if (current.remote) workflow.projects = { source: current.remote.projectId };
+      workflow.projects = { target: targetInbox.projectId, ...(current.remote ? { source: current.remote.projectId } : {}) };
+      this.completedAfter(state, workflow);
       state.workflows[workflow.id] = workflow; await this.saveWorkflow(state, workflow);
       if (isPersonalCollection(workflow)) return this.finishCollection(state, workflow);
       if (workflow.edit) return this.finishWorkflowEdit(state, workflow);
@@ -569,7 +574,8 @@ export class CollaborationStore {
     const source = await this.linkedTask(state, workflow, "source");
     const target = workflow.claimantId === workflow.reviewerId && workflow.targetId === workflow.reviewerTaskId
       ? source : await this.linkedTask(state, workflow, "target");
-    if (!target) throw new CollaborationError("流程关联的任务缺失，请先核对滴答中的任务");
+    if (!target || (workflow.source.ownerId && !source)) { await this.markMissingWorkflowTask(state, workflow); throw new CollaborationError("该任务已被删除"); }
+    if (workflow.taskAnomaly && !workflow.recovery) { workflow.taskAnomaly = false; workflow.error = ""; await this.saveWorkflow(state, workflow); }
     return { source, target };
   }
   private async finishApproval(state: State, workflow: Workflow) {
@@ -581,8 +587,8 @@ export class CollaborationStore {
         const owner = side === "source" ? workflow.reviewerId : workflow.claimantId;
         const id = side === "source" ? workflow.source.ownerId ? workflow.source.taskId : workflow.reviewerTaskId! : workflow.targetId;
         const task = await this.linkedTask(state, workflow, side);
-        if (!task && side === "source") { approval.sourceDone = true; await this.saveWorkflow(state, workflow); continue; }
-        if (!task) throw new CollaborationError("尚不能确认任务的完成结果，请核对后重试");
+        if (!task && side === "source" && !workflow.source.ownerId) { approval.sourceDone = true; await this.saveWorkflow(state, workflow); continue; }
+        if (!task) { await this.markMissingWorkflowTask(state, workflow); throw new CollaborationError("该任务已被删除"); }
         if (task.status !== 2) {
           if (task.status) throw new CollaborationError("关联任务状态暂不支持完成，请检查滴答后重试");
           if (workflow.fields.repeatFlag && (taskFields(task).startDate !== workflow.fields.startDate || taskFields(task).dueDate !== workflow.fields.dueDate)) throw new CollaborationError("重复任务日期已变化，暂不自动操作下一次任务，请在滴答检查本次完成记录");
@@ -602,18 +608,18 @@ export class CollaborationStore {
       }
       if (workflow.source.ownerId === null && state.buffer[workflow.source.taskId]) state.buffer[workflow.source.taskId].completedAt = Date.now();
       workflow.status = "done"; workflow.error = "";
-      delete workflow.reopenReceipt; workflow.reopenPending = false; workflow.needsSubmission = false;
+      delete workflow.reopenReceipt; delete workflow.sourceReopenReceipt; workflow.reopenPending = false; workflow.needsSubmission = false;
       workflow.taskAnomaly = false; workflow.syncError = undefined;
       workflow.events.push({ id: randomUUID(), actorId: workflow.reviewerId, type: "completed", at: Date.now(), comment: "已有的关联任务已完成，缺省的发起者任务跳过", files: [] });
     } catch (error) { workflow.error = error instanceof Error ? error.message : "完成状态尚未同步，请重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
   }
-  private async finishWorkflowEdit(state: State, workflow: Workflow) {
+  private async finishWorkflowEdit(state: State, workflow: Workflow, completing = false) {
     const edit = workflow.edit!;
     try {
       if (edit.attachments) await this.gateway.taskAttachments?.publish(edit.attachments.actor, edit.attachments.publishBefore ?? edit.attachments.before, edit.attachments.after);
       if (workflow.status === "creating") {
-        await this.startWorkflow(state, workflow);
+        await this.startWorkflow(state, workflow, completing);
         if (workflow.status === "creating") return this.publicWorkflow(workflow);
       }
       if (!edit.targets) {
@@ -627,7 +633,7 @@ export class CollaborationStore {
         const side = target.owner === workflow.reviewerId ? "source" : "target";
         const task = await this.linkedTask(state, workflow, side);
         if (!task && side === "source") { target.done = true; await this.saveWorkflow(state, workflow); continue; }
-        if (!task) throw new CollaborationError("关联任务缺失，详情修改已保存，请恢复任务后重试同步");
+        if (!task) { await this.markMissingWorkflowTask(state, workflow); throw new CollaborationError("该任务已被删除"); }
         if (!sameFields(task, edit.fields)) {
           if (remoteVersion(task) !== target.before) throw new CollaborationError("关联任务在同步期间被修改，已暂停覆盖，请核对后重试");
           await this.gateway.update(target.owner, target.id, edit.fields, target.before, workflow.projects?.[side]);
@@ -662,8 +668,8 @@ export class CollaborationStore {
   private async completeByOwner(state: State, workflow: Workflow, actor: string, id: string, signature: string) {
     if (actor !== workflow.reviewerId) throw new CollaborationError("只有原任务所属成员或公共任务发布者能直接完成；认领者请提交审批", 403);
     if (workflow.ownerDeletion) throw new CollaborationError("发起任务的删除结果尚未确认，请核对并继续");
-    if (workflow.edit) { await this.finishWorkflowEdit(state, workflow); if (workflow.edit) return this.publicWorkflow(workflow); }
-    if (workflow.status === "creating") { await this.startWorkflow(state, workflow); if (workflow.status === "creating") return this.publicWorkflow(workflow); }
+    if (workflow.edit) { await this.finishWorkflowEdit(state, workflow, true); if (workflow.edit) return this.publicWorkflow(workflow); }
+    if (workflow.status === "creating") { await this.startWorkflow(state, workflow, true); if (workflow.status === "creating") return this.publicWorkflow(workflow); }
     if (workflow.status === "done" || workflow.status === "deleted") return this.publicWorkflow(workflow);
     if (workflow.status === "approving") return this.finishApproval(state, workflow);
     const sides = await this.workflowSides(state, workflow);
@@ -700,7 +706,7 @@ export class CollaborationStore {
       workflow.status = 'deleted'; workflow.taskAnomaly = false;
       delete workflow.ownerDeletion;
       delete workflow.edit; delete workflow.approval; delete workflow.recovery;
-      delete workflow.reopenReceipt; workflow.reopenPending = false; workflow.needsSubmission = false;
+      delete workflow.reopenReceipt; delete workflow.sourceReopenReceipt; workflow.reopenPending = false; workflow.needsSubmission = false;
       workflow.error = ""; workflow.syncError = undefined;
     } catch (error) { workflow.error = error instanceof Error ? error.message : "删除尚未完成，正在自动重试"; }
     await this.saveWorkflow(state, workflow); return this.publicWorkflow(workflow);
@@ -723,7 +729,7 @@ export class CollaborationStore {
         if (workflow.ownerDeletion) return workflow.ownerDeletion.id === command.id ? this.deleteWorkflowTasks(state, workflow, command.id) : this.publicWorkflow(workflow);
         if (command.action === "delete-claimed-task") return this.deleteWorkflowTasks(state, workflow, command.id);
         if (["nudge", "reply-nudge"].includes(command.action)) return this.publicWorkflow(workflow);
-        if (command.action === "restore-workflow") return workflow.taskAnomaly && workflow.events.indexOf(prior) > workflow.events.findLastIndex(event => event.type === "task-anomaly") ? this.restoreWorkflow(state, workflow) : this.publicWorkflow(workflow);
+        if (command.action === "restore-workflow") return workflow.taskAnomaly && workflow.restoration?.id === command.id && workflow.restoration.generation === (workflow.missingGeneration || 0) ? this.restoreWorkflow(state, workflow) : this.publicWorkflow(workflow);
         if (workflow.edit?.id === command.id) return this.finishWorkflowEdit(state, workflow);
         if (workflow.edit) return this.publicWorkflow(workflow);
         return workflow.status === "approving" && actor === workflow.reviewerId ? this.finishApproval(state, workflow) : this.publicWorkflow(workflow);
@@ -761,6 +767,7 @@ export class CollaborationStore {
         if (![workflow.reviewerId, workflow.claimantId].includes(actor)) throw new CollaborationError("只有流程参与者能恢复任务", 403);
         if (!workflow.taskAnomaly || !["working", "submitted", "rejected", "approving"].includes(workflow.status)) throw new CollaborationError("此流程无需恢复任务");
         workflow.events.push({ id: command.id, signature, actorId: actor, type: "restore-requested", at: Date.now(), comment: "请求恢复缺失任务", files: [] });
+        workflow.restoration = { id: command.id, generation: workflow.missingGeneration || 0 };
         await this.saveWorkflow(state, workflow); return this.restoreWorkflow(state, workflow);
       }
       if (workflow.recovery) throw new CollaborationError("任务恢复尚未完成，请先继续恢复");
@@ -781,7 +788,7 @@ export class CollaborationStore {
       if (command.action === "retry-workflow") {
         if (workflow.edit) return this.finishWorkflowEdit(state, workflow);
         if (![workflow.claimantId, workflow.reviewerId].includes(actor)) throw new CollaborationError("只有流程参与者能重试", 403);
-        if (workflow.reopenReceipt) {
+        if (workflow.reopenReceipt || workflow.sourceReopenReceipt) {
           const sides = await this.workflowSides(state, workflow);
           await this.syncExternalCompletion(state, workflow, sides.source, sides.target, true);
           return this.publicWorkflow(workflow);
@@ -791,7 +798,7 @@ export class CollaborationStore {
         throw new CollaborationError("此流程无需重试");
       }
       if (workflow.edit) throw new CollaborationError("任务详情正在同步，请同步完成后提交或审批");
-      if (workflow.taskAnomaly) throw new CollaborationError("关联任务异常，请先恢复任务再提交或审批");
+      if (workflow.taskAnomaly) throw new CollaborationError("该任务已被删除");
       if (!["submit", "approve", "reject"].includes(command.action)) throw new CollaborationError("流程操作无效", 400);
       const submit = command.action === "submit";
       if (actor !== (submit ? workflow.claimantId : workflow.reviewerId)) throw new CollaborationError(submit ? "只有认领者能提交完成" : "只有原任务所属用户或发布者能审批", 403);
@@ -807,11 +814,10 @@ export class CollaborationStore {
       }
       {
         const current = await this.workflowSides(state, workflow);
-        const sides = await this.syncExternalCompletion(state, workflow, current.source, current.target, true);
+        const sides = await this.syncExternalCompletion(state, workflow, current.source, current.target, true, command.action === "approve");
         if (["approving", "done"].includes(workflow.status)) return this.publicWorkflow(workflow);
-        if (sides.source?.status || sides.target.status) throw new CollaborationError("滴答任务已在流程外被勾选，请先恢复为未完成，再提交或审批");
+        if ([sides.source, sides.target].some(task => task?.status && !(command.action === "approve" && task.status === 2))) throw new CollaborationError("滴答任务已在流程外被勾选，请先恢复为未完成，再提交或审批");
         if (submit) {
-          if (workflow.needsSubmission && !comment.trim() && !files.length) throw new CollaborationError("请补充完成说明或附件，再提交审批", 400);
           workflow.submitted = { source: sides.source ? remoteVersion(sides.source) : "", target: remoteVersion(sides.target) };
           workflow.submittedFields = { source: sides.source ? taskFields(sides.source) : workflow.fields, target: taskFields(sides.target) };
           workflow.needsSubmission = false;
@@ -947,7 +953,7 @@ export class CollaborationStore {
     try {
       if (op.source && this.taskWorkflow(state, op.source.ownerId, op.source.taskId)) throw new CollaborationError("此任务正在协作，请通过工作流程提交或审批");
       if (op.attachments) await this.gateway.taskAttachments?.publish(op.attachments.actor, op.attachments.before, op.attachments.after);
-      if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1, publisherId: op.actorId };
+      if (op.action === "create") state.buffer[op.targetId] = { fields: op.fields, version: 1, publisherId: op.actorId, publishedAt: op.createdAt };
       else if (op.action === "move") throw new CollaborationError("旧转移已停用，请重新认领");
       else {
         const source = await this.source(state, op.source!);

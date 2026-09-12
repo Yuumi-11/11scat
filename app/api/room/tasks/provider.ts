@@ -4,7 +4,7 @@ import { tickFetch, tickInboxData, TickApiError } from "../../ticktick/client";
 import { CollaborationError, remoteVersion, sameFields, verificationIssue, type Gateway, type RemoteTask } from "./store";
 import type { TaskFields } from "../../../collaboration-types";
 
-type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]>; projects?: Promise<string[]>; completed?: Promise<RemoteTask[]> };
+type Context = { token: string; projectId: string; tasks: RemoteTask[]; encrypted: string; expires: number; search?: Promise<RemoteTask[]>; projects?: Promise<string[]>; completed?: Map<string, Promise<RemoteTask[]>> };
 const contexts = new Map<string, Context>();
 async function context(owner: string, refreshInbox = false): Promise<Context> {
   const user = await getUser(owner);
@@ -32,6 +32,22 @@ async function request(owner: string, route: string, init?: RequestInit, missing
 }
 const validId = (id: string) => /^[A-Za-z0-9_-]{1,100}$/.test(id);
 const payload = (fields: TaskFields) => ({ ...fields, startDate: fields.startDate?.replace(/\.\d{3}Z$/, "+0000") ?? null, dueDate: fields.dueDate?.replace(/\.\d{3}Z$/, "+0000") ?? null });
+async function completedTask(owner: string, account: Context, id: string, completedAfter?: number) {
+  if (completedAfter !== undefined && (!Number.isFinite(completedAfter) || completedAfter < 0)) throw new CollaborationError("任务发布日期无效", 400);
+  const queries = account.completed ||= new Map<string, Promise<RemoteTask[]>>();
+  const key = completedAfter === undefined ? "all" : String(completedAfter);
+  if (!queries.has(key)) queries.set(key, request(owner, "/task/completed", { method: "POST", body: JSON.stringify(completedAfter === undefined ? {} : { startDate: new Date(completedAfter).toISOString() }) }).then(data => {
+    if (!Array.isArray(data) || data.length > 200 || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId) || task.status !== 2 || typeof task.title !== "string" || !task.title || (completedAfter !== undefined && (typeof task.completedTime !== "string" || !Number.isFinite(Date.parse(task.completedTime)) || Date.parse(task.completedTime) < completedAfter)))) throw new CollaborationError("滴答完成记录不完整，请稍后重试", 502);
+    return data as RemoteTask[];
+  }));
+  const tasks = await queries.get(key)!;
+  const found = tasks.find(task => task.id === id);
+  if (found) return found;
+  // Stop at the provider's 200-record cap for this inclusive publication query.
+  // A full unmatched page cannot establish that the task was deleted.
+  if (tasks.length === 200) throw new CollaborationError("滴答完成记录不完整，请稍后重试", 502);
+  return null;
+}
 export const gateway: Gateway = {
   async members() { return Promise.all((await listRoomMembers()).map(async member => ({ ...member, connected: !!(await getUser(member.id))?.ticktickToken }))); },
   async inbox(owner) {
@@ -46,22 +62,20 @@ export const gateway: Gateway = {
     if (task && (task.id !== id || task.projectId !== project)) throw new CollaborationError("滴答返回的任务编号或清单与请求不符", 403);
     return task as RemoteTask | null;
   },
-  async locate(owner, id, projectId) {
+  async locate(owner, id, projectId, completedAfter) {
     const found = await gateway.get(owner, id, projectId);
-    if (found) return found;
+    if (found && !found.status) return found;
+    let completed = found?.status === 2 ? found : null;
     const account = await context(owner);
-    // One bounded search per account refresh, shared by missing workflow tasks.
-    // The documented filter returns at most 200 entries, so absence here does
-    // not prove deletion. Only an exact task ID match repairs a moved link.
-    account.search ||= request(owner, "/task/filter", { method: "POST", body: JSON.stringify({ status: [0, 2, -1] }) }).then(data => {
-      if (!Array.isArray(data) || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId))) throw new CollaborationError("滴答状态查询返回的数据不完整，请稍后重试", 502);
+    account.search ||= request(owner, "/task/filter", { method: "POST", body: JSON.stringify({ status: [0] }) }).then(data => {
+      if (!Array.isArray(data) || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId) || task.status)) throw new CollaborationError("滴答状态查询返回的数据不完整，请稍后重试", 502);
       return data as RemoteTask[];
     });
     const candidate = (await account.search).find(task => task.id === id);
     if (candidate) {
       const detail = await gateway.get(owner, id, candidate.projectId);
-      if (detail) return detail;
-      if (candidate.status === 2 && typeof candidate.title === "string" && candidate.title) return candidate;
+      if (detail && !detail.status) return detail;
+      if (detail?.status === 2) completed = detail;
     }
     // A capped filter is not exhaustive. On the uncommon missing-ID path,
     // check the same ID in each accessible project before offering recovery.
@@ -72,16 +86,10 @@ export const gateway: Gateway = {
     const projects = (await account.projects).filter(project => project !== (projectId || account.projectId) && project !== "inbox");
     for (let index = 0; index < projects.length; index += 3) {
       const tasks = await Promise.all(projects.slice(index, index + 3).map(project => gateway.get(owner, id, project)));
-      const found = tasks.find(Boolean); if (found) return found;
+      const open = tasks.find(task => task && !task.status); if (open) return open;
+      completed ||= tasks.find(task => task?.status === 2) || null;
     }
-    // Some completed tasks remain in history while their detail URL returns
-    // 404. Exact IDs and an explicit completed status are positive evidence;
-    // a capped history miss is never interpreted as completion.
-    account.completed ||= request(owner, "/task/completed", { method: "POST", body: JSON.stringify({}) }).then(data => {
-      if (!Array.isArray(data) || data.some(task => !task || typeof task.id !== "string" || !validId(task.id) || typeof task.projectId !== "string" || !validId(task.projectId) || task.status !== 2 || typeof task.title !== "string" || !task.title)) throw new CollaborationError("滴答完成记录不完整，请稍后重试", 502);
-      return data as RemoteTask[];
-    });
-    return (await account.completed).find(task => task.id === id) || null;
+    return completed || await completedTask(owner, account, id, completedAfter);
   },
   async create(owner, id, fields, receipt) {
     const existing = await gateway.get(owner, id);
@@ -111,8 +119,8 @@ export const gateway: Gateway = {
     if (!validId(id) || (projectId !== undefined && !validId(projectId))) throw new CollaborationError("任务编号无效", 400);
     await request(owner, `/project/${projectId ? encodeURIComponent(projectId) : "{inbox}"}/task/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
   },
-  async reopen(owner, before) {
-    const existing = await gateway.get(owner, before.id, before.projectId) || await gateway.locate!(owner, before.id, before.projectId);
+  async reopen(owner, before, completedAfter) {
+    const existing = await gateway.get(owner, before.id, before.projectId) || await gateway.locate!(owner, before.id, before.projectId, completedAfter);
     if (!existing) throw new CollaborationError("关联任务缺失，请刷新后恢复任务");
     if (!existing.status && sameFields(existing, before)) return existing;
     if (existing.status !== 2 || remoteVersion(existing) !== remoteVersion(before)) throw new CollaborationError("任务在恢复期间发生变化，请检查滴答后重试");

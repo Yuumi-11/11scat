@@ -291,16 +291,16 @@ test('background recovery finishes saved edits and backs off repeated failures',
   assert.equal(f.accounts.bob.get(w.targetId).title,w.title);assert.equal(f.counts.creates,1);
 });
 
-test('absent original tasks do not block submit, approval or direct completion and are never recreated', async () => {
+test('deleting a previously linked original task preserves the website stage and never completes its claimant', async () => {
   for (const deletionTime of ['before-submit', 'after-submit', 'direct']) {
     const f = await fixture(), task = await personal(f); let w = await claim(f, task);
     if (deletionTime === 'after-submit') w = await act(f, w, 'bob', 'submit');
     f.accounts.alice.delete(task.id);
-    w = await refreshed(f, w.id); assert.ok(!w.taskAnomaly);
-    if (deletionTime === 'before-submit') w = await act(f, w, 'bob', 'submit');
-    w = await act(f, w, 'alice', deletionTime === 'direct' ? 'owner-complete' : 'approve');
-    assert.equal(w.status, 'done'); assert.equal(f.accounts.alice.size, 0);
-    assert.equal(f.accounts.bob.get(w.targetId).status, 2); assert.equal(f.counts.creates, 1);
+    w = await refreshed(f, w.id); assert.ok(w.taskAnomaly);
+    const prior = w.status;
+    await assert.rejects(act(f, w, deletionTime === 'before-submit' ? 'bob' : 'alice', deletionTime === 'direct' ? 'owner-complete' : deletionTime === 'before-submit' ? 'submit' : 'approve'), /该任务已被删除/);
+    w = await refreshed(f, w.id); assert.equal(w.status, prior); assert.equal(f.accounts.alice.size, 0);
+    assert.ok(!f.accounts.bob.get(w.targetId).status); assert.equal(f.counts.creates, 1);
   }
 });
 
@@ -326,7 +326,7 @@ test('missing claimant task is restored without resetting submitted review or lo
   const version = w.version;
   w = await refreshed(f, w.id);
   assert.equal(w.version, version, 'unchanged anomaly refreshes do not generate events or revisions');
-  assert.equal(w.events.filter(event => event.type === 'task-anomaly').length, 1);
+  assert.equal(w.events.filter(event => event.type === 'task-anomaly').length, 0);
   await assert.rejects(act(f, w, 'offline', 'restore-workflow'), { status: 403 });
   w = await act(f, w, 'bob', 'restore-workflow');
   assert.equal(w.taskAnomaly, false); assert.equal(w.status, 'submitted'); assert.notEqual(w.targetId, oldTarget);
@@ -404,7 +404,7 @@ test('moved task association is saved and later workflow edits use its discovere
   const inbox = f.gateway.inbox, update = f.gateway.update;
   f.gateway.inbox = async owner => { const data = await inbox(owner); data.tasks = data.tasks.filter(task => task.projectId === data.projectId); return data; };
   f.gateway.locate = f.gateway.get;
-  w = await refreshed(f, w.id); assert.ok(!w.taskAnomaly); assert.equal(w.events.filter(event => event.type === 'task-relocated').length, 1);
+  w = await refreshed(f, w.id); assert.ok(!w.taskAnomaly); assert.equal(w.events.filter(event => event.type === 'task-relocated').length, 0);
   let project;
   f.gateway.update = async (owner, id, fields, version, projectId) => { if (owner === 'alice') project = projectId; await update(owner, id, fields, version); };
   w = await act(f, w, 'offline', 'update-workflow', { fields: { title: '继续编辑' } });
@@ -426,7 +426,7 @@ test('completed claimant task is reopened without replacement or automatic appro
   f.gateway.inbox = async owner => { const data = await inbox(owner); data.tasks = data.tasks.filter(task => !task.status); return data; };
   w = await refreshed(f, w.id);
   assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
-  assert.equal(f.accounts.bob.get(w.targetId).status, 0); assert.ok(w.needsSubmission);
+  assert.equal(f.accounts.bob.get(w.targetId).status, 0); assert.ok(!w.needsSubmission);
   assert.ok((await f.store.snapshot('bob')).members.find(member => member.id === 'bob').tasks.some(task => task.id === w.targetId));
 });
 
@@ -746,7 +746,7 @@ test('explicit rejection requires a new submission and external claimant complet
   f.accounts.bob.get(w.targetId).title = 'changed externally';
   assert.ok(!f.accounts.alice.get(task.id).status);
   w = await act(f, w, 'alice', 'reject'); f.accounts.bob.get(w.targetId).status = 2;
-  await assert.rejects(act(f, w, 'bob', 'submit'), /补充完成说明/); assert.equal(f.accounts.bob.get(w.targetId).status, 0);
+  w = await act(f, w, 'bob', 'submit'); assert.equal(w.status, 'submitted'); assert.equal(f.accounts.bob.get(w.targetId).status, 0);
   await assert.rejects(act(f, { ...w, version: w.version - 1 }, 'bob', 'submit'), /已更新/);
 });
 
@@ -870,7 +870,7 @@ test('legacy destructive routes stay disabled and public edits reject stale or i
   await assert.rejects(f.store.execute('stranger', { id: randomUUID(), action: 'create', fields: { title: 'x' } }), { status: 403 });
 });
 
-test('external original owner completion finishes both tasks once and updates the same snapshot and notifications', async () => {
+test('external owner completion silently restores the website working state without completing the claimant task', async () => {
   for (const publicTask of [false, true]) {
     const f = await fixture(), task = publicTask ? await f.create('公共外部完成') : await personal(f);
     let w = await claim(f, task);
@@ -885,11 +885,12 @@ test('external original owner completion finishes both tasks once and updates th
     let writes = 0; const complete = f.gateway.complete;
     f.gateway.complete = async (...args) => { writes++; await complete(...args); };
     const snapshot = await f.store.snapshot('bob'); w = snapshot.workflows.find(item => item.id === w.id);
-    assert.equal(w.status, 'done'); assert.equal(writes, 1); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
-    assert.ok(!snapshot.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
-    if (publicTask) assert.ok(!snapshot.buffer.some(item => item.id === task.id));
-    assert.ok(snapshot.notices.some(item => item.eventType === 'external-owner-complete'));
-    w = await refreshed(f, w.id); assert.equal(writes, 1); assert.equal(w.events.filter(item => item.type === 'external-owner-complete').length, 1);
+    assert.equal(w.status, 'working'); assert.equal(writes, 0); assert.ok(!f.accounts.bob.get(w.targetId).status);
+    assert.equal(f.accounts.alice.get(sourceId).status, 0);
+    assert.ok(snapshot.members.find(item => item.id === 'bob').tasks.some(item => item.id === w.targetId));
+    if (publicTask) assert.ok(snapshot.buffer.some(item => item.id === task.id));
+    assert.ok(!snapshot.notices.some(item => item.eventType === 'external-owner-complete'));
+    w = await refreshed(f, w.id); assert.equal(writes, 0); assert.equal(w.events.filter(item => item.type === 'external-owner-complete').length, 0);
   }
 });
 
@@ -920,7 +921,7 @@ test('external claimant checkbox restoration permits approval of changed task co
   }
 });
 
-test('lost reopen response survives restart and cooldown without duplicate incident records', async () => {
+test('lost reopen response is silently confirmed after restart without another write or submission requirement', async () => {
   const f = await fixture(), task = await personal(f); let w = await claim(f, task);
   f.accounts.bob.get(w.targetId).status = 2;
   const reopen = f.gateway.reopen; let calls = 0;
@@ -928,21 +929,138 @@ test('lost reopen response survives restart and cooldown without duplicate incid
   w = await refreshed(f, w.id); assert.ok(w.reopenPending); assert.match(w.syncError, /lost reopen/);
   f.store = new CollaborationStore(f.dir, f.gateway);
   w = await refreshed(f, w.id); assert.equal(calls, 1);
-  await assert.rejects(act(f, w, 'offline', 'retry-workflow'), /参与者/);
-  w = await act(f, w, 'bob', 'retry-workflow'); assert.ok(!w.reopenPending); assert.equal(w.status, 'working');
-  assert.equal(w.events.filter(item => item.type === 'external-claimant-check').length, 1);
-  assert.equal(w.events.filter(item => item.type === 'external-task-reopened').length, 1);
+  assert.ok(!w.reopenPending); assert.equal(w.status, 'working');
+  assert.equal(w.events.filter(item => item.type === 'external-claimant-check').length, 0);
+  assert.equal(w.events.filter(item => item.type === 'external-task-reopened').length, 0);
   assert.equal(f.counts.creates, 1);
-  await assert.rejects(act(f, w, 'bob', 'submit'), /补充完成说明/);
-  w = await act(f, w, 'bob', 'submit', { comment: '补充成果' }); assert.equal(w.status, 'submitted'); assert.ok(!w.needsSubmission);
+  w = await act(f, w, 'bob', 'submit'); assert.equal(w.status, 'submitted'); assert.ok(!w.needsSubmission);
 });
 
-test('external source completion partial response resumes through durable approval without repeated completion', async () => {
+test('a claim completed before verification silently recovers the same receipt and creates no workflow records', async () => {
+  for (const completing of [false, true]) {
+    const f = await fixture(), task = await f.create('建立阶段提前勾选');
+    f.gateway.create = async (owner, id, fields, receipt) => {
+      f.counts.creates++; f.accounts[owner].set('actual-id', { ...fields, id: 'actual-id', projectId: 'inbox-' + owner, status: 2 });
+      await receipt('actual-id'); throw new Error('readback not confirmed');
+    };
+    const rawGet = f.gateway.get;
+    const boundary = Math.floor((Date.now() + 8 * 3600000) / 86400000) * 86400000 - 8 * 3600000;
+    f.gateway.locate = async (owner, id, project, completedAfter) => { assert.equal(completedAfter, boundary); return rawGet(owner, id); };
+    let reopens = 0; const reopen = f.gateway.reopen;
+    f.gateway.reopen = async (...args) => { reopens++; assert.equal(args[2], boundary); return reopen(...args); };
+    let w = await claim(f, task); assert.equal(w.status, 'creating');
+    const events = structuredClone(w.events), notices = (await f.store.revision('alice')).notices;
+    f.store = new CollaborationStore(f.dir, f.gateway);
+    w = await act(f, w, completing ? 'alice' : 'bob', completing ? 'owner-complete' : 'retry-workflow');
+    assert.equal(w.status, completing ? 'done' : 'working'); assert.equal(w.error, '');
+    assert.equal(reopens, completing ? 0 : 1); assert.equal(w.targetId, 'actual-id'); assert.equal(f.counts.creates, 1);
+    assert.equal(f.accounts.alice.size, 0); assert.equal(f.accounts.bob.get(w.targetId).status, completing ? 2 : 0);
+    if (!completing) { assert.deepEqual(w.events, events); assert.deepEqual((await f.store.revision('alice')).notices, notices); assert.ok(!w.needsSubmission); }
+  }
+});
+
+test('public completion queries use publication metadata or its legacy create receipt, independently of planned dates and claim date', async () => {
+  for (const legacy of [false, true]) {
+    const f = await fixture(), task = await f.create('已发布的公共任务');
+    const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+    assert.ok(state.buffer[task.id].publishedAt, 'new publications persist their original time');
+    const publication = Date.parse('2026-09-05T14:00:00+08:00'), boundary = Date.parse('2026-09-05T00:00:00+08:00');
+    state.buffer[task.id].fields.startDate = '2040-01-01T00:00:00.000Z';
+    if (legacy) delete state.buffer[task.id].publishedAt; else state.buffer[task.id].publishedAt = publication;
+    Object.values(state.operations).find(op => op.action === 'create' && op.targetId === task.id).createdAt = publication;
+    await writeFile(file, JSON.stringify(state));
+    let w = await claim(f, task); assert.equal(w.status, 'working');
+    const saved = JSON.parse(await readFile(file, 'utf8')); assert.equal(saved.workflows[w.id].publishedAt, publication);
+    if (legacy) {
+      delete saved.buffer[task.id].publishedAt; delete saved.workflows[w.id].publishedAt;
+      await writeFile(file, JSON.stringify(saved));
+    }
+    f.store = new CollaborationStore(f.dir, f.gateway);
+    const reads = [], rawGet = f.gateway.get, reopen = f.gateway.reopen;
+    const inbox = f.gateway.inbox;
+    f.gateway.inbox = async owner => { const result = await inbox(owner); return { ...result, tasks: result.tasks.filter(task => !task.status) }; };
+    f.gateway.locate = async (owner, id, project, completedAfter) => { reads.push({ owner, id, completedAfter }); return rawGet(owner, id); };
+    f.gateway.reopen = async (...args) => { assert.equal(args[2], boundary); return reopen(...args); };
+    f.accounts.bob.get(w.targetId).status = 2;
+    w = await refreshed(f, w.id);
+    assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.ok(!w.syncError);
+    assert.deepEqual(reads, [{ owner: 'bob', id: w.targetId, completedAfter: boundary }]);
+    assert.equal(f.accounts.bob.get(w.targetId).status, 0); assert.equal(f.accounts.alice.size, 0);
+  }
+});
+
+test('legacy workflows without publication records fall back to their original website establishment date', async () => {
+  const f = await fixture(), task = await f.create('缺省旧发布日期');
+  let w = await claim(f, task);
+  const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+  delete state.buffer[task.id].publishedAt; delete state.workflows[w.id].publishedAt;
+  state.workflows[w.id].createdAt = Date.parse('2026-09-07T02:00:00+08:00');
+  state.operations = {};
+  await writeFile(file, JSON.stringify(state));
+  f.accounts.bob.delete(w.targetId);
+  f.gateway.locate = async (owner, id, project, completedAfter) => {
+    assert.equal(completedAfter, Date.parse('2026-09-07T00:00:00+08:00'));
+    throw new CollaborationError('滴答完成记录不完整，请稍后重试', 502);
+  };
+  w = await refreshed(f, w.id);
+  assert.equal(w.status, 'working'); assert.ok(!w.taskAnomaly); assert.match(w.syncError, /完成记录不完整/);
+  assert.ok((await f.store.snapshot('alice')).buffer.some(item => item.id === task.id));
+});
+
+test('deleted claimant markers preserve stages and results, stay outside records, and clear after restoring the exact task', async () => {
+  for (const stage of ['working', 'submitted']) for (const repairedStatus of [0, 2]) {
+    const f = await fixture(), task = await f.create('意外删除保持网站状态');
+    let w = await claim(f, task);
+    if (stage === 'submitted') w = await act(f, w, 'bob', 'submit', { comment: '已有提交结果' });
+    const before = structuredClone(w), target = structuredClone(f.accounts.bob.get(w.targetId));
+    const notices = (await f.store.revision('alice')).notices;
+    f.accounts.bob.delete(w.targetId); w = await refreshed(f, w.id);
+    assert.ok(w.taskAnomaly); assert.equal(w.status, stage); assert.deepEqual(w.events, before.events);
+    assert.deepEqual((await f.store.revision('alice')).notices, notices);
+    await assert.rejects(act(f, w, stage === 'working' ? 'bob' : 'alice', stage === 'working' ? 'submit' : 'approve'), /该任务已被删除/);
+    assert.ok((await f.store.snapshot('alice')).buffer.some(item => item.id === task.id));
+    f.accounts.bob.set(w.targetId, { ...target, status: repairedStatus });
+    w = await refreshed(f, w.id);
+    assert.equal(w.status, stage); assert.ok(!w.taskAnomaly); assert.deepEqual(w.events, before.events);
+    assert.equal(f.accounts.bob.get(w.targetId).status, 0); assert.equal(f.counts.creates, 1);
+    assert.deepEqual((await f.store.revision('alice')).notices, notices);
+  }
+});
+
+test('approving an already completed task skips reopening and redundant completion writes', async () => {
+  for (const side of ['alice', 'bob', 'both']) {
+    const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+    w = await act(f, w, 'bob', 'submit', { comment: '保留原审批材料' });
+    const expected = new Set(side === 'both' ? ['alice', 'bob'] : [side]), writes = [];
+    if (expected.has('alice')) f.accounts.alice.get(task.id).status = 2;
+    if (expected.has('bob')) f.accounts.bob.get(w.targetId).status = 2;
+    f.gateway.reopen = async () => assert.fail('approval must not reopen completed tasks');
+    const complete = f.gateway.complete;
+    f.gateway.complete = async (...args) => { writes.push(args[0]); return complete(...args); };
+    w = await act(f, w, 'alice', 'approve'); assert.equal(w.status, 'done');
+    assert.deepEqual(writes, ['alice', 'bob'].filter(owner => !expected.has(owner)));
+    assert.equal(w.events.find(event => event.type === 'submit').comment, '保留原审批材料');
+  }
+});
+
+test('failed status restoration retains a durable cooldown and never emits automatic notices', async () => {
+  const f = await fixture(), task = await personal(f); let w = await claim(f, task);
+  f.accounts.alice.get(task.id).status = 2; f.accounts.bob.get(w.targetId).status = 2;
+  const events = structuredClone(w.events), reopen = f.gateway.reopen; let attempts = 0;
+  f.gateway.reopen = async () => { attempts++; throw new Error('provider unavailable'); };
+  w = await refreshed(f, w.id); assert.ok(w.reopenPending); assert.equal(w.status, 'working');
+  f.store = new CollaborationStore(f.dir, f.gateway); w = await refreshed(f, w.id); assert.equal(attempts, 1);
+  f.gateway.reopen = reopen; w = await act(f, w, 'bob', 'retry-workflow');
+  assert.ok(!w.reopenPending); assert.equal(f.accounts.alice.get(task.id).status, 0); assert.equal(f.accounts.bob.get(w.targetId).status, 0);
+  assert.deepEqual(w.events, events);
+});
+
+test('website direct completion keeps an already-completed source and retries only the unconfirmed target', async () => {
   const f = await fixture(), task = await personal(f); let w = await claim(f, task);
   f.accounts.alice.get(task.id).status = 2;
   let calls = 0; const complete = f.gateway.complete;
   f.gateway.complete = async (...args) => { calls++; await complete(...args); throw new Error('lost complete response'); };
-  w = await refreshed(f, w.id); assert.equal(w.status, 'approving'); assert.ok(w.error);
+  w = await act(f, w, 'alice', 'owner-complete'); assert.equal(w.status, 'approving'); assert.ok(w.error);
   f.store = new CollaborationStore(f.dir, f.gateway);
   w = await act(f, w, 'alice', 'retry-workflow'); assert.equal(w.status, 'done'); assert.equal(calls, 1);
 });
@@ -957,7 +1075,7 @@ test('advanced recurring occurrence is never rewound or completed by the externa
   assert.ok(!w.taskAnomaly); assert.equal(f.counts.creates, 1);
 });
 
-test('submit and review discover external owner completion without waiting for a board refresh', async () => {
+test('submit and review reconcile external owner completion according to the requested website action', async () => {
   for (const action of ['submit', 'approve', 'reject']) {
     const f = await fixture(), task = await personal(f); let w = await claim(f, task);
     if (action !== 'submit') w = await act(f, w, 'bob', 'submit');
@@ -965,6 +1083,8 @@ test('submit and review discover external owner completion without waiting for a
     await assert.rejects(act(f, w, 'offline', action), { status: 403 });
     assert.ok(!f.accounts.bob.get(w.targetId).status);
     w = await act(f, w, action === 'submit' ? 'bob' : 'alice', action, { comment: '成果' });
-    assert.equal(w.status, 'done'); assert.equal(f.accounts.bob.get(w.targetId).status, 2);
+    assert.equal(w.status, action === 'approve' ? 'done' : action === 'submit' ? 'submitted' : 'rejected');
+    assert.equal(f.accounts.alice.get(task.id).status, action === 'approve' ? 2 : 0);
+    assert.equal(f.accounts.bob.get(w.targetId).status || 0, action === 'approve' ? 2 : 0);
   }
 });
