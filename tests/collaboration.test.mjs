@@ -201,6 +201,62 @@ test('archived deletion suppresses a stale public card after restart without tou
   assert.equal(f.counts.removes,removes);
 });
 
+test('public deletion persists card removal before provider confirmation and repairs old pending cards on restart', async () => {
+  const f = await fixture(), task = await f.create('待核对删除'), other = await f.create('保留便签');
+  let w = await claim(f, task);
+  w = await act(f, w, 'bob', 'submit', { comment: '保留提交记录' });
+  const file = path.join(f.dir, 'room-collaboration.json');
+  const before = JSON.parse(await readFile(file, 'utf8')).buffer[task.id];
+  const remove = f.gateway.remove;
+  let attempts = 0;
+  f.gateway.remove = async () => {
+    attempts++;
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).buffer[task.id], undefined, 'removal is durable before the external call finishes');
+    assert.deepEqual((await f.store.revision()).bufferIds, [other.id]);
+    throw new Error('provider unavailable');
+  };
+  w = await act(f, w, 'alice', 'delete-owner-task');
+  assert.equal(w.ownerDeletePending, true);
+  assert.equal(w.status, 'submitted');
+  assert.equal(f.accounts.bob.has(w.targetId), true, 'an unconfirmed inbox deletion is not reported as complete');
+  const pending = JSON.parse(await readFile(file, 'utf8'));
+  pending.buffer[task.id] = before;
+  await writeFile(file, JSON.stringify(pending));
+  f.store = new CollaborationStore(f.dir, f.gateway);
+  assert.deepEqual((await f.store.revision()).bufferPreview, [{ id: other.id, title: other.title }]);
+  const snapshot = await f.store.snapshot('alice');
+  assert.deepEqual(snapshot.buffer.map(item => item.id), [other.id]);
+  assert.ok(snapshot.members.find(member => member.id === 'bob').tasks.some(item => item.id === w.targetId));
+  assert.equal(snapshot.workflows.find(item => item.id === w.id).events.find(event => event.type === 'submit').comment, '保留提交记录');
+  assert.equal(attempts, 1, 'reading repaired cards does not perform another external deletion');
+  assert.equal(f.counts.removes, 0);
+  f.gateway.remove = remove;
+  await f.store.recoverPendingWorkflows();
+  w = await refreshed(f, w.id);
+  assert.equal(w.status, 'deleted');
+  assert.equal(f.counts.removes, 1);
+  assert.equal(f.counts.creates, 1, 'recovery never recreates the removed public card or inbox task');
+  assert.deepEqual((await f.store.revision()).bufferIds, [other.id]);
+});
+
+test('old one-sided deletion receipts do not remove a public card or another member task', async () => {
+  for (const eventType of ['owner-task-deleted', 'claimant-task-deleted']) {
+    const f = await fixture(), task = await f.create('旧版单侧删除');
+    const w = await claim(f, task), id = randomUUID();
+    const file = path.join(f.dir, 'room-collaboration.json'), state = JSON.parse(await readFile(file, 'utf8'));
+    state.workflows[w.id].ownerDeletion = { id };
+    state.workflows[w.id].events.push({ id, type: eventType, actorId: 'alice', at: Date.now(), comment: '', files: [] });
+    await writeFile(file, JSON.stringify(state));
+    const reopened = new CollaborationStore(f.dir, f.gateway);
+    assert.deepEqual((await reopened.revision()).bufferIds, [task.id]);
+    await reopened.recoverPendingWorkflows();
+    const snapshot = await reopened.snapshot('alice');
+    assert.deepEqual(snapshot.buffer.map(item => item.id), [task.id]);
+    assert.ok(f.accounts.bob.has(w.targetId));
+    assert.equal(f.counts.removes, 0);
+  }
+});
+
 test('deletion uses exact relocated links and protects a later recurring occurrence',async()=>{
   const f=await fixture(),task=await personal(f);let w=await claim(f,task);
   f.accounts.alice.get(task.id).projectId='other-project';

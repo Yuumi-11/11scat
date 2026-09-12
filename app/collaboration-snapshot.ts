@@ -8,6 +8,10 @@ export function removeSnapshotTask(snapshot: CollaborationSnapshot, ownerId: str
 
 export function applyWorkflowUpdate(snapshot: CollaborationSnapshot, workflow: ClaimWorkflow): CollaborationSnapshot {
   let next = { ...snapshot, workflows: [...snapshot.workflows.filter(item => item.id !== workflow.id), workflow] };
+  if (workflow.ownerDeletePending && workflow.events.some(event => event.type === 'task-delete-requested')) {
+    if (workflow.source.ownerId === null) next = removeSnapshotTask(next, null, workflow.source.taskId);
+    next = { ...next, buffer: next.buffer.filter(task => task.workflowId !== workflow.id) };
+  }
   if (workflow.status !== 'deleted') return next;
   next = removeSnapshotTask(next, workflow.source.ownerId, workflow.source.taskId);
   next = removeSnapshotTask(next, workflow.claimantId, workflow.targetId);
@@ -16,5 +20,5 @@ export function applyWorkflowUpdate(snapshot: CollaborationSnapshot, workflow: C
 }
 
 export function withoutDeletedWorkflowTasks(snapshot: CollaborationSnapshot): CollaborationSnapshot {
-  return snapshot.workflows.filter(workflow => workflow.status === 'deleted').reduce(applyWorkflowUpdate, snapshot);
+  return snapshot.workflows.filter(workflow => workflow.status === 'deleted' || workflow.ownerDeletePending).reduce(applyWorkflowUpdate, snapshot);
 }

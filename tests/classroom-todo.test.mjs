@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { classroomTodoWindow, classroomTodoTasks, mergeTodoSnapshot } from '../app/classroom-todo.ts';
+import { classroomTodoWindow, classroomTodoTasks, mergeTodoSnapshot, todoDueTime } from '../app/classroom-todo.ts';
 import { addAndSelectBoard, adjacentBoardId } from '../app/classroom-boards.ts';
 import { createTodoStore } from '../app/api/room/todo/store.ts';
 const now = Date.parse('2026-09-11T06:00:00+08:00');
@@ -23,6 +23,55 @@ test('todo includes current-window completed and pending tasks regardless of the
   assert.deepEqual(classroomTodoTasks(tasks,now+86400000).map(t=>t.id),['next']);
   assert.ok(classroomTodoTasks(tasks,now+1).some(t=>t.id==='boundary'));
 });
+test('all-day tasks end at midnight of the last six oclock day and switch only at six', () => {
+  const tasks = [
+    task('previous', '2026-09-10', false, { isAllDay: true }),
+    task('today', '2026-09-11T00:00:00+0800', false, { isAllDay: true }),
+    task('today-done', undefined, true, { isAllDay: true, startDate: '2026-09-11' }),
+    task('next', '2026-09-12', false, { isAllDay: true }),
+    task('early', '2026-09-11T05:59:59.999+0800'),
+    task('six', '2026-09-11T06:00:00+0800'),
+    task('undated', undefined, false, { isAllDay: true }),
+  ];
+  assert.deepEqual(classroomTodoTasks(tasks, Date.parse('2026-09-10T23:59:59.999+0800')).map(t => t.id), ['previous', 'early']);
+  for (const time of ['2026-09-11T00:00:00+0800', '2026-09-11T05:59:59.999+0800']) {
+    assert.deepEqual(classroomTodoTasks(tasks, Date.parse(time)).map(t => t.id), ['previous', 'early']);
+  }
+  assert.deepEqual(classroomTodoTasks(tasks, now).map(t => t.id), ['today', 'today-done', 'six']);
+  assert.deepEqual(classroomTodoTasks(tasks, Date.parse('2026-09-12T00:00:00+0800')).map(t => t.id), ['today', 'today-done', 'six']);
+  assert.deepEqual(classroomTodoTasks(tasks, Date.parse('2026-09-12T06:00:00+0800')).map(t => t.id), ['next']);
+});
+
+test('all-day UTC timestamps match the same Shanghai date as local timestamps and date-only tasks', () => {
+  const values = ['2026-09-11', '2026-09-11T00:00:00+0800', '2026-09-10T16:00:00.000Z'];
+  const tasks = values.flatMap((value, i) => [
+    task(`end-${i}`, value, false, { isAllDay: true }),
+    task(`start-${i}`, undefined, true, { isAllDay: true, startDate: value }),
+  ]);
+  assert.equal(new Set(tasks.map(todoDueTime)).size, 1);
+  assert.equal(classroomTodoTasks(tasks, now).length, 6);
+  assert.equal(classroomTodoTasks(tasks, Date.parse('2026-09-12T02:00:00+0800')).length, 6);
+  assert.equal(classroomTodoTasks(tasks, now - 1).length, 0);
+  assert.equal(classroomTodoTasks(tasks, now + 86400000).length, 0);
+});
+
+test('timed tasks use the later valid start or end including reversed dates and timezone offsets', () => {
+  const tasks = [
+    task('end-in', '2026-09-11T08:00:00+0800', false, { startDate: '2026-09-10T20:00:00+0800' }),
+    task('start-in', '2026-09-10T20:00:00+0800', true, { startDate: '2026-09-11T08:00:00+0800' }),
+    task('end-out', '2026-09-12T06:00:00+0800', false, { startDate: '2026-09-11T08:00:00+0800' }),
+    task('start-out', '2026-09-11T08:00:00+0800', false, { startDate: '2026-09-12T06:00:00+0800' }),
+    task('start-only', undefined, false, { startDate: '2026-09-10T22:00:00Z' }),
+    task('invalid-end', 'invalid', false, { startDate: '2026-09-11T08:00:00+0800' }),
+    task('invalid', 'invalid', false, { startDate: 'invalid' }),
+  ];
+  assert.deepEqual(classroomTodoTasks(tasks, now).map(t => t.id), ['end-in', 'start-in', 'start-only', 'invalid-end']);
+  assert.equal(todoDueTime(tasks[4]), now);
+  const checked = { ...tasks[0], done: true, completedDay: '2026-09-11' };
+  const moved = { ...checked, startDate: '2026-09-11T12:00:00+0800', done: false, completedDay: undefined };
+  assert.deepEqual(mergeTodoSnapshot([checked], [moved], now), [moved], 'a later start identifies a different task occurrence even if the end field is unchanged');
+});
+
 test('checks stay for the completion day after refresh, and leave at the next six oclock', () => {
   const done = task('one','2026-09-11',true,{completedDay:'2026-09-11'});
   assert.deepEqual(mergeTodoSnapshot([done],[],now),[done]);

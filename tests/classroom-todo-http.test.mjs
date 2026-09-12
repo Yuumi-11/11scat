@@ -20,7 +20,15 @@ test('todo routes preserve checked tasks for both devices and save only the auth
   const t=(id,title,status=0)=>({id,title,projectId:'inbox-alice',dueDate:date,status});
   const oldDate=new Date(window.start-3600000).toISOString();
   const oldHistory=Object.fromEntries(Array.from({length:200},(_,i)=>[`old-${i}`,{...t(`old-${i}`,'窗口外的完成历史',2),dueDate:oldDate}]));
-  await writeFile(path.join(dir,'fake-dida.json'),JSON.stringify({alice:{...oldHistory,overdue:{...t('overdue','窗口外逾期'),dueDate:oldDate},one:t('one','待勾选'),history:t('history','已在滴答完成',2),future:{...t('future','未来任务'),dueDate:new Date(window.next+86400000).toISOString()}},bob:{}}));
+  const allDayDate = new Date(Date.parse(`${window.day}T00:00:00+0800`)).toISOString();
+  const extra = {
+    allday: { ...t('allday','当日全天'), dueDate: allDayDate, isAllDay: true },
+    alldaydone: { ...t('alldaydone','已完成全天',2), dueDate: undefined, startDate: allDayDate, isAllDay: true },
+    laterstart: { ...t('laterstart','按较晚开始时间'), dueDate: oldDate, startDate: date },
+    laterend: { ...t('laterend','按较晚结束时间'), startDate: oldDate },
+    startoutside: { ...t('startoutside','开始时间在窗口外'), startDate: new Date(window.end).toISOString() },
+  };
+  await writeFile(path.join(dir,'fake-dida.json'),JSON.stringify({alice:{...oldHistory,...extra,overdue:{...t('overdue','窗口外逾期'),dueDate:oldDate},one:t('one','待勾选'),history:t('history','已在滴答完成',2),future:{...t('future','未来任务'),dueDate:new Date(window.next+86400000).toISOString()}},bob:{}}));
   const socket=createServer();await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));
   const child=spawn(process.execPath,['--import','./tests/helpers/dida-fixture.mjs','node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...process.env,DATA_DIR:dir,AUTH_SESSION_SECRET:secret,TICKTICK_STORAGE_SECRET:secret},stdio:'ignore',windowsHide:true});
   const origin=`http://127.0.0.1:${port}`;
@@ -30,7 +38,9 @@ test('todo routes preserve checked tasks for both devices and save only the auth
     let ready=false;for(let i=0;i<80;i++){try{if((await call('alice','/api/room/classroom')).ok){ready=true;break;}}catch{}await new Promise(resolve=>setTimeout(resolve,200));}assert.ok(ready);
     const tasksUrl='/api/ticktick/tasks?view=today&classroom=1';
     let response=await call('alice',tasksUrl);assert.equal(response.status,200);let data=await response.json();
-    assert.deepEqual(data.tasks.map(t=>t.id).sort(),['history','one']);assert.equal(data.tasks.find(t=>t.id==='history').done,true);
+    assert.deepEqual(data.tasks.map(t=>t.id).sort(),['allday','alldaydone','history','laterend','laterstart','one']);assert.equal(data.tasks.find(t=>t.id==='history').done,true);
+    assert.equal(data.tasks.find(t=>t.id==='alldaydone').done,true);
+    assert.equal(data.tasks.find(t=>t.id==='laterstart').startDate,date,'the browser and peer must retain the later start time');
     assert.equal(data.inboxError,undefined,'historical record count must not warn or expand the current task window');
     assert.equal((await call('alice','/api/ticktick/complete',{projectId:'inbox-alice',taskId:'one',ownerId:'bob'})).status,403);
     assert.equal((await call('alice','/api/ticktick/complete',{projectId:'inbox-alice',taskId:'one'})).status,204);

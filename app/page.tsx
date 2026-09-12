@@ -41,6 +41,7 @@ type Task = {
   title: string;
   project: string;
   dueDate?: string;
+  startDate?: string;
   isAllDay?: boolean;
   completedDay?: string;
   done: boolean;
@@ -51,7 +52,7 @@ type ChatQuote = { id: string; sender: string; body: string };
 type ChatAttachment = { id: string; url: string; name: string; size: number; mimeType: string; kind: "image" | "file" | "audio" };
 type ChatMessage = { id: string; body: string; imageUrl?: string; attachment?: ChatAttachment; replyTo?: ChatQuote; identityId?: string; time: string; createdAt?: number; sender: string; own?: boolean; delivery?: "sending" | "failed"; error?: string };
 type OutgoingChat = { message: ChatMessage; file?: File; attachment?: ChatAttachment };
-type SharedTask = Pick<Task, "id" | "title" | "project" | "dueDate" | "done" | "isAllDay" | "completedDay">;
+type SharedTask = Pick<Task, "id" | "title" | "project" | "startDate" | "dueDate" | "done" | "isAllDay" | "completedDay">;
 type MediaSource = "camera" | "screen" | "microphone";
 type MediaItem = {
   id: string;
@@ -782,7 +783,7 @@ export default function Home() {
 
   useEffect(() => {
     tasksRef.current = tasks;
-    const shared = tasks.slice(0, 200).map(({ id, title, project, dueDate, done, isAllDay, completedDay }) => ({ id, title, project, dueDate, done, isAllDay, completedDay }));
+    const shared = tasks.slice(0, 200).map(({ id, title, project, startDate, dueDate, done, isAllDay, completedDay }) => ({ id, title, project, startDate, dueDate, done, isAllDay, completedDay }));
     void roomRef.current?.localParticipant.publishData(
       new TextEncoder().encode(JSON.stringify({ type: "task-snapshot", tasks: shared })),
       { reliable: true },
@@ -1324,7 +1325,7 @@ export default function Home() {
         connection.send({ type: "presence", name: displayNameRef.current, identityId: identityIdRef.current, deviceId: localDeviceId, activity: activityRef.current, mobile: mobileClient });
         connection.send({
           type: "task-snapshot",
-          tasks: tasksRef.current.slice(0, 200).map(({ id, title, project, dueDate, done, isAllDay, completedDay }) => ({ id, title, project, dueDate, done, isAllDay, completedDay })),
+          tasks: tasksRef.current.slice(0, 200).map(({ id, title, project, startDate, dueDate, done, isAllDay, completedDay }) => ({ id, title, project, startDate, dueDate, done, isAllDay, completedDay })),
         });
         connection.send({ type: "media-request" });
         encodeRoomPackets({ type: "board-snapshot", boards: boardsRef.current, deletedBoardIds: [...deletedBoardIdsRef.current] }).forEach((packet) => connection.send(packet));

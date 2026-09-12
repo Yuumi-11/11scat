@@ -113,9 +113,12 @@ export class CollaborationStore {
       const state = JSON.parse(await readFile(this.file, "utf8"));
       if (state.version !== 1 || !state.buffer || !state.operations) throw new Error("协作记录格式异常");
       state.workflows ||= {};
-      // Archived deletion records also suppress stale public cards on reload.
+      // An accepted whole-task deletion removes the public card immediately,
+      // even while linked inbox deletions are waiting for provider confirmation.
+      // Old one-sided deletion receipts do not authorize removing another copy.
       for (const workflow of Object.values(state.workflows) as Workflow[]) {
-        if (workflow.status === 'deleted' && workflow.source.ownerId === null) delete state.buffer[workflow.source.taskId];
+        const deleting = workflow.ownerDeletion && workflow.events.some(event => event.id === workflow.ownerDeletion?.id && event.type === 'task-delete-requested');
+        if ((workflow.status === 'deleted' || deleting) && workflow.source.ownerId === null) delete state.buffer[workflow.source.taskId];
       }
       for (const [id, task] of Object.entries(state.buffer) as [string, BufferTask][]) {
         task.publisherId ||= (Object.values(state.operations) as Operation[]).find(op => op.action === "create" && op.targetId === id)?.actorId;
@@ -748,6 +751,7 @@ export class CollaborationStore {
         if (!workflow.ownerDeletion) {
           workflow.ownerDeletion = { id: command.id };
           workflow.events.push({ id: command.id, signature, actorId: actor, type: "task-delete-requested", at: Date.now(), comment: "", files: [] });
+          if (workflow.source.ownerId === null) delete state.buffer[workflow.source.taskId];
           await this.saveWorkflow(state, workflow);
         }
         return this.deleteWorkflowTasks(state, workflow, workflow.ownerDeletion.id);

@@ -72,6 +72,7 @@ export async function GET(request: Request) {
       title: task.title,
       project: projectNames.get(task.projectId) || "滴答清单",
       dueDate: task.dueDate || task.startDate,
+      startDate: task.startDate,
       isAllDay: task.isAllDay,
       done: classroom ? !!task.status : false,
       ...(classroom ? { completedDay: normalizeTodo(task).completedDay } : {}),
