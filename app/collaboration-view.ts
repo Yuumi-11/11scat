@@ -1,6 +1,6 @@
 type DatedTask = { dueDate: string | null; startDate: string | null };
 
-const pinColors = ['#b96359', '#bf984c', '#587d9e', '#739486', '#9582a6'] as const;
+const pinColors = ['#d75c4c', '#dbac40', '#4c91bd', '#4e9d79', '#ad78b5'] as const;
 /** Task IDs are random at creation; deriving the color from the ID keeps it stable across viewers and reloads. */
 export function collaborationPinColor(id: string): string {
   let hash = 2166136261;

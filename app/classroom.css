@@ -444,3 +444,12 @@
 .todo-hand-check > span { position: relative; display: block; width: 14px; height: 15px; border: 1.2px solid #9c9687; border-radius: 1px 2px 1px 1px; transform: rotate(-3deg); }
 .todo-hand-check[aria-checked=true] > span::after { content: ''; position: absolute; left: 3px; top: -3px; width: 7px; height: 14px; border: solid #696955; border-width: 0 2px 2px 0; transform: rotate(38deg) skewY(-8deg); border-radius: 0 0 2px; }
 .todo-hand-check:disabled { cursor: default; }.todo-hand-check:focus-visible { outline: 1px dashed #857961; outline-offset: -2px; }
+.classroom-scene .side-panel :is(.message-list,.task-person-list) { margin-right: -8px; scrollbar-color: #527769 transparent; }
+.classroom-scene .side-panel .message-list { padding-right: 14px; }
+.classroom-scene .side-panel .task-person-list { padding-right: 13px; }
+@supports selector(::-webkit-scrollbar) {
+  .classroom-scene .side-panel :is(.message-list,.task-person-list) { scrollbar-width: auto; scrollbar-color: auto; }
+  .classroom-scene .side-panel :is(.message-list,.task-person-list)::-webkit-scrollbar { width: 14px; }
+  .classroom-scene .side-panel :is(.message-list,.task-person-list)::-webkit-scrollbar-track { background: transparent; }
+  .classroom-scene .side-panel :is(.message-list,.task-person-list)::-webkit-scrollbar-thumb { min-height: 60px; border: 1px solid transparent; background: url('/classroom/pencil-tip.svg') center top / 12px 18px no-repeat, linear-gradient(to right,#759386 0 25%,#527769 25% 75%,#3f6256 75%) center bottom / 12px calc(100% - 18px) no-repeat; background-clip: padding-box; }
+}

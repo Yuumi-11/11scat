@@ -9,4 +9,4 @@
     <rect x="45" y="26" width="265" height="180" rx="6" fill="#f0eeee"/>
     <circle cx="176" cy="23" r="1.3" fill="#778b88"/>
 
-  </svg>
+  <g id="magnetic-pencil"><path d="M96 3.5H273a4 4 0 0 1 0 8H96L78 7.5Z" fill="#f4f2e8"/><path d="m78 7.5 18 2v2Z" fill="#cbd0c6"/><path d="M96 9.5h180a4 4 0 0 1-3 2H96Z" fill="#dce0d6"/></g></svg>
